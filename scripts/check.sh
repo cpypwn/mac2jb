@@ -7,7 +7,7 @@ echo 'mac2jb preflight'
 for item in vendor/libusbd/Makefile vendor/macos_usb_gadget_poc/README.md vendor/ns2jb/run.cjs vendor/ns2jb/engine assets/bootstrap.bas; do
   [[ -e "$item" ]] || { echo "Missing offline component: $item" >&2; exit 1; }
 done
-[[ -f UPSTREAM.lock ]] || { echo 'Missing UPSTREAM.lock' >&2; exit 1; }
+[[ -f upstream.lock ]] || { echo 'Missing upstream.lock' >&2; exit 1; }
 shasum -a 256 -c assets/bootstrap.bas.sha256
 command -v xcrun >/dev/null || { echo 'Missing Xcode command line tools.' >&2; exit 1; }
 command -v node >/dev/null || { echo 'Node.js 22+ must be installed locally; bundled code cannot replace the runtime.' >&2; exit 1; }

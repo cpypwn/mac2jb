@@ -1,8 +1,3 @@
-' Switch 2 / SmileBASIC 4.4.9 bootstrap. See README before RUN.
-' Addresses are rediscovered; headers, native code and the SDK CRC are checked.
-' REMOVE is issued once from Direct mode after RUN; its handled error is expected.
-' START verifies the bootstrap, connects to the computer and runs the demo.
-
 VAR NSR,B#,C#,T#,SH#,S#,M#,D#,G#,MM#,H$,QF$,GH$,DP$,CP$
 VAR PHASE=0,FD=-1,POOL#=0,ZERO$=CHR$(0),I
 FOR I=1 TO 18:ZERO$=ZERO$+ZERO$:NEXT
