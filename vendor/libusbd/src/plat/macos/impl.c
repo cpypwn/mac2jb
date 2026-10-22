@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
@@ -16,6 +17,31 @@
 #include "libusbd_priv.h"
 //#include "IOUSBDeviceControllerLib.h"
 #include "alt_IOUSBDeviceControllerLib.h"
+
+
+// mac2jb: select the USB gadget controller used by this process.
+// The original libusbd example assumed usb-drd2, which does not exist on
+// the tested M4 MacBook Pro (Mac16,1). Keep the two service lookups in sync.
+static const char* mac2jb_selected_controller(void)
+{
+    const char *value = getenv("MAC2JB_CONTROLLER");
+    return (value && *value) ? value : "usb-drd1";
+}
+
+static int mac2jb_controller_is_valid(const char *value)
+{
+    return strcmp(value, "usb-drd0") == 0 ||
+           strcmp(value, "usb-drd1") == 0 ||
+           strcmp(value, "usb-drd3") == 0;
+}
+
+static int mac2jb_service_on_selected_controller(const char *path)
+{
+    char prefix[32];
+    int count = snprintf(prefix, sizeof(prefix), "/%s@", mac2jb_selected_controller());
+    if (count < 0 || (size_t)count >= sizeof(prefix)) return 0;
+    return strstr(path, prefix) != NULL;
+}
 
 CFRunLoopRef _runLoop = NULL;
 
@@ -556,6 +582,12 @@ kern_return_t IOUSBDeviceInterface_SetPipeProperty(libusbd_macos_ctx_t* pImplCtx
 
 int libusbd_impl_init(libusbd_ctx_t* pCtx)
 {
+    const char *selected = mac2jb_selected_controller();
+    if (!mac2jb_controller_is_valid(selected)) {
+        fprintf(stderr, "libusbd macos: invalid MAC2JB_CONTROLLER '%s' (use usb-drd0, usb-drd1, or usb-drd3)\n", selected);
+        return LIBUSBD_INVALID_ARGUMENT;
+    }
+    printf("libusbd macos: Selected controller: %s\n", selected);
     if (!pCtx) {
         return LIBUSBD_INVALID_ARGUMENT;
     }
@@ -608,7 +640,7 @@ int libusbd_impl_init(libusbd_ctx_t* pCtx)
                 continue;
             }
 
-            if (strstr(path, "usb-drd2")) {
+            if (mac2jb_service_on_selected_controller(path)) {
                 printf("libusbd macos: Connecting to: '%s'\n", path);
                 break;
             }
@@ -807,7 +839,7 @@ int libusbd_impl_config_finalize(libusbd_ctx_t* pCtx)
                     continue;
                 }
 
-                if (strstr(path, "usb-drd2")) {
+                if (mac2jb_service_on_selected_controller(path)) {
                     printf("libusbd macos: Connecting to: '%s'\n", path);
                     break;
                 }
