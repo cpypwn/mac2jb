@@ -1,0 +1,17 @@
+[package]
+name = "rust_kvm"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libusbd = { path = "../../bindings_rust" }
+futures = "0.3.31"
+async-std = "1.13.1"
+glutin = "0.28.0"
+takeable-option = "0.4"
+
+[build-dependencies]
+gl_generator = "0.14"

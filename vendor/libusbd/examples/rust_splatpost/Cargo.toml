@@ -1,0 +1,19 @@
+[package]
+name = "rust_splatpost"
+version = "0.1.0"
+edition = "2021"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libusbd = { path = "../../bindings_rust" }
+futures = "0.3.21"
+async-std = "1.11.0"
+glutin = "0.28.0"
+takeable-option = "0.4"
+image = "0.21"
+png = "0.17.5"
+
+[build-dependencies]
+gl_generator = "0.14"

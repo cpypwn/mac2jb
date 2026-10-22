@@ -1,0 +1,11 @@
+[package]
+name = "rust_async"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+libusbd = { path = "../../bindings_rust" }
+futures = "0.3.21"
+async-std = "1.11.0"

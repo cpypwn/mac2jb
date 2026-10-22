@@ -1,0 +1,316 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E7B7C4E82820B87F006DD7B4 /* usbgadget_userclient.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E7B7C4DF2820B87F006DD7B4 /* usbgadget_userclient.cpp */; };
+		E7B7C4E92820B87F006DD7B4 /* debug.h in Headers */ = {isa = PBXBuildFile; fileRef = E7B7C4E02820B87F006DD7B4 /* debug.h */; };
+		E7B7C4EA2820B87F006DD7B4 /* usbgadget.cpp in Sources */ = {isa = PBXBuildFile; fileRef = E7B7C4E12820B87F006DD7B4 /* usbgadget.cpp */; };
+		E7B7C4EC2820B87F006DD7B4 /* usbgadget_userclient.h in Headers */ = {isa = PBXBuildFile; fileRef = E7B7C4E32820B87F006DD7B4 /* usbgadget_userclient.h */; };
+		E7B7C4ED2820B87F006DD7B4 /* usbgadget_types.h in Headers */ = {isa = PBXBuildFile; fileRef = E7B7C4E42820B87F006DD7B4 /* usbgadget_types.h */; };
+		E7B7C4EE2820B87F006DD7B4 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = E7B7C4E52820B87F006DD7B4 /* Info.plist */; };
+		E7B7C4EF2820B87F006DD7B4 /* usbgadget.h in Headers */ = {isa = PBXBuildFile; fileRef = E7B7C4E62820B87F006DD7B4 /* usbgadget.h */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		625BDE461AA6EE98001573B2 /* usbgadget.kext */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = usbgadget.kext; sourceTree = BUILT_PRODUCTS_DIR; };
+		625BDE4A1AA6EE98001573B2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		7A9220E21F99510200072E5A /* keyboard.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = keyboard.c; path = examples/keyboard.c; sourceTree = SOURCE_ROOT; };
+		7A9220E31F99510200072E5A /* mouse.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mouse.c; path = examples/mouse.c; sourceTree = SOURCE_ROOT; };
+		E7B7C4DF2820B87F006DD7B4 /* usbgadget_userclient.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = usbgadget_userclient.cpp; sourceTree = "<group>"; };
+		E7B7C4E02820B87F006DD7B4 /* debug.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = debug.h; sourceTree = "<group>"; };
+		E7B7C4E12820B87F006DD7B4 /* usbgadget.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = usbgadget.cpp; sourceTree = "<group>"; };
+		E7B7C4E32820B87F006DD7B4 /* usbgadget_userclient.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = usbgadget_userclient.h; sourceTree = "<group>"; };
+		E7B7C4E42820B87F006DD7B4 /* usbgadget_types.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = usbgadget_types.h; sourceTree = "<group>"; };
+		E7B7C4E52820B87F006DD7B4 /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E7B7C4E62820B87F006DD7B4 /* usbgadget.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = usbgadget.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		625BDE421AA6EE98001573B2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		625BDE3C1AA6EE98001573B2 = {
+			isa = PBXGroup;
+			children = (
+				625BDE481AA6EE98001573B2 /* usbgadget */,
+				625BDE471AA6EE98001573B2 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		625BDE471AA6EE98001573B2 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				625BDE461AA6EE98001573B2 /* usbgadget.kext */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		625BDE481AA6EE98001573B2 /* usbgadget */ = {
+			isa = PBXGroup;
+			children = (
+				E7B7C4E02820B87F006DD7B4 /* debug.h */,
+				E7B7C4E52820B87F006DD7B4 /* Info.plist */,
+				E7B7C4E42820B87F006DD7B4 /* usbgadget_types.h */,
+				E7B7C4DF2820B87F006DD7B4 /* usbgadget_userclient.cpp */,
+				E7B7C4E32820B87F006DD7B4 /* usbgadget_userclient.h */,
+				E7B7C4E12820B87F006DD7B4 /* usbgadget.cpp */,
+				E7B7C4E62820B87F006DD7B4 /* usbgadget.h */,
+				7A9220E11F9950DA00072E5A /* examples */,
+				625BDE491AA6EE98001573B2 /* Supporting Files */,
+			);
+			path = usbgadget;
+			sourceTree = "<group>";
+		};
+		625BDE491AA6EE98001573B2 /* Supporting Files */ = {
+			isa = PBXGroup;
+			children = (
+				625BDE4A1AA6EE98001573B2 /* Info.plist */,
+			);
+			name = "Supporting Files";
+			sourceTree = "<group>";
+		};
+		7A9220E11F9950DA00072E5A /* examples */ = {
+			isa = PBXGroup;
+			children = (
+				7A9220E21F99510200072E5A /* keyboard.c */,
+				7A9220E31F99510200072E5A /* mouse.c */,
+			);
+			name = examples;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		625BDE431AA6EE98001573B2 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E7B7C4EC2820B87F006DD7B4 /* usbgadget_userclient.h in Headers */,
+				E7B7C4EF2820B87F006DD7B4 /* usbgadget.h in Headers */,
+				E7B7C4ED2820B87F006DD7B4 /* usbgadget_types.h in Headers */,
+				E7B7C4E92820B87F006DD7B4 /* debug.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		625BDE451AA6EE98001573B2 /* usbgadget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 625BDE511AA6EE98001573B2 /* Build configuration list for PBXNativeTarget "usbgadget" */;
+			buildPhases = (
+				625BDE411AA6EE98001573B2 /* Sources */,
+				625BDE421AA6EE98001573B2 /* Frameworks */,
+				625BDE431AA6EE98001573B2 /* Headers */,
+				625BDE441AA6EE98001573B2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = usbgadget;
+			productName = foohid;
+			productReference = 625BDE461AA6EE98001573B2 /* usbgadget.kext */;
+			productType = "com.apple.product-type.kernel-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		625BDE3D1AA6EE98001573B2 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 0700;
+				ORGANIZATIONNAME = unbit;
+				TargetAttributes = {
+					625BDE451AA6EE98001573B2 = {
+						CreatedOnToolsVersion = 6.1.1;
+						DevelopmentTeam = A2R992S5N3;
+					};
+				};
+			};
+			buildConfigurationList = 625BDE401AA6EE98001573B2 /* Build configuration list for PBXProject "usbgadget" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				English,
+				en,
+			);
+			mainGroup = 625BDE3C1AA6EE98001573B2;
+			productRefGroup = 625BDE471AA6EE98001573B2 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				625BDE451AA6EE98001573B2 /* usbgadget */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		625BDE441AA6EE98001573B2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E7B7C4EE2820B87F006DD7B4 /* Info.plist in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		625BDE411AA6EE98001573B2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E7B7C4E82820B87F006DD7B4 /* usbgadget_userclient.cpp in Sources */,
+				E7B7C4EA2820B87F006DD7B4 /* usbgadget.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		625BDE4F1AA6EE98001573B2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.11;
+				MTL_ENABLE_DEBUG_INFO = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		625BDE501AA6EE98001573B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.11;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		625BDE521AA6EE98001573B2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1.0.0d1;
+				DEVELOPMENT_TEAM = A2R992S5N3;
+				INFOPLIST_FILE = usbgadget/Info.plist;
+				MODULE_NAME = gay.bowser.usbgadget;
+				MODULE_VERSION = 1.0.0d1;
+				PRODUCT_BUNDLE_IDENTIFIER = gay.bowser.usbgadget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				WRAPPER_EXTENSION = kext;
+			};
+			name = Debug;
+		};
+		625BDE531AA6EE98001573B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1.0.0d1;
+				DEVELOPMENT_TEAM = A2R992S5N3;
+				INFOPLIST_FILE = usbgadget/Info.plist;
+				MODULE_NAME = gay.bowser.usbgadget;
+				MODULE_VERSION = 1.0.0d1;
+				PRODUCT_BUNDLE_IDENTIFIER = gay.bowser.usbgadget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				WRAPPER_EXTENSION = kext;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		625BDE401AA6EE98001573B2 /* Build configuration list for PBXProject "usbgadget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				625BDE4F1AA6EE98001573B2 /* Debug */,
+				625BDE501AA6EE98001573B2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		625BDE511AA6EE98001573B2 /* Build configuration list for PBXNativeTarget "usbgadget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				625BDE521AA6EE98001573B2 /* Debug */,
+				625BDE531AA6EE98001573B2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 625BDE3D1AA6EE98001573B2 /* Project object */;
+}
