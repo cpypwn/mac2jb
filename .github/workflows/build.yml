@@ -1,0 +1,21 @@
+name: macos build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15-xlarge # apple silicon runner needed to execute arm64 binaries
+    steps:
+      - uses: actions/checkout@v4
+      - name: build and smoke test
+        run: |
+          test "$(uname -m)" = arm64
+          make clean
+          make
+          ./mac2jb-send --help
+          ./mac2jb-commands --dry-run
+          shasum -a 256 -c assets/bootstrap.bas.sha256
+          bash -n make-release-zip.command scripts/*.sh
+          bash make-release-zip.command
+          unzip -t mac2jb-complete.zip | tail -n 1
