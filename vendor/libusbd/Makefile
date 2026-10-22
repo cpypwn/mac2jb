@@ -15,7 +15,7 @@ CC       := $(CLANG) -isysroot $(SYSROOT) -arch $(ARCH)
 #LDFLAGS = -fsanitize=address -fsanitize=float-divide-by-zero -static-libsan -fsanitize=leak
 
 CFLAGS  = -O1 -Wall -g -fstack-protector-all -I include/ -I src/
-LDFLAGS = -shared -Wl,-undefined -Wl,dynamic_lookup -lpthread
+LDFLAGS = -shared -Wl,-install_name,@rpath/libusbd.dylib -Wl,-undefined -Wl,dynamic_lookup -lpthread
 
 ifneq ($(DEBUG),0)
 DEFINES += -DDEBUG=$(DEBUG)
