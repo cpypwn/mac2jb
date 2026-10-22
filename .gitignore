@@ -1,0 +1,10 @@
+.DS_Store
+._*
+mac2jb-send
+mac2jb-commands
+*.o
+*.dylib
+mac2jb-complete.zip
+DerivedData/
+xcuserdata/
+*.xcuserstate
