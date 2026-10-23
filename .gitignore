@@ -8,3 +8,6 @@ mac2jb-complete.zip
 DerivedData/
 xcuserdata/
 *.xcuserstate
+
+# Per-run ns2jb session credentials and logs. Never commit.
+vendor/ns2jb/runs/
