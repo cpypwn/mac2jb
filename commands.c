@@ -11,13 +11,12 @@ static const char *steps[] = {
     "V=START(REDACTED)"
 };
 
-static bool approve(const char *message, const char *expected) {
+static bool approve(const char *message) {
     char buf[40];
-    printf("\n%s\nType %s and press Enter to proceed (anything else cancels): ", message, expected);
+    printf("\n%s\nPress Enter to continue (type anything to cancel): ", message);
     fflush(stdout);
     if (!fgets(buf, sizeof(buf), stdin)) return false;
-    buf[strcspn(buf, "\r\n")] = 0;
-    return strcmp(buf, expected) == 0;
+    return buf[0] == '\n' || buf[0] == '\r';
 }
 
 static int type_and_submit(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep,
@@ -81,9 +80,13 @@ int main(int argc, char **argv) {
     puts("This sends keyboard input only; it does not start run.cjs on the Mac.");
     puts("Each approved command is submitted with Enter, in order.");
     puts("Keep the macOS host running in a separate Terminal window.");
-    if (!approve("First, start run.cjs on your Mac; open fresh SmileBASIC, load the saved bootstrap, and focus its command entry.", "READY"))
+    if (!getenv("MAC2JB_AUTO_WORKER") && !approve("First, start run.cjs on your Mac; open fresh SmileBASIC, load the saved bootstrap, and focus its command entry."))
         return 1;
 
+    if (!getenv("MAC2JB_AUTO_WORKER")) {
+        int automatic=mac2jb_auto_dispatch(argv);
+        if (automatic>=0) return automatic;
+    }
     signal(SIGINT, on_interrupt);
     signal(SIGTERM, on_interrupt);
     libusbd_ctx_t *ctx=NULL;
@@ -140,12 +143,13 @@ int main(int argc, char **argv) {
         if (!ready) { fprintf(stderr,"USB host did not enumerate a keyboard\n"); goto done; }
     }
 
-    if (!approve("STEP 1/3: With the saved bootstrap loaded, focus the command entry. Send RUN and Enter?", "SEND")) goto done;
+    mac2jb_auto_ready();
+    if (!approve("STEP 1/3: With the saved bootstrap loaded, focus the command entry. Send RUN and Enter?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[0],delay_ms)<0) goto done;
-    if (!approve("STEP 2/3: Wait until RUN has finished. Focus the command entry. Send REMOVE NSR,... and Enter?", "SEND")) goto done;
+    if (!approve("STEP 2/3: Wait until RUN has finished. Focus the command entry. Send REMOVE NSR,... and Enter?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[1],delay_ms)<0) goto done;
-    if (!approve("STEP 3/3: Confirm the console displayed the EXPECTED 'Out of memory' message. Continue?", "OOM")) goto done;
-    if (!approve("Focus the SmileBASIC command entry. Send V=START(...) and Enter?", "SEND")) goto done;
+    if (!approve("STEP 3/3: Confirm the console displayed the EXPECTED 'Out of memory' message. Continue?")) goto done;
+    if (!approve("Focus the SmileBASIC command entry. Send V=START(...) and Enter?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[2],delay_ms)<0) goto done;
     puts("All three commands sent. Check the console and macOS host for actual results.");
     result=0;
