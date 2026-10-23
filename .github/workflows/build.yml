@@ -49,4 +49,3 @@ jobs:
         run: |
           bash make-release-zip.command
           unzip -t mac2jb-complete.zip
-```
