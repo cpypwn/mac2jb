@@ -1,3 +1,17 @@
+/*
+ * mac2jb downstream modification notice (libusbd macOS backend)
+ *
+ * Modified by: cpypwn (mac2jb integration)
+ * 2026-10-22: Added configurable USB device-controller selection via
+ *             MAC2JB_CONTROLLER, controller validation, and matching of
+ *             the selected IOKit service instead of fixed usb-drd2.
+ * 2026-10-23: Expanded controller validation to usb-drd0 through
+ *             usb-drd15 for manual controller selection.
+ *
+ * Based on: https://github.com/shinyquagsire23/libusbd
+ * Original upstream copyright and license terms are preserved.
+ */
+
 #include "impl.h"
 
 #include "impl_priv.h"

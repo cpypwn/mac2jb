@@ -1,3 +1,12 @@
+# mac2jb downstream modification notice (libusbd build configuration)
+#
+# Modified by: cpypwn (mac2jb integration)
+# 2026-10-22: Added the @rpath/libusbd.dylib install name to the
+#             macOS linker flags so mac2jb can load the local dylib.
+#
+# Based on: https://github.com/shinyquagsire23/libusbd
+# Original upstream copyright and license terms are preserved.
+
 TARGET = libusbd.dylib
 
 DEBUG   ?= 0
