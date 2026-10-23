@@ -8,8 +8,64 @@
 static const char *steps[] = {
     "RUN",
     "REMOVE NSR,&H60000000,&H3FFFFFFF",
-    "V=START(REDACTED)"
+    NULL // Loaded from the currently running ns2jb host
 };
+
+
+// The host wrapper publishes only the currently active session's START line.
+// Never fall back to a previous or hardcoded pairing token.
+static int load_active_start(char *destination, size_t capacity) {
+    const char *file = "vendor/ns2jb/runs/mac2jb-active-connect.txt";
+    FILE *stream = fopen(file, "r");
+    if (!stream) {
+        fprintf(stderr, "No active ns2jb command at %s\nStart the host with: bash scripts/host.sh\n", file);
+        return -1;
+    }
+    char pidline[40];
+    if (!fgets(pidline, sizeof(pidline), stream) ||
+        !fgets(destination, (int)capacity, stream)) {
+        fclose(stream);
+        fprintf(stderr, "Active host command file is incomplete.\n");
+        return -1;
+    }
+    fclose(stream);
+    char *end = NULL;
+    errno = 0;
+    long pid = strtol(pidline, &end, 10);
+    if (errno || end == pidline || (*end != '\n' && *end != '\0') ||
+        pid <= 1 || pid > 2147483647L || (kill((pid_t)pid, 0) != 0 && errno != EPERM)) {
+        fprintf(stderr, "The recorded ns2jb host is no longer running. Restart bash scripts/host.sh.\n");
+        return -1;
+    }
+    size_t n = strcspn(destination, "\r\n");
+    if (destination[n] != '\0' && destination[n+1] != '\0') {
+        fprintf(stderr, "Invalid active host command.\n"); return -1;
+    }
+    destination[n] = '\0';
+    if (strncmp(destination, "V=START(", 8) != 0 || n < 10 || destination[n-1] != ')') {
+        fprintf(stderr, "Invalid V=START command supplied by host.\n");
+        return -1;
+    }
+    // Exactly nine unsigned decimal values: port, four address octets, four session tokens.
+    const char *p = destination + 8;
+    for (int i = 0; i < 9; i++) {
+        if (*p < '0' || *p > '9') return -1;
+        errno = 0;
+        char *next;
+        unsigned long long value = strtoull(p, &next, 10);
+        if (errno == ERANGE || next == p ||
+            (i == 0 && value != 39380) ||
+            (i >= 1 && i <= 4 && value > 255) ||
+            (i < 8 && *next != ',') ||
+            (i == 8 && *next != ')')) {
+            fprintf(stderr, "Invalid V=START parameter %d.\n", i+1);
+            return -1;
+        }
+        p = next + 1;
+    }
+    if (*p != '\0') return -1;
+    return 0;
+}
 
 static bool approve(const char *message) {
     char buf[40];
@@ -61,7 +117,16 @@ int main(int argc, char **argv) {
             return 2;
         }
     }
+    char session_start[512] = {0};
+    if (!dry_run) {
+        if (load_active_start(session_start, sizeof(session_start)) != 0) return 1;
+        steps[2] = session_start;
+        puts("Loaded V=START from the active ns2jb host session.");
+    } else {
+        steps[2] = "V=START(<generated for each host session>)";
+    }
     for (size_t i=0; i<3; ++i) {
+        if (dry_run && i == 2) continue;
         for (const unsigned char *p=(const unsigned char *)steps[i]; *p; ++p) {
             Stroke dummy;
             if (!encode(*p, &dummy)) {
