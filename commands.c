@@ -6,6 +6,7 @@
 #undef main
 
 static const char *steps[] = {
+    "LOAD \"TXT:NS2\"",
     "RUN",
     "REMOVE NSR,&H60000000,&H3FFFFFFF",
     NULL // Loaded from the currently running ns2jb host
@@ -99,8 +100,12 @@ static int type_and_submit(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep,
 int main(int argc, char **argv) {
     int delay_ms=50;
     bool dry_run=false;
+    bool automatic=false;
+
+
     for (int a=1; a<argc; a++) {
         if (strcmp(argv[a], "--dry-run") == 0) dry_run=true;
+        else if (strcmp(argv[a], "--auto") == 0) automatic=true;
         else if (strcmp(argv[a], "--delay-ms") == 0 && a+1<argc) {
             char *end=NULL;
             long value=strtol(argv[++a], &end, 10);
@@ -110,7 +115,7 @@ int main(int argc, char **argv) {
             }
             delay_ms=(int)value;
         } else if (!strcmp(argv[a], "--help") || !strcmp(argv[a], "-h")) {
-            puts("usage: ./mac2jb-commands [--dry-run] [--delay-ms N]");
+            puts("usage: ./mac2jb-commands [--auto] [--dry-run] [--delay-ms N]");
             return 0;
         } else {
             fprintf(stderr, "unknown argument: %s\n", argv[a]);
@@ -120,13 +125,13 @@ int main(int argc, char **argv) {
     char session_start[512] = {0};
     if (!dry_run) {
         if (load_active_start(session_start, sizeof(session_start)) != 0) return 1;
-        steps[2] = session_start;
+        steps[3] = session_start;
         puts("Loaded V=START from the active ns2jb host session.");
     } else {
-        steps[2] = "V=START(<generated for each host session>)";
+        steps[3] = "V=START(<generated for each host session>)";
     }
-    for (size_t i=0; i<3; ++i) {
-        if (dry_run && i == 2) continue;
+    for (size_t i=0; i<4; ++i) {
+        if (dry_run && i == 3) continue;
         for (const unsigned char *p=(const unsigned char *)steps[i]; *p; ++p) {
             Stroke dummy;
             if (!encode(*p, &dummy)) {
@@ -137,7 +142,7 @@ int main(int argc, char **argv) {
     }
     if (dry_run) {
         puts("These commands will be typed and submitted separately:");
-        for (size_t i=0; i<3; ++i) printf("%zu: %s [Enter]\n", i+1, steps[i]);
+        for (size_t i=0; i<4; ++i) printf("%zu: %s [Enter]\n", i+1, steps[i]);
         return 0;
     }
 
@@ -209,14 +214,26 @@ int main(int argc, char **argv) {
     }
 
     mac2jb_auto_ready();
-    if (!approve("STEP 1/3: With the saved bootstrap loaded, focus the command entry. Send RUN and Enter?")) goto done;
+    if (!automatic && !approve("STEP 1/4: Focus SmileBASIC Direct mode. Send LOAD \"TXT:NS2\"?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[0],delay_ms)<0) goto done;
-    if (!approve("STEP 2/3: Wait until RUN has finished. Focus the command entry. Send REMOVE NSR,... and Enter?")) goto done;
+    // SmileBASIC LOAD confirmation: the first Enter submits LOAD, this second
+    // Enter accepts the default YES in its confirmation dialogue.
+    // SmileBASIC LOAD confirmation
+    puts("Confirming SmileBASIC LOAD prompt (YES) with Enter...");
+    fflush(stdout);
+    sleep(1); // allow the confirmation dialog to appear before accepting it
+    if (interrupted || send_stroke(ctx, iface, ep, 0, 40, delay_ms)<0) goto done;
+    release_all_keys(ctx, iface, ep);
+    if (automatic) sleep(3);
+    if (!automatic && !approve("STEP 2/4: Confirm the bootstrap loaded into slot 0. Send RUN?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[1],delay_ms)<0) goto done;
-    if (!approve("STEP 3/3: Confirm the console displayed the EXPECTED 'Out of memory' message. Continue?")) goto done;
-    if (!approve("Focus the SmileBASIC command entry. Send V=START(...) and Enter?")) goto done;
+    if (automatic) sleep(3);
+    if (!automatic && !approve("STEP 3/4: Wait until RUN finishes. Send REMOVE NSR,...?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[2],delay_ms)<0) goto done;
-    puts("All three commands sent. Check the console and macOS host for actual results.");
+    if (automatic) sleep(3);
+    if (!automatic && !approve("STEP 4/4: Confirm expected Out of memory, then send V=START?")) goto done;
+    if (type_and_submit(ctx,iface,ep,steps[3],delay_ms)<0) goto done;
+    puts("All four commands sent. Check the console and macOS host for actual results.");
     result=0;
 done:
     if (ctx) {

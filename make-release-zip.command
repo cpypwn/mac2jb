@@ -48,6 +48,7 @@ for item in \
     Makefile \
     sender.c \
     commands.c \
+    mac2jb.command \
     INDENT-TEST.md \
     indent-test.bas \
     upstream.lock \

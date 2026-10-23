@@ -11,3 +11,13 @@ xcuserdata/
 
 # Per-run ns2jb session credentials and logs. Never commit.
 vendor/ns2jb/runs/
+
+# Python temporary files
+__pycache__/
+*.pyc
+
+# Local source backups
+*.bak
+
+# Build artifacts
+*.dSYM
