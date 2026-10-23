@@ -1,21 +1,52 @@
 name: macos build
+
 on:
   push:
   pull_request:
   workflow_dispatch:
+
 jobs:
   build:
-    runs-on: macos-15-xlarge # apple silicon runner needed to execute arm64 binaries
+    runs-on: macos-15
+
     steps:
-      - uses: actions/checkout@v4
-      - name: build and smoke test
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Apple Silicon
         run: |
-          test "$(uname -m)" = arm64
+          uname -m
+          test "$(uname -m)" = "arm64"
+
+      - name: Build mac2jb
+        run: |
           make clean
           make
+
+      - name: Verify executables
+        run: |
           ./mac2jb-send --help
           ./mac2jb-commands --dry-run
+
+      - name: Verify library linking
+        run: |
+          otool -L mac2jb-send
+          otool -L mac2jb-commands
+          otool -L vendor/libusbd/libusbd.dylib
+
+      - name: Verify bootstrap integrity
+        run: |
           shasum -a 256 -c assets/bootstrap.bas.sha256
-          bash -n make-release-zip.command scripts/*.sh
+
+      - name: Check shell script syntax
+        run: |
+          bash -n make-release-zip.command
+          for script in scripts/*.sh; do
+            bash -n "$script"
+          done
+
+      - name: Build release archive
+        run: |
           bash make-release-zip.command
-          unzip -t mac2jb-complete.zip | tail -n 1
+          unzip -t mac2jb-complete.zip
+```
