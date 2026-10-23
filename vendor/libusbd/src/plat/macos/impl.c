@@ -30,9 +30,13 @@ static const char* mac2jb_selected_controller(void)
 
 static int mac2jb_controller_is_valid(const char *value)
 {
-    return strcmp(value, "usb-drd0") == 0 ||
-           strcmp(value, "usb-drd1") == 0 ||
-           strcmp(value, "usb-drd3") == 0;
+    // Controllers are numbered differently on different Macs.
+    // Accept usb-drd0 through usb-drd15 for manual selection; existence
+    // and device-mode support are checked by the IOKit service lookup.
+    if (strncmp(value, "usb-drd", 7) != 0 || !value[7]) return 0;
+    char *end = NULL;
+    long number = strtol(value + 7, &end, 10);
+    return end != value + 7 && *end == '\0' && number >= 0 && number <= 15;
 }
 
 static int mac2jb_service_on_selected_controller(const char *path)
@@ -584,7 +588,7 @@ int libusbd_impl_init(libusbd_ctx_t* pCtx)
 {
     const char *selected = mac2jb_selected_controller();
     if (!mac2jb_controller_is_valid(selected)) {
-        fprintf(stderr, "libusbd macos: invalid MAC2JB_CONTROLLER '%s' (use usb-drd0, usb-drd1, or usb-drd3)\n", selected);
+        fprintf(stderr, "libusbd macos: invalid MAC2JB_CONTROLLER '%s' (expected usb-drd0 through usb-drd15)\n", selected);
         return LIBUSBD_INVALID_ARGUMENT;
     }
     printf("libusbd macos: Selected controller: %s\n", selected);
