@@ -10,6 +10,69 @@
 #include <errno.h>
 #include <time.h>
 #include <libusbd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <poll.h>
+
+// Automatic controller probing. Each child must enumerate BEFORE any text is sent.
+// A child emits one byte after enumeration, then remains the active sender.
+// A manual MAC2JB_CONTROLLER bypasses probing entirely.
+static int mac2jb_auto_dispatch(char **argv) {
+    const char *override = getenv("MAC2JB_CONTROLLER");
+    if (getenv("MAC2JB_AUTO_WORKER") || (override && *override && strcmp(override, "auto") != 0)) return -1;
+    const char *choices[] = {"usb-drd0", "usb-drd1", "usb-drd3"};
+    for (size_t i=0; i<sizeof(choices)/sizeof(choices[0]); i++) {
+        int fds[2];
+        if (pipe(fds) != 0) { perror("pipe"); return 1; }
+        fflush(NULL);
+        pid_t pid=fork();
+        if (pid < 0) { perror("fork"); close(fds[0]); close(fds[1]); return 1; }
+        if (pid == 0) {
+            close(fds[0]);
+            char fdstr[32]; snprintf(fdstr, sizeof(fdstr), "%d", fds[1]);
+            setenv("MAC2JB_CONTROLLER", choices[i], 1);
+            setenv("MAC2JB_AUTO_WORKER", "1", 1);
+            setenv("MAC2JB_READY_FD", fdstr, 1);
+            execvp(argv[0], argv);
+            perror("execvp"); _exit(127);
+        }
+        close(fds[1]);
+        fprintf(stderr, "mac2jb auto: trying %s (4-second enumeration window)...\n", choices[i]);
+        struct pollfd waitfd={.fd=fds[0], .events=POLLIN|POLLHUP};
+        int poll_result=poll(&waitfd, 1, 4000);
+        char ready=0;
+        ssize_t got=(poll_result>0) ? read(fds[0], &ready, 1) : -1;
+        close(fds[0]);
+        if (got==1 && ready=='Y') {
+            fprintf(stderr, "mac2jb auto: %s enumerated successfully.\n", choices[i]);
+            int status=0;
+            if (waitpid(pid,&status,0)<0) { perror("waitpid"); return 1; }
+            return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+        }
+        kill(pid, SIGTERM);
+        // Give the sender a chance to release the device before moving on.
+        int status=0, reaped=0;
+        for(int tries=0;tries<10;tries++) {
+            pid_t w=waitpid(pid,&status,WNOHANG);
+            if(w==pid || w<0) { reaped=1; break; }
+            struct timespec pause={0,100000000L}; nanosleep(&pause,NULL);
+        }
+        if(!reaped) { kill(pid,SIGKILL); waitpid(pid,&status,0); }
+        fprintf(stderr, "mac2jb auto: %s did not enumerate; trying next controller.\n", choices[i]);
+    }
+    fprintf(stderr,"mac2jb auto: no controller enumerated. Check cable/power direction, or set MAC2JB_CONTROLLER manually.\n");
+    return 1;
+}
+static void mac2jb_auto_ready(void) {
+    const char *s=getenv("MAC2JB_READY_FD");
+    if(!s || !*s) return;
+    char *end=NULL; long fd=strtol(s,&end,10);
+    if(!end || *end || fd<0 || fd>1048576) return;
+    (void)write((int)fd,"Y",1);
+    close((int)fd);
+    unsetenv("MAC2JB_READY_FD");
+}
+
 
 typedef struct { uint8_t key, mods; } Stroke;
 static volatile sig_atomic_t interrupted = 0;
@@ -129,8 +192,13 @@ int main(int argc, char **argv) {
     printf("Verified %zu input bytes, %zu keystrokes, %zu newline(s).\n",bytes,characters,lines);
     if(dry){puts("Dry run complete; no USB device created and no keys sent.");free(data);return 0;}
     printf("This will TYPE the file into the connected device. It will NOT press RUN.\n");
-    printf("Focus the intended EMPTY text editor on the target, then type SEND and Enter here: ");fflush(stdout);
-    char approval[32]; if(!fgets(approval,sizeof(approval),stdin) || strcmp(approval,"SEND\n")!=0){free(data);puts("Cancelled.");return 1;}
+    if (!getenv("MAC2JB_AUTO_WORKER")) {
+        printf("Focus the intended EMPTY text editor, then press Enter to begin (type anything to cancel): ");fflush(stdout);
+        char approval[32];
+        if(!fgets(approval,sizeof(approval),stdin) || (approval[0]!='\n' && approval[0]!='\r')){free(data);puts("Cancelled.");return 1;}
+        int automatic=mac2jb_auto_dispatch(argv);
+        if(automatic>=0) { free(data); return automatic; }
+    }
     signal(SIGINT,on_interrupt);
     signal(SIGTERM,on_interrupt);
     libusbd_ctx_t *ctx=NULL;
@@ -168,6 +236,7 @@ int main(int argc, char **argv) {
         sleep(1);
     }
     if(!ready){fprintf(stderr,"USB host did not enumerate a keyboard on selected controller. Check data role, cable, and host USB descriptors.\n");goto done;}
+    mac2jb_auto_ready();
     puts("Keyboard enumerated. Sending...");fflush(stdout);
     transfer_start=seconds_now();
     size_t sent_lines=0, adjustments=0;
