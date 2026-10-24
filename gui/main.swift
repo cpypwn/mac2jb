@@ -9,6 +9,7 @@ if CommandLine.arguments.contains("--self-test") {
         let runtime = try BundledRuntime.prepare(sessionParent: testParent)
         defer { try? FileManager.default.removeItem(at: testParent) }
         let checks: [(String, [String])] = [
+            ("scripts/install-driver.sh", ["--verify"]),
             ("node", ["--version"]),
             ("mac2jb-send", ["assets/bootstrap.bas", "--dry-run"]),
             ("mac2jb-commands", ["--dry-run"]),
@@ -20,8 +21,8 @@ if CommandLine.arguments.contains("--self-test") {
         ]
         for (tool, arguments) in checks {
             let task = Process()
-            task.executableURL = runtime.root.appendingPathComponent(tool)
-            task.arguments = arguments
+            task.executableURL = tool.hasSuffix(".sh") ? URL(fileURLWithPath: "/bin/bash") : runtime.root.appendingPathComponent(tool)
+            task.arguments = tool.hasSuffix(".sh") ? [runtime.root.appendingPathComponent(tool).path] + arguments : arguments
             task.currentDirectoryURL = runtime.root
             try task.run()
             task.waitUntilExit()
@@ -30,7 +31,7 @@ if CommandLine.arguments.contains("--self-test") {
                               userInfo: [NSLocalizedDescriptionKey: "Check failed: \(tool)"])
             }
         }
-        print("mac2jb 0.3.0: embedded runtime and dry-run checks passed; no USB input sent.")
+        print("mac2jb 0.3.1: embedded runtime and dry-run checks passed; no USB input sent.")
         try? FileManager.default.removeItem(at: testParent)
         exit(0)
     } catch {

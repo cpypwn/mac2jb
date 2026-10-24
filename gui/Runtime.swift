@@ -22,12 +22,12 @@ struct BundledRuntime {
     static func prepare(sessionParent: URL? = nil) throws -> BundledRuntime {
         umask(0o077)
         guard let bytes = embeddedPayloadBytes(), embeddedPayloadSize() > 0 else {
-            throw RuntimeError.invalid("The offline runtime is missing from this app. Rebuild or download a complete demo.")
+            throw RuntimeError.invalid("The offline runtime is missing from this app. Rebuild or download a complete app.")
         }
         let payload = Data(bytes: bytes, count: Int(embeddedPayloadSize()))
         let digest = SHA256.hash(data: payload).map { String(format: "%02x", $0) }.joined()
         guard digest == EmbeddedPayloadMetadata.sha256 else {
-            throw RuntimeError.invalid("The embedded runtime failed its integrity check. Replace this copy of the demo.")
+            throw RuntimeError.invalid("The embedded runtime failed its integrity check. Replace this copy of the app.")
         }
         let manager = FileManager.default
         let sessions: URL
@@ -84,7 +84,9 @@ struct BundledRuntime {
                 }
             }
             for path in ["node", "mac2jb-send", "mac2jb-commands", "vendor/libusbd/libusbd.dylib",
-                         "scripts/gui-host.cjs", "vendor/ns2jb/run.cjs", "assets/bootstrap.bas", "source/LICENSE"] {
+                         "scripts/gui-host.cjs", "scripts/install-driver.sh", "drivers/SHA256SUMS",
+                         "drivers/usbgadget.kext/Contents/MacOS/usbgadget",
+                         "vendor/ns2jb/run.cjs", "assets/bootstrap.bas", "source/LICENSE"] {
                 guard manager.fileExists(atPath: root.appendingPathComponent(path).path) else {
                     throw RuntimeError.invalid("The embedded runtime is incomplete: \(path).")
                 }

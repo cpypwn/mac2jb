@@ -3,6 +3,9 @@ set -euo pipefail
 # Protect pairing values and logs created by this launcher.
 umask 077
 cd "$(dirname "$0")"
+if [[ "${1:-}" == --install-driver ]]; then
+  exec /bin/bash scripts/install-driver.sh
+fi
 
 printf '\033[2J\033[H'
 cat <<'ART'
@@ -26,9 +29,21 @@ cat <<'ART'
                                          ████░              
                                                             
 ART
-printf '\n  1) Full install (bootstrap + post-bootstrap)\n  2) Post-bootstrap only\n  3) Quit\n\n'
+printf '\n  1) Full install (bootstrap + post-bootstrap)\n  2) Post-bootstrap only\n  3) Quit\n  4) Install & load bundled USB driver\n\n'
 read -r -p '  Select: ' mode
-case "$mode" in 1|2) ;; 3) exit 0;; *) echo 'Invalid selection.'; exit 2;; esac
+case "$mode" in 1|2) ;; 3) exit 0;; 4) exec /bin/bash scripts/install-driver.sh;; *) echo 'Invalid selection.'; exit 2;; esac
+
+restart_marker=/Library/Extensions/.mac2jb-usbgadget-restart-required
+boot_seconds="$(sysctl -n kern.boottime | awk '{print $4}' | tr -d ',')"
+if [[ -f "$restart_marker" && "$boot_seconds" =~ ^[0-9]+$ ]] &&
+   (( $(stat -f %m "$restart_marker") >= boot_seconds )); then
+  echo 'The bundled driver was installed this boot. Restart this Mac before starting a session.'
+  exit 1
+fi
+if ! kmutil showloaded --list-only 2>/dev/null | grep -q 'gay.bowser.usbgadget'; then
+  echo 'USB driver is not loaded. Choose option 4 to install/load it, then approve and restart.'
+  exit 1
+fi
 
 for file in scripts/host.sh scripts/host-wrapper.cjs vendor/ns2jb/run.cjs; do
   [[ -f "$file" ]] || { echo "Missing required file: $file"; exit 1; }

@@ -95,7 +95,7 @@ struct ContentView: View {
                 step(2, "Run & verify", "Host and commands")
             }.padding(.top, 55)
             Spacer(minLength: 40)
-            Text("v0.3.0")
+            Text("v0.3.1")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.35))
         }
@@ -214,17 +214,15 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 15) {
                     eyebrow("02 / READY CHECK")
                     HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: model.driverInstalled ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                            .foregroundStyle(model.driverInstalled ? teal : .orange)
+                        Image(systemName: model.driverLoaded ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(model.driverLoaded ? teal : .orange)
                         VStack(alignment: .leading, spacing: 4) {
                             Text("USB gadget driver").font(.system(size: 12, weight: .semibold))
                             Text(model.driverStatus).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer()
-                        if model.driverInstalled {
-                            Button(driverLoading ? "Loading…" : "Load driver…") { loadDriver() }
-                                .font(.system(size: 11)).disabled(driverLoading)
-                        }
+                        Button(driverLoading ? "Installing…" : "Install & load driver…") { loadDriver() }
+                            .font(.system(size: 11)).disabled(driverLoading || model.runtime == nil)
                     }
                     Group {
                         if model.fullInstall {
@@ -246,7 +244,7 @@ struct ContentView: View {
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                         }
                         .buttonStyle(PrimaryActionStyle()).fixedSize()
-                        .disabled(!readyConfirmed || model.selectedAddress.isEmpty || model.runtime == nil || !model.driverInstalled || !timingSettingsValid)
+                        .disabled(!readyConfirmed || model.selectedAddress.isEmpty || model.runtime == nil || !model.driverLoaded || !timingSettingsValid)
                     }
                 }
             }
@@ -353,7 +351,7 @@ struct ContentView: View {
         if !model.shouldShowFirstTimeFooter { return AnyView(EmptyView()) }
         return AnyView(HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle").padding(.top, 1)
-            Text("First time? Install and approve a compatible USB gadget driver first. The bundled app needs no Node.js or build tools. v0.2.1 CLI remains available.")
+            Text("First time? Disable SIP and enable kernel extensions in Recovery, then use Install & load driver. Approve and restart when prompted. No Xcode needed. The CLI remains available.")
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
             Button("Setup guide ↗") {
@@ -423,10 +421,14 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading).background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
     private func loadDriver() {
+        guard let runtime = model.runtime else { return }
         driverLoading = true
         let task = Process()
         task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        task.arguments = ["-e", "do shell script \"/usr/bin/kmutil load -p /Library/Extensions/usbgadget.kext\" with administrator privileges"]
+        let script = runtime.root.appendingPathComponent("scripts/install-driver.sh").path
+        let command = "/bin/bash '" + script.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        let appleString = command.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        task.arguments = ["-e", "do shell script \"" + appleString + "\" with administrator privileges"]
         let pipe = Pipe()
         task.standardOutput = pipe
         task.standardError = pipe
@@ -435,10 +437,10 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 driverLoading = false
                 model.refreshChecks()
-                model.recordDiagnostic(task.terminationStatus == 0 ? "macOS accepted the installed driver load request." : "Driver load request failed: " + output)
+                model.recordDiagnostic("Driver installer:\n" + output)
                 driverMessage = task.terminationStatus == 0
-                    ? "macOS accepted the driver load request. Follow any approval or restart instructions. The USB connection still needs to enumerate."
-                    : "macOS did not load the driver.\n\n\(output.prefix(1400))\n\nLog: \(model.diagnosticLogURL?.path ?? "Log unavailable")"
+                    ? "The bundled unsigned driver is installed. Approve it in System Settings → Privacy & Security if requested, then restart before starting mac2jb. Any previous driver was backed up; its path is in session activity.\n\n\(output.prefix(1400))"
+                    : "Driver setup needs attention. SIP must be disabled and kernel extensions enabled in Recovery. Complete any approval/restart prompts.\n\n\(output.prefix(1400))\n\nLog: \(model.diagnosticLogURL?.path ?? "Log unavailable")"
             }
         }
         do { try task.run() }

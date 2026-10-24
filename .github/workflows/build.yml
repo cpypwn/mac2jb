@@ -46,7 +46,7 @@ jobs:
       - name: Verify ns2jb snapshot and tests
         run: |
           (cd vendor/ns2jb && shasum -a 256 -c SHA256SUMS)
-          node --test vendor/ns2jb/test.cjs scripts/test-gui-host.cjs
+          node --test vendor/ns2jb/test.cjs scripts/test-gui-host.cjs scripts/test-driver-package.cjs
 
       - name: Check shell script syntax
         run: |
@@ -70,8 +70,8 @@ jobs:
         with:
           node-version: '24.22.1'
 
-      - name: Build and verify GUI demo without hardware
+      - name: Build and verify GUI without hardware
         run: |
           NODE_BINARY="$(command -v node)" bash scripts/build-gui.sh
           "build/mac2jb.app/Contents/MacOS/mac2jb" --self-test
-          python3 scripts/audit-release.py .build-gui/mac2jb-0.3.0-demo-source.zip
+          python3 scripts/audit-release.py .build-gui/mac2jb-0.3.1-source.zip

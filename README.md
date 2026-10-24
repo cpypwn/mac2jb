@@ -16,13 +16,13 @@ Use at your own risk. mac2jb is provided without a guarantee of compatibility, e
 
 ## Source provenance, licensing, and session security
 
-### v0.3.0 GUI
+### v0.3.1 GUI
 
-Download the native Mac GUI from [the v0.3.0 release](https://github.com/cpypwn/mac2jb/releases/tag/v0.3.0), or build it with `make gui` and open
+Download the native Mac GUI from [the v0.3.1 release](https://github.com/cpypwn/mac2jb/releases/tag/v0.3.1), or build it with `make gui` and open
 `build/mac2jb.app`; see [the GUI guide](docs/GUI-DEMO.md) for setup,
 automation limits, and logging. Its single executable embeds Node.js, the
 senders, and the offline host, so users of the built app need no build tools
-or separate Node.js installation. It does not include a compiled kernel extension.
+or separate Node.js installation. The tested unsigned USB driver is bundled with the app and complete source distribution.
 
 The existing CLI is still available:
 `make` builds the command-line tools, and `bash mac2jb.command` runs the same
@@ -58,10 +58,7 @@ Do not post full Terminal output, screenshots, or logs without redacting live
 pairing values. To discard old logs after the host has stopped, run
 `bash scripts/clear-session-logs.sh` (it leaves the current pairing file alone).
 
-**Source releases intentionally omit compiled kernel extensions.** To use the
-USB-gadget functionality, build the kext from the included Xcode source, assess
-its privileges and signing requirements, and follow Apple's security approval
-procedures. `make` alone does not build or install the kext.
+The complete source distribution includes the tested unsigned driver in `drivers/usbgadget.kext`, its checksums and provenance, and the source-build fallback. `make` alone does not install the driver.
 
 ## Tested environment
 
@@ -117,23 +114,33 @@ This recommendation concerns **preserving the tested firmware/software versions*
 - A reachable local network connection between the Mac and Switch for the ns2jb host stage.
 - A compatible and **already installed/approved** experimental `usbgadget.kext` for USB gadget mode.
 
-**The source release does not supply a ready-to-install, signed kext.** Its driver source/Xcode project is under:
+The tested **unsigned** prebuilt driver is at `drivers/usbgadget.kext`. Its source/Xcode project is under:
 
 ```text
 vendor/macos_usb_gadget_poc/usbgadget/usbgadget.xcodeproj
 ```
 
-macOS may require **Reduced Security** and explicit kernel-extension approval to load this legacy experimental driver. The maintainer's research machine also had SIP disabled temporarily, but **SIP being disabled on the tested Mac does not establish that disabling it is necessary on every Mac**. These choices significantly lower Mac security and should not be automated by the launcher. Review Apple's security documentation, use a dedicated research machine, and restore normal protections after testing.
+**Disable System Integrity Protection (SIP) for the unsigned/development-driver setup described here.** Reduced Security and `root:wheel` ownership alone do not remove kext signature enforcement. Enable third-party kernel extensions and complete any macOS approval/reboot prompts as well. The maintainer's working setup uses SIP disabled. Disabling SIP lowers system protection; mac2jb does not change it automatically. See [Apple's kernel security documentation](https://support.apple.com/guide/security/securely-extending-the-kernel-in-macos-sec8e454101b/web).
 
 `make` builds the **mac2jb command-line utilities**, not the kernel extension. It does not install or approve a kext for you.
 
 
+### Install the bundled USB driver (recommended)
+
+1. Shut down, hold the power button, and choose **Options → Continue**. In Recovery, enable third-party kernel extensions under **Startup Security Utility → Security Policy → Reduced Security → Allow user management of kernel extensions from identified developers**. Open **Utilities → Terminal**, run `csrutil disable`, and restart. Confirm with `csrutil status` in macOS. Disabling SIP can place startup policy in Permissive Security.
+2. **GUI:** open mac2jb and click **Install & load driver…**. Approve the administrator prompt. **CLI:** run `bash mac2jb.command --install-driver`, or choose option 4 from its menu. No Xcode or recompilation is needed for this driver.
+3. Approve any request in **System Settings → Privacy & Security**, then restart. Refresh the GUI's checks; the driver must be reported as loaded before starting. From Terminal, verify with `kmutil showloaded --list-only | grep -i usbgadget`.
+
+The installer checks the bundled driver's SHA-256 hashes, installs it at `/Library/Extensions/usbgadget.kext` with `root:wheel` ownership, and requests loading with `kmutil`. An existing driver is moved to a uniquely named backup; its path is printed in activity/logs. The installer never changes SIP or Recovery settings. See [driver provenance and checksums](drivers/README.md).
+
+If this build is incompatible with your Mac, use the source-build fallback below.
+
 ### Building and installing the USB gadget kext (Apple silicon)
 
-The bundled `usbgadget` Xcode project is **source**, not a preinstalled driver. Kexts run with kernel privileges: build and install them only on a Mac you control and are prepared to use for experimental testing.
+This is the fallback for users who cannot use the bundled prebuilt driver. If you already have a compatible build, skip step 1.
 
 1. Install **full Xcode**, open `vendor/macos_usb_gadget_poc/usbgadget/usbgadget.xcodeproj`, select the `usbgadget` kext target, and build for the Mac. Locate the resulting `usbgadget.kext` in Xcode's build products. Ensure the build architecture and signing configuration are suitable for your Mac. Build completion does **not** mean the kext is properly signed or approved.
-2. On Apple silicon, follow Apple's instructions to enable third-party kernel extensions under **Reduced Security** in macOS Recovery, if required. Return to macOS. Do not disable SIP solely because a generic installation step fails.
+2. Shut down the Mac, then hold the power button until startup options appear. Choose **Options → Continue** to enter macOS Recovery. Enable third-party kernel extensions in **Startup Security Utility → Security Policy**, using **Reduced Security → Allow user management of kernel extensions from identified developers**. In Recovery, open **Utilities → Terminal**, run `csrutil disable`, and follow its prompts. Restart into macOS and run `csrutil status` to confirm SIP is disabled. Disabling SIP can place the startup policy in Permissive Security; Reduced Security alone is not sufficient for unsigned kext loading.
 3. Copy the **built** bundle to the standard third-party location and give the installed copy the ownership and permissions macOS expects. Replace the placeholder path below with the actual build product:
 
    ```sh
@@ -311,6 +318,7 @@ Host pairing values, session captures, and memory logs may contain sensitive inf
 
 - **ns2jb** — original Switch 2 exploit and FS research: [upstream ns2jb](https://gitlab.com/pepsipu/ns2jb).
 - **libusbd** and **macos_usb_gadget_poc** — USB device emulation and experimental macOS gadget-driver work by [shinyquagsire23](https://github.com/shinyquagsire23).
+- **SocraticBliss** — feedback and guidance that helped simplify USB driver installation, clarify the SIP requirement, and provide a prebuilt-driver setup path.
 - **u/kuksthedefiled** — shared the community-reported SmileBASIC demo save/load workaround, attributed to a Discord discussion; not yet verified here.
 - **ASCII art** — created using [Patorjk's Text to ASCII Art Generator](https://patorjk.com/software/taag/).
 

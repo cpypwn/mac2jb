@@ -14,7 +14,7 @@ BUILD="$ROOT/.build-gui"
 NODE_BINARY="${NODE_BINARY:-/usr/local/bin/node}"
 NODE_LICENSE="$ROOT/packaging/licenses/node-v24.22.1-LICENSE.txt"
 [[ -x "$NODE_BINARY" && -f "$NODE_LICENSE" ]] || {
-  echo 'This demo build requires Node v24.22.1 and its included matching LICENSE.' >&2
+  echo 'This GUI build requires Node v24.22.1 and its included matching LICENSE.' >&2
   echo 'Set NODE_BINARY to an official Node v24.22.1 macOS arm64/universal executable.' >&2
   exit 1
 }
@@ -24,6 +24,7 @@ NODE_LICENSE="$ROOT/packaging/licenses/node-v24.22.1-LICENSE.txt"
 mkdir -p "$BUILD"
 
 shasum -a 256 -c assets/bootstrap.bas.sha256
+bash scripts/install-driver.sh --verify
 (cd vendor/ns2jb && shasum -a 256 -c SHA256SUMS >/dev/null)
 # Force a fresh GUI-payload build so stale CLI artifacts cannot retain the
 # builder's newer default deployment target. The regular CLI defaults stay as-is.
@@ -76,7 +77,8 @@ for name in ['node', 'mac2jb-send', 'mac2jb-commands', 'vendor/libusbd/libusbd.d
 PY
 
 # Assemble a strict source whitelist. Never traverse this build directory,
-# session directories, logs, Git metadata, compiled kexts, or Xcode user state.
+# session directories, logs, Git metadata, or Xcode user state. Only the tested
+# driver under drivers/ is allowed; vendor prebuilt kexts remain excluded.
 python3 - "$ROOT" "$PAYLOAD" "$NODE_BINARY" <<'PY'
 import hashlib, json, shutil, sys
 from pathlib import Path
@@ -86,11 +88,12 @@ source.mkdir()
 files = ['README.md', 'LICENSE', '.gitignore', 'Makefile', 'sender.c', 'commands.c',
          'indent-test.bas', 'upstream.lock', 'mac2jb.command', 'setup.sh',
          'fetch-bootstrap.sh', 'make-release-zip.command']
-folders = ['gui', 'scripts', 'packaging', 'docs', 'assets', 'vendor', '.github']
+folders = ['gui', 'scripts', 'packaging', 'docs', 'drivers', 'assets', 'vendor', '.github']
 blocked = {'.git', 'runs', '__pycache__', 'xcuserdata', 'project.xcworkspace',
-           'usbgadget.kext', 'usb_device', '.DS_Store'}
+           'usb_device', '.DS_Store'}
 suffixes = {'.o', '.dylib', '.log', '.pyc', '.bak', '.xcuserstate'}
 def safe(path):
+    if 'usbgadget.kext' in path.parts and 'drivers' not in path.parts: return False
     return (not any(part in blocked or part.startswith('._') for part in path.parts)
             and path.suffix not in suffixes and not path.is_symlink())
 def copy(src, dst):
@@ -103,9 +106,9 @@ for name in files:
 for name in folders:
     if (root/name).exists():
         for src in sorted((root/name).rglob('*')): copy(src, source/src.relative_to(root))
-for name in ['vendor/ns2jb', 'assets']:
+for name in ['vendor/ns2jb', 'assets', 'drivers']:
     for src in sorted((root/name).rglob('*')): copy(src, payload/src.relative_to(root))
-for name in ['scripts/gui-host.cjs', 'packaging/NOTICE.md']:
+for name in ['scripts/gui-host.cjs', 'scripts/install-driver.sh', 'packaging/NOTICE.md']:
     if not (root/name).is_file(): raise SystemExit('Missing GUI build input: '+name)
     copy(root/name, payload/name)
 provenance = {
@@ -139,7 +142,7 @@ with archive.open('wb') as stream, gzip.GzipFile(filename='', mode='wb', fileobj
             else: raise SystemExit('Unsupported archive file: '+relative)
 digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 (build/'PayloadMetadata.swift').write_text('enum EmbeddedPayloadMetadata { static let sha256 = '+json.dumps(digest)+' }\n')
-with zipfile.ZipFile(build/'mac2jb-0.3.0-demo-source.zip', 'w', compression=zipfile.ZIP_DEFLATED) as zipped:
+with zipfile.ZipFile(build/'mac2jb-0.3.1-source.zip', 'w', compression=zipfile.ZIP_DEFLATED) as zipped:
     for path in sorted((payload/'source').rglob('*')):
         if path.is_file(): zipped.write(path, 'mac2jb/'+path.relative_to(payload/'source').as_posix())
 print('Embedded runtime SHA-256:', digest)
@@ -163,5 +166,5 @@ codesign --verify --strict "$STAGE/mac2jb.app"
 mkdir -p "$(dirname "$APP_OUTPUT")"
 if [[ -e "$APP_OUTPUT" ]]; then rm -rf "$APP_OUTPUT"; fi
 mv "$STAGE/mac2jb.app" "$APP_OUTPUT"
-echo "Created GUI demo: $APP_OUTPUT"
-echo "Corresponding source: $BUILD/mac2jb-0.3.0-demo-source.zip"
+echo "Created GUI app: $APP_OUTPUT"
+echo "Corresponding source: $BUILD/mac2jb-0.3.1-source.zip"

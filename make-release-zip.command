@@ -60,6 +60,7 @@ for item in \
     gui \
     docs \
     packaging \
+    drivers \
     assets \
     vendor
 do

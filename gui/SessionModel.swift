@@ -56,6 +56,7 @@ private struct GUIEvent: Decodable {
     @Published var loadConfirmWaitMs = 1000
     @Published var driverStatus = "Checking the USB gadget driver…"
     @Published var driverInstalled = false
+    @Published var driverLoaded = false
     @Published var error: String?
     @Published private(set) var diagnosticLogURL: URL?
     private(set) var runtime: BundledRuntime?
@@ -124,17 +125,27 @@ private struct GUIEvent: Decodable {
             let installed = driverInstalled
             let result = await Task.detached { Self.capture("/usr/bin/kmutil", ["showloaded", "--list-only"]) }.value
             if result.0 == 0 {
-                driverStatus = result.1.contains("gay.bowser.usbgadget") || result.1.contains("usbgadget")
+                driverLoaded = result.1.contains("gay.bowser.usbgadget") || result.1.contains("usbgadget")
+                driverStatus = driverLoaded
                     ? "USB gadget driver is loaded"
                     : (installed ? "Driver installed; not reported as loaded" : "USB gadget driver not reported as loaded")
             } else {
+                driverLoaded = false
                 driverStatus = installed ? "Driver installed; loaded status could not be verified" : "Driver installation and loaded status need checking"
+            }
+            let marker = "/Library/Extensions/.mac2jb-usbgadget-restart-required"
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: marker),
+               let modified = attributes[.modificationDate] as? Date,
+               modified > Date().addingTimeInterval(-ProcessInfo.processInfo.systemUptime) {
+                driverLoaded = false
+                driverStatus = "Driver installed — restart this Mac before starting a session"
             }
         }
     }
 
     func start() {
         guard !isBusy, phase != .awaitingSave, hostProcess == nil, hidProcess == nil, let runtime else { return }
+        guard driverLoaded else { fail("Install/load the USB driver, complete any required restart, then refresh the driver check."); return }
         guard Self.isIPv4(selectedAddress), addresses.contains(where: { $0.address == selectedAddress }) else {
             fail("Choose a current LAN IPv4 address for this Mac, then refresh checks.")
             return
@@ -157,7 +168,7 @@ private struct GUIEvent: Decodable {
         resetBootstrapTiming()
         hostStageLabel = "Waiting for the Switch to connect over the local network"
         hostStageProgress = nil
-        append("mac2jb 0.3.0 demo; controller=\(controller); address=\(selectedAddress); keyDelayMs=\(keyDelayMs); enumerationTimeoutSeconds=\(enumerationTimeoutSeconds); loadConfirmWaitMs=\(loadConfirmWaitMs); loadWaitMs=\(loadWaitMs); runWaitMs=\(runWaitMs); removeWaitMs=\(removeWaitMs). Starting a fresh \(fullInstall ? "full bootstrap" : "post-bootstrap") workflow.")
+        append("mac2jb 0.3.1; controller=\(controller); address=\(selectedAddress); keyDelayMs=\(keyDelayMs); enumerationTimeoutSeconds=\(enumerationTimeoutSeconds); loadConfirmWaitMs=\(loadConfirmWaitMs); loadWaitMs=\(loadWaitMs); runWaitMs=\(runWaitMs); removeWaitMs=\(removeWaitMs). Starting a fresh \(fullInstall ? "full bootstrap" : "post-bootstrap") workflow.")
         if fullInstall { startHID("bootstrap", root: runtime.root) }
         else { startHost(root: runtime.root) }
     }
@@ -395,8 +406,10 @@ private struct GUIEvent: Decodable {
         bootstrapStartedAt = Date()
         bootstrapTimer?.invalidate()
         bootstrapTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            guard let self, let started = self.bootstrapStartedAt else { return }
-            self.bootstrapElapsedSeconds = Date().timeIntervalSince(started)
+            Task { @MainActor [weak self] in
+                guard let self, let started = self.bootstrapStartedAt else { return }
+                self.bootstrapElapsedSeconds = Date().timeIntervalSince(started)
+            }
         }
     }
 
@@ -468,7 +481,7 @@ private struct GUIEvent: Decodable {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
                                                     attributes: [.posixPermissions: 0o700])
             openSessionLog(in: folder)
-            append("mac2jb 0.3.0 demo: runtime preparation diagnostic log.")
+            append("mac2jb 0.3.1: runtime preparation diagnostic log.")
         } catch { diagnosticLogURL = nil }
     }
 
