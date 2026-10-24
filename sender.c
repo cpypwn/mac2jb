@@ -73,6 +73,21 @@ static void mac2jb_auto_ready(void) {
     unsetenv("MAC2JB_READY_FD");
 }
 
+#ifdef MAC2JB_GUI
+// Only the packaged GUI helpers use the GUI's bounded enumeration window.
+// Normal source builds retain the original v0.2.1 enumeration loop.
+static int mac2jb_gui_enumeration_timeout(void) {
+    const char *text = getenv("MAC2JB_ENUMERATION_TIMEOUT_SECONDS");
+    if (!text || !*text) return 4;
+    char *end=NULL; errno=0; long value=strtol(text,&end,10);
+    if (errno || end==text || *end || value<1 || value>120) {
+        fprintf(stderr,"MAC2JB_ENUMERATION_TIMEOUT_SECONDS must be 1..120\n");
+        return -1;
+    }
+    return (int)value;
+}
+#endif
+
 
 typedef struct { uint8_t key, mods; } Stroke;
 static volatile sig_atomic_t interrupted = 0;
@@ -191,6 +206,10 @@ int main(int argc, char **argv) {
     }
     printf("Verified %zu input bytes, %zu keystrokes, %zu newline(s).\n",bytes,characters,lines);
     if(dry){puts("Dry run complete; no USB device created and no keys sent.");free(data);return 0;}
+#ifdef MAC2JB_GUI
+    int enumeration_seconds=mac2jb_gui_enumeration_timeout();
+    if(enumeration_seconds<0){free(data);return 2;}
+#endif
     printf("This will TYPE the file into the connected device. It will NOT press RUN.\n");
     if (!getenv("MAC2JB_AUTO_WORKER")) {
         printf("Focus the intended EMPTY text editor, then press Enter to begin (type anything to cancel): ");fflush(stdout);
@@ -229,11 +248,20 @@ int main(int argc, char **argv) {
     endpoint_ready=true;
     puts("Waiting for USB host enumeration...");
     uint8_t empty[8]={0};int ready=0;
+#ifdef MAC2JB_GUI
+    double enumeration_deadline=seconds_now()+enumeration_seconds;
+    while(!interrupted && seconds_now()<enumeration_deadline){
+#else
     for(int attempt=0;attempt<30 && !interrupted;attempt++){
+#endif
         int32_t r=libusbd_ep_write(ctx,iface,ep,empty,sizeof(empty),500);
         if(r>=0){ready=1;break;}
         if(r!=LIBUSBD_NOT_ENUMERATED && r!=LIBUSBD_TIMEOUT){fprintf(stderr,"USB enumeration error: 0x%08x\n",(unsigned)r);break;}
+#ifdef MAC2JB_GUI
+        struct timespec retry_pause={0,100000000L};nanosleep(&retry_pause,NULL);
+#else
         sleep(1);
+#endif
     }
     if(!ready){fprintf(stderr,"USB host did not enumerate a keyboard on selected controller. Check data role, cable, and host USB descriptors.\n");goto done;}
     mac2jb_auto_ready();

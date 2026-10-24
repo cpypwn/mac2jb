@@ -19,7 +19,7 @@ Use at your own risk. mac2jb is provided without a guarantee of compatibility, e
 ### v0.3.0 GUI preview
 
 The native Mac GUI is in development. Build it with `make gui` and open
-`build/Mac2jb Demo.app`; see [the demo guide](docs/GUI-DEMO.md) for setup,
+`build/mac2jb.app`; see [the demo guide](docs/GUI-DEMO.md) for setup,
 automation limits, and logging. Its single executable embeds Node.js, the
 senders, and the offline host, so users of the built app need no build tools
 or separate Node.js installation. It does not include a compiled kernel extension.

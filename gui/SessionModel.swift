@@ -23,6 +23,10 @@ private struct GUIEvent: Decodable {
     let completed: Double?
     let total: Double?
     let partial: Bool?
+    let step: Int?
+    let label: String?
+    let remainingMs: Double?
+    let durationMs: Double?
 }
 
 @MainActor final class SessionModel: ObservableObject {
@@ -31,10 +35,18 @@ private struct GUIEvent: Decodable {
     @Published var detail = "No system tools or downloads are needed."
     @Published var log = ""
     @Published var progress: Double?
+    @Published var progressLabel = ""
+    @Published var isEnumerating = false
     @Published var addresses: [NetworkAddress] = []
     @Published var selectedAddress = ""
     @Published var controller = "auto"
     @Published var fullInstall = true
+    @Published var keyDelayMs = 50
+    @Published var enumerationTimeoutSeconds = 4
+    @Published var loadWaitMs = 3000
+    @Published var runWaitMs = 3000
+    @Published var removeWaitMs = 3000
+    @Published var loadConfirmWaitMs = 1000
     @Published var driverStatus = "Checking the USB gadget driver…"
     @Published var driverInstalled = false
     @Published var error: String?
@@ -48,6 +60,8 @@ private struct GUIEvent: Decodable {
     private var runFolder: URL?
     private var sessionLog: FileHandle?
     private var sessionActivity: NSObjectProtocol?
+    private var hostStageLabel = "Waiting for the Switch to connect over the local network"
+    private var hostStageProgress: Double?
 
     var isBusy: Bool {
         [.preparing, .bootstrap, .hostStarting, .commands, .waitingForConsole].contains(phase)
@@ -102,6 +116,11 @@ private struct GUIEvent: Decodable {
             fail("Choose a current LAN IPv4 address for this Mac, then refresh checks.")
             return
         }
+        guard (1...2000).contains(keyDelayMs), (1...120).contains(enumerationTimeoutSeconds),
+              [loadWaitMs, runWaitMs, removeWaitMs, loadConfirmWaitMs].allSatisfy({ (0...120000).contains($0) }) else {
+            fail("Use 1–2000 ms per key, 1–120 seconds for enumeration, and 0–120000 ms for each command wait.")
+            return
+        }
         // Keep the Mac awake through typing, the save checkpoint, and host
         // verification. This assertion is scoped to this session only.
         endSessionActivity()
@@ -109,8 +128,10 @@ private struct GUIEvent: Decodable {
             options: [.userInitiated, .idleSystemSleepDisabled],
             reason: "Completing the mac2jb USB and console session")
         generation = UUID()
-        error = nil; progress = nil; hostCompleted = false; runFolder = nil
-        append("mac2jb 0.3.0 demo; controller=\(controller); address=\(selectedAddress). Starting a fresh \(fullInstall ? "full bootstrap" : "post-bootstrap") workflow.")
+        error = nil; progress = nil; progressLabel = ""; isEnumerating = false; hostCompleted = false; runFolder = nil
+        hostStageLabel = "Waiting for the Switch to connect over the local network"
+        hostStageProgress = nil
+        append("mac2jb 0.3.0 demo; controller=\(controller); address=\(selectedAddress); keyDelayMs=\(keyDelayMs); enumerationTimeoutSeconds=\(enumerationTimeoutSeconds); loadConfirmWaitMs=\(loadConfirmWaitMs); loadWaitMs=\(loadWaitMs); runWaitMs=\(runWaitMs); removeWaitMs=\(removeWaitMs). Starting a fresh \(fullInstall ? "full bootstrap" : "post-bootstrap") workflow.")
         if fullInstall { startHID("bootstrap", root: runtime.root) }
         else { startHost(root: runtime.root) }
     }
@@ -125,7 +146,7 @@ private struct GUIEvent: Decodable {
         // has already moved to a terminal state.
         endSessionActivity()
         guard isBusy || phase == .awaitingSave else { return }
-        phase = .cancelled; progress = nil
+        phase = .cancelled; progress = nil; progressLabel = ""; isEnumerating = false
         status = "Session stopped"
         detail = "Inspect the Switch for partial input. Restart it before another exploit attempt."
         error = nil
@@ -146,15 +167,19 @@ private struct GUIEvent: Decodable {
         phase = .hostStarting; status = "Starting a fresh ns2jb host"
         detail = "The Mac and Switch must be on the same local network. Allow incoming connections if macOS asks."
         progress = nil
+        progressLabel = "Starting the host on \(selectedAddress)"; isEnumerating = false
         launch(arguments: ["host", selectedAddress], role: "host", root: root)
     }
 
     private func startHID(_ kind: String, root: URL) {
         phase = kind == "bootstrap" ? .bootstrap : .commands
         status = kind == "bootstrap" ? "Connecting the USB keyboard" : "Sending the four commands"
-        detail = kind == "bootstrap" ? "Keep the empty slot-0 editor focused. Transfer usually takes 7–10 minutes." : "Keep Direct mode focused. The expected Out of memory message after REMOVE is normal."
-        progress = kind == "bootstrap" ? 0 : nil
-        launch(arguments: ["hid", kind, controller, "50"], role: "hid", root: root)
+        detail = kind == "bootstrap" ? "Keep the empty slot-0 editor focused. Using \(keyDelayMs) ms per key." : "Keep Direct mode focused. Using \(keyDelayMs) ms per key. The expected Out of memory message after REMOVE is normal."
+        progress = 0; progressLabel = "Waiting for the USB keyboard"; isEnumerating = true
+        launch(arguments: ["hid", kind, controller, String(keyDelayMs),
+            "--enumeration-timeout", String(enumerationTimeoutSeconds),
+            "--load-wait-ms", String(loadWaitMs), "--run-wait-ms", String(runWaitMs),
+            "--remove-wait-ms", String(removeWaitMs), "--load-confirm-wait-ms", String(loadConfirmWaitMs)], role: "hid", root: root)
     }
 
     private func launch(arguments: [String], role: String, root: URL) {
@@ -211,20 +236,64 @@ private struct GUIEvent: Decodable {
         case "run-folder":
             if let path = event.path { runFolder = URL(fileURLWithPath: path) }
         case "controller":
-            if role == "hid" { status = event.message ?? "Connecting the USB keyboard" }
+            if role == "hid" {
+                status = event.message ?? "Connecting the USB keyboard"
+                isEnumerating = true; progress = 0
+            }
+        case "enumeration-progress":
+            if role == "hid" {
+                isEnumerating = true
+                if let done = event.completed, let total = event.total, total > 0 { progress = min(1, max(0, done / total)) }
+                if let remaining = event.remainingMs {
+                    progressLabel = String(format: "USB enumeration · %.1f seconds remaining", max(0, remaining) / 1000)
+                }
+            }
         case "typing":
-            if phase == .bootstrap { status = "Typing the SmileBASIC bootstrap" }
+            isEnumerating = false; progress = 0
+            if phase == .bootstrap { status = "Typing the SmileBASIC bootstrap"; progressLabel = "Typing bootstrap lines" }
+            else if phase == .commands { status = "Sending the post-bootstrap commands"; progressLabel = "0 of 4 commands sent" }
         case "progress":
             if let done = event.completed, let total = event.total, total > 0 { progress = min(1, max(0, done / total)) }
+            if let done = event.completed, let total = event.total {
+                progressLabel = "Line \(Int(done)) of \(Int(total))"
+            }
+        case "command-start":
+            isEnumerating = false
+            if let done = event.completed { progress = min(1, max(0, done / 4)) }
+            let step = event.step ?? 1, label = event.label ?? "command"
+            status = "Typing \(label) · command \(step) of 4"
+            progressLabel = "\(max(0, step - 1)) of 4 commands sent"
+        case "command-complete":
+            isEnumerating = false
+            if let done = event.completed { progress = min(1, max(0, done / 4)) }
+            let step = event.step ?? 1
+            progressLabel = "\(step) of 4 commands sent"
+            status = "\(event.label ?? "Command") sent"
+        case "wait":
+            isEnumerating = false
+            if let done = event.completed { progress = min(1, max(0, done / 4)) }
+            let label = event.label ?? "command"
+            status = label == "LOAD confirmation" ? "Waiting for the LOAD confirmation dialog" : "Waiting after \(label)"
+            if let remaining = event.remainingMs {
+                progressLabel = String(format: "%.1f seconds remaining · %d of 4 commands sent", max(0, remaining) / 1000, Int(event.completed ?? 0))
+            }
+        case "host-stage":
+            hostStageLabel = event.message ?? hostStageLabel
+            if let done = event.completed, let total = event.total, total > 0 { hostStageProgress = min(1, max(0, done / total)) }
+            else { hostStageProgress = nil }
+            if phase == .waitingForConsole || phase == .hostStarting {
+                status = hostStageLabel; progressLabel = hostStageLabel; progress = hostStageProgress
+            }
         case "transfer-complete":
+            isEnumerating = false
             if event.kind == "bootstrap" {
                 phase = .awaitingSave; status = "Save NS2, then open Direct mode"
                 detail = "Inspect the text. Save it as NS2 in slot 0 in the same project, then switch to Direct mode."
-                progress = 1
+                progress = 1; progressLabel = "Bootstrap transfer complete"
             } else if !hostCompleted {
-                phase = .waitingForConsole; status = "Commands sent — waiting for the console"
+                phase = .waitingForConsole; status = hostStageLabel
                 detail = "Keyboard delivery is complete. The host must independently verify FS execution and cleanup."
-                progress = nil
+                progress = hostStageProgress; progressLabel = hostStageLabel
             }
         case "verified":
             guard role == "host" else { return }
@@ -232,12 +301,12 @@ private struct GUIEvent: Decodable {
             hostCompleted = true
             phase = .verified; status = "FS execution verified"
             detail = "The host verified execution, restored the original instructions, and cleaned up scratch space. Restart the console when finished."
-            progress = 1
+            progress = 1; progressLabel = "Execution, restoration and cleanup verified"; isEnumerating = false
         case "failed":
             fail(event.message ?? "The session did not finish. Inspect the Switch before retrying.")
         case "cancelled":
             endSessionActivity()
-            phase = .cancelled; status = "Session stopped"; progress = nil
+            phase = .cancelled; status = "Session stopped"; progress = nil; progressLabel = ""; isEnumerating = false
         default: break
         }
     }
@@ -264,7 +333,7 @@ private struct GUIEvent: Decodable {
         let clean = Self.redact(message)
         ensureFallbackLog()
         error = clean; phase = .failed; status = "The session needs attention"
-        detail = clean; progress = nil
+        detail = clean; progress = nil; progressLabel = ""; isEnumerating = false
         append(clean)
         stopWorkers()
     }

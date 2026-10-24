@@ -76,6 +76,56 @@ static bool approve(const char *message) {
     return buf[0] == '\n' || buf[0] == '\r';
 }
 
+#ifdef MAC2JB_GUI
+// The native GUI build opts into timing controls and credential-free progress.
+// A normal `make` retains the v0.2.1 command-line behavior below.
+static bool gui_events = false;
+static int gui_load_wait_ms = 3000, gui_run_wait_ms = 3000;
+static int gui_remove_wait_ms = 3000, gui_load_confirm_wait_ms = 1000;
+static int gui_enumeration_seconds = 4;
+static const char *gui_command_names[] = {"LOAD", "RUN", "REMOVE", "START"};
+static void gui_command_event(const char *type, int step) {
+    if (!gui_events) return;
+    printf("MAC2JB_GUI {\"type\":\"%s\",\"step\":%d,\"completed\":%d,\"total\":4,\"label\":\"%s\"}\n",
+           type, step, strcmp(type, "command-complete") == 0 ? step : step-1,
+           gui_command_names[step-1]);
+    fflush(stdout);
+}
+static int gui_wait(int milliseconds, const char *label, int completed) {
+    double deadline = seconds_now() + (double)milliseconds / 1000.0;
+    for (;;) {
+        double left = deadline - seconds_now();
+        int remaining = left > 0 ? (int)(left * 1000.0 + 0.999) : 0;
+        if (gui_events) {
+            printf("MAC2JB_GUI {\"type\":\"wait\",\"completed\":%d,\"total\":4,\"label\":\"%s\",\"remainingMs\":%d,\"durationMs\":%d}\n",
+                   completed, label, remaining, milliseconds);
+            fflush(stdout);
+        }
+        if (interrupted) return -1;
+        if (remaining == 0) return 0;
+        int tick = remaining < 100 ? remaining : 100;
+        struct timespec pause = {0, (long)tick * 1000000L};
+        nanosleep(&pause, NULL);
+    }
+}
+static int gui_milliseconds(const char *text, int maximum, int *destination) {
+    char *end = NULL; errno = 0;
+    long value = strtol(text, &end, 10);
+    if (errno || end == text || *end || value < 0 || value > maximum) return -1;
+    *destination = (int)value; return 0;
+}
+static int gui_timing_test(void) {
+    const int waits[] = {gui_load_wait_ms, gui_run_wait_ms, gui_remove_wait_ms};
+    for (int step=1; step<=4 && !interrupted; step++) {
+        gui_command_event("command-start", step);
+        gui_command_event("command-complete", step);
+        if (step == 1 && gui_wait(gui_load_confirm_wait_ms, "LOAD confirmation", 1)<0) return 1;
+        if (step < 4 && gui_wait(waits[step-1], gui_command_names[step-1], step)<0) return 1;
+    }
+    return interrupted ? 1 : 0;
+}
+#endif
+
 static int type_and_submit(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep,
                            const char *command, int delay_ms) {
     printf("Sending: %s\n", command);
@@ -101,7 +151,11 @@ int main(int argc, char **argv) {
     int delay_ms=50;
     bool dry_run=false;
     bool automatic=false;
-
+#ifdef MAC2JB_GUI
+    bool timing_test=false;
+    gui_enumeration_seconds=mac2jb_gui_enumeration_timeout();
+    if(gui_enumeration_seconds<0) return 2;
+#endif
 
     for (int a=1; a<argc; a++) {
         if (strcmp(argv[a], "--dry-run") == 0) dry_run=true;
@@ -114,14 +168,42 @@ int main(int argc, char **argv) {
                 return 2;
             }
             delay_ms=(int)value;
-        } else if (!strcmp(argv[a], "--help") || !strcmp(argv[a], "-h")) {
+        }
+#ifdef MAC2JB_GUI
+        else if (strcmp(argv[a], "--gui-events") == 0) gui_events=true;
+        else if (strcmp(argv[a], "--gui-timing-test") == 0) timing_test=true;
+        else if ((!strcmp(argv[a], "--load-wait-ms") || !strcmp(argv[a], "--run-wait-ms") ||
+                  !strcmp(argv[a], "--remove-wait-ms") || !strcmp(argv[a], "--load-confirm-wait-ms") ||
+                  !strcmp(argv[a], "--enumeration-timeout")) && a+1<argc) {
+            const char *option = argv[a];
+            int *destination = !strcmp(option, "--load-wait-ms") ? &gui_load_wait_ms :
+                !strcmp(option, "--run-wait-ms") ? &gui_run_wait_ms :
+                !strcmp(option, "--remove-wait-ms") ? &gui_remove_wait_ms :
+                !strcmp(option, "--load-confirm-wait-ms") ? &gui_load_confirm_wait_ms : &gui_enumeration_seconds;
+            int maximum = destination == &gui_enumeration_seconds ? 120 : 120000;
+            if (gui_milliseconds(argv[++a], maximum, destination)<0 ||
+                (destination == &gui_enumeration_seconds && *destination < 1)) {
+                fprintf(stderr, "invalid value for %s\n", option); return 2;
+            }
+        }
+#endif
+        else if (!strcmp(argv[a], "--help") || !strcmp(argv[a], "-h")) {
             puts("usage: ./mac2jb-commands [--auto] [--dry-run] [--delay-ms N]");
+#ifdef MAC2JB_GUI
+            puts("GUI build: [--gui-events] [--enumeration-timeout 1..120] [--load-confirm-wait-ms N] [--load-wait-ms N] [--run-wait-ms N] [--remove-wait-ms N]");
+#endif
             return 0;
         } else {
             fprintf(stderr, "unknown argument: %s\n", argv[a]);
             return 2;
         }
     }
+#ifdef MAC2JB_GUI
+    if (timing_test) {
+        signal(SIGINT,on_interrupt); signal(SIGTERM,on_interrupt);
+        return gui_timing_test(); // Protocol check only: never initializes USB.
+    }
+#endif
     char session_start[512] = {0};
     if (!dry_run) {
         if (load_active_start(session_start, sizeof(session_start)) != 0) return 1;
@@ -202,37 +284,77 @@ int main(int argc, char **argv) {
     {
         bool ready=false;
         uint8_t empty[8]={0};
+#ifdef MAC2JB_GUI
+        double deadline = seconds_now() + gui_enumeration_seconds;
+        while (!interrupted && seconds_now() < deadline) {
+#else
         for (int attempt=0;attempt<30 && !interrupted;attempt++) {
+#endif
             int32_t r=libusbd_ep_write(ctx,iface,ep,empty,sizeof(empty),500);
             if (r>=0) { ready=true; break; }
             if (r!=LIBUSBD_NOT_ENUMERATED && r!=LIBUSBD_TIMEOUT) {
                 fprintf(stderr,"USB enumeration error 0x%08x\n",(unsigned)r); break;
             }
+#ifdef MAC2JB_GUI
+            struct timespec retry_pause = {0,100000000L}; nanosleep(&retry_pause,NULL);
+#else
             sleep(1);
+#endif
         }
         if (!ready) { fprintf(stderr,"USB host did not enumerate a keyboard\n"); goto done; }
     }
 
     mac2jb_auto_ready();
+#ifdef MAC2JB_GUI
+    if (gui_events) { puts("MAC2JB_GUI {\"type\":\"typing\",\"completed\":0,\"total\":4}"); fflush(stdout); }
+    gui_command_event("command-start",1);
+#endif
     if (!automatic && !approve("STEP 1/4: Focus SmileBASIC Direct mode. Send LOAD \"TXT:NS2\"?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[0],delay_ms)<0) goto done;
+#ifdef MAC2JB_GUI
+    gui_command_event("command-complete",1);
+#endif
     // SmileBASIC LOAD confirmation: the first Enter submits LOAD, this second
     // Enter accepts the default YES in its confirmation dialogue.
     // SmileBASIC LOAD confirmation
     puts("Confirming SmileBASIC LOAD prompt (YES) with Enter...");
     fflush(stdout);
+#ifdef MAC2JB_GUI
+    if (gui_wait(gui_load_confirm_wait_ms,"LOAD confirmation",1)<0) goto done;
+#else
     sleep(1); // allow the confirmation dialog to appear before accepting it
+#endif
     if (interrupted || send_stroke(ctx, iface, ep, 0, 40, delay_ms)<0) goto done;
     release_all_keys(ctx, iface, ep);
+#ifdef MAC2JB_GUI
+    if (automatic && gui_wait(gui_load_wait_ms,"LOAD",1)<0) goto done;
+    gui_command_event("command-start",2);
+#else
     if (automatic) sleep(3);
+#endif
     if (!automatic && !approve("STEP 2/4: Confirm the bootstrap loaded into slot 0. Send RUN?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[1],delay_ms)<0) goto done;
+#ifdef MAC2JB_GUI
+    gui_command_event("command-complete",2);
+    if (automatic && gui_wait(gui_run_wait_ms,"RUN",2)<0) goto done;
+    gui_command_event("command-start",3);
+#else
     if (automatic) sleep(3);
+#endif
     if (!automatic && !approve("STEP 3/4: Wait until RUN finishes. Send REMOVE NSR,...?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[2],delay_ms)<0) goto done;
+#ifdef MAC2JB_GUI
+    gui_command_event("command-complete",3);
+    if (automatic && gui_wait(gui_remove_wait_ms,"REMOVE",3)<0) goto done;
+    gui_command_event("command-start",4);
+#else
     if (automatic) sleep(3);
+#endif
     if (!automatic && !approve("STEP 4/4: Confirm expected Out of memory, then send V=START?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[3],delay_ms)<0) goto done;
+#ifdef MAC2JB_GUI
+    gui_command_event("command-complete",4);
+#endif
     puts("All four commands sent. Check the console and macOS host for actual results.");
     result=0;
 done:

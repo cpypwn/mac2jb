@@ -28,6 +28,11 @@ struct ContentView: View {
     private var canConfigure: Bool {
         [.ready, .failed, .cancelled].contains(model.phase)
     }
+    private var timingSettingsValid: Bool {
+        (1...2000).contains(model.keyDelayMs) && (1...120).contains(model.enumerationTimeoutSeconds) &&
+        [model.loadConfirmWaitMs, model.loadWaitMs, model.runWaitMs, model.removeWaitMs]
+            .allSatisfy { (0...120000).contains($0) }
+    }
     private var headline: String {
         switch model.phase {
         case .preparing: return "Getting everything ready."
@@ -35,8 +40,8 @@ struct ContentView: View {
         case .bootstrap: return "Your Mac is doing the typing."
         case .awaitingSave: return "A quick check on your Switch."
         case .hostStarting: return "Starting a fresh session."
-        case .commands: return "Sending the next four commands."
-        case .waitingForConsole: return "Connected. Follow the progress here."
+        case .commands: return "Sending post-bootstrap commands."
+        case .waitingForConsole: return "Following the console session."
         case .verified: return "FS execution verified."
         case .failed: return "Let’s check what happened."
         case .cancelled: return "Session stopped."
@@ -92,13 +97,10 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "keyboard.fill").font(.system(size: 27, weight: .medium)).foregroundStyle(Color.mint)
+                KeyboardMark().foregroundStyle(Color.mint).frame(width: 34, height: 28)
                 Text("mac2jb").font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
             }
             .padding(.top, 48)
-            Text("A LITTLE LESS MANUAL.")
-                .font(.system(size: 9, weight: .bold, design: .monospaced)).tracking(1.2)
-                .foregroundStyle(.white.opacity(0.4)).padding(.top, 13)
             VStack(spacing: 26) {
                 step(0, "Prepare", "Mac, network & console")
                 step(1, "Type bootstrap", model.fullInstall ? "Save NS2 once" : "Use your saved NS2")
@@ -183,13 +185,35 @@ struct ContentView: View {
                         Button { model.refreshChecks() } label: { Image(systemName: "arrow.clockwise") }
                             .help("Refresh network and driver checks").padding(.top, 22)
                     }
-                    DisclosureGroup("USB controller options") {
-                        HStack {
+                    DisclosureGroup("USB controller & timing options") {
+                        VStack(alignment: .leading, spacing: 14) {
                             Picker("Controller", selection: $model.controller) {
                                 Text("Automatic · 0, 1, 3").tag("auto")
                                 ForEach(0..<16) { Text("usb-drd\($0)").tag("usb-drd\($0)") }
                             }
-                            Text("50 ms per key").font(.system(size: 11)).foregroundStyle(.secondary)
+                            Divider()
+                            timingField("Delay per key", units: "ms", value: $model.keyDelayMs, range: 1...2000)
+                            timingField("Enumeration timeout per controller", units: "s", value: $model.enumerationTimeoutSeconds, range: 1...120)
+                            Divider()
+                            Text("Post-bootstrap waits").font(.system(size: 11, weight: .semibold)).foregroundStyle(ink)
+                            timingField("Before confirming LOAD (YES)", units: "ms", value: $model.loadConfirmWaitMs, range: 0...120000)
+                            timingField("After LOAD → before RUN", units: "ms", value: $model.loadWaitMs, range: 0...120000)
+                            timingField("After RUN → before REMOVE", units: "ms", value: $model.runWaitMs, range: 0...120000)
+                            timingField("After REMOVE → before START", units: "ms", value: $model.removeWaitMs, range: 0...120000)
+                            HStack {
+                                Text("Defaults: 50 ms/key · 4 s enumeration · 1 s LOAD confirmation · 3 s between commands.")
+                                    .font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 8)
+                                Button("Reset defaults") {
+                                    model.keyDelayMs = 50; model.enumerationTimeoutSeconds = 4
+                                    model.loadConfirmWaitMs = 1000; model.loadWaitMs = 3000
+                                    model.runWaitMs = 3000; model.removeWaitMs = 3000
+                                }.font(.system(size: 10))
+                            }
+                            if !timingSettingsValid {
+                                Text("Enter values within the ranges shown before starting.")
+                                    .font(.system(size: 11)).foregroundStyle(.orange)
+                            }
                         }.padding(.top, 10)
                     }.font(.system(size: 11)).foregroundStyle(.secondary)
                 }
@@ -211,13 +235,14 @@ struct ContentView: View {
                         }
                     }
                     Text(model.fullInstall
-                         ? "On the Switch: choose your SmileBASIC project and open an empty slot 0 editor. Use a data cable; if the Mac is charging the Switch, reconnect it."
+                         ? "On the Switch: choose your SmileBASIC project and open an empty slot 0 editor."
                          : "On the Switch: restart the console, open the project containing NS2 in slot 0, and select Direct mode.")
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    powerDirectionNotice
                     Toggle("The Switch is ready on the screen described above", isOn: $readyConfirmed)
                         .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
                     HStack {
-                        Text(model.fullInstall ? "Bootstrap typing takes about 7–10 minutes." : "Starts a new host session with fresh pairing values.")
+                        Text(model.fullInstall ? "Bootstrap typing uses your selected key delay (50 ms by default)." : "Starts a new host session with fresh pairing values.")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer()
                         Button { showLogs = true; model.start() } label: {
@@ -225,7 +250,7 @@ struct ContentView: View {
                                 .padding(.horizontal, 10).padding(.vertical, 6)
                         }
                         .buttonStyle(PrimaryActionStyle()).fixedSize()
-                        .disabled(!readyConfirmed || model.selectedAddress.isEmpty || model.runtime == nil || !model.driverInstalled)
+                        .disabled(!readyConfirmed || model.selectedAddress.isEmpty || model.runtime == nil || !model.driverInstalled || !timingSettingsValid)
                     }
                 }
             }
@@ -249,7 +274,12 @@ struct ContentView: View {
                 if model.isBusy {
                     if let progress = model.progress { ProgressView(value: progress).tint(teal) }
                     else { ProgressView().progressViewStyle(.linear).tint(teal) }
+                    if !model.progressLabel.isEmpty {
+                        Text(model.progressLabel).font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary).monospacedDigit()
+                    }
                 }
+                if model.isEnumerating { powerDirectionNotice }
                 if model.phase == .awaitingSave {
                     Divider()
                     Text("Inspect the typed program, save it as NS2 in slot 0, then enter Direct mode in the same project. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
@@ -332,6 +362,36 @@ struct ContentView: View {
             .background(model.fullInstall == full ? teal.opacity(0.06) : .white, in: RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).stroke(model.fullInstall == full ? teal.opacity(0.6) : .gray.opacity(0.18), lineWidth: 1))
         }.buttonStyle(.plain)
+    }
+    private var powerDirectionNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "cable.connector").foregroundStyle(teal).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 5) {
+                Text("USB enumeration requires the correct power direction.")
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(ink)
+                Text("The Mac must NOT be supplying power to the Switch. Unplug the cable from the Mac and plug it back in to renegotiate power toward the Mac. If the Switch is still charging from the Mac, reconnect and check again before retrying.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(teal.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+    }
+    private func timingField(_ title: String, units: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.system(size: 11)).foregroundStyle(ink)
+            Spacer(minLength: 10)
+            TextField(title, value: value, format: .number.grouping(.never))
+                .labelsHidden().accessibilityLabel(title)
+                .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing)
+                .frame(width: 78)
+            Stepper(title, value: value, in: range).labelsHidden().accessibilityLabel(title)
+                .frame(width: 20)
+            Text(units).font(.system(size: 10)).frame(width: 21, alignment: .leading)
+            Text("\(range.lowerBound)–\(range.upperBound)")
+                .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                .frame(width: 80, alignment: .trailing)
+        }
     }
     private func eyebrow(_ text: String) -> some View {
         Text(text).font(.system(size: 9, weight: .semibold, design: .monospaced)).tracking(1).foregroundStyle(.secondary)

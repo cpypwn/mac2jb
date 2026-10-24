@@ -7,7 +7,7 @@ cd "$ROOT"
 [[ "$(uname -s)" == Darwin && "$(uname -m)" == arm64 ]] || {
   echo 'Build the GUI on an Apple Silicon Mac.' >&2; exit 1;
 }
-APP_OUTPUT="${1:-$ROOT/build/Mac2jb Demo.app}"
+APP_OUTPUT="${1:-$ROOT/build/mac2jb.app}"
 [[ "$APP_OUTPUT" == *.app ]] || { echo 'Output must be an .app path.' >&2; exit 1; }
 APP_OUTPUT="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$APP_OUTPUT")"
 BUILD="$ROOT/.build-gui"
@@ -33,7 +33,18 @@ STAGE="$(mktemp -d "$BUILD/stage.XXXXXX")"
 trap 'rm -rf "$STAGE"' EXIT
 PAYLOAD="$STAGE/runtime"
 mkdir -p "$PAYLOAD/vendor/libusbd" "$PAYLOAD/licenses"
-cp mac2jb-send mac2jb-commands "$PAYLOAD/"
+# GUI-only tuning and progress must never change the legacy CLI executables.
+SDK="$(xcrun --sdk macosx --show-sdk-path)"
+for tool in send commands; do
+  source=commands.c
+  [[ "$tool" == send ]] && source=sender.c
+  xcrun clang -std=c11 -D_POSIX_C_SOURCE=200809L -DMAC2JB_GUI=1 -O2 -Wall -Wextra \
+    -target arm64-apple-macos14.0 -isysroot "$SDK" -Ivendor/libusbd/include \
+    "$source" -Lvendor/libusbd -lusbd -Wl,-rpath,@executable_path/vendor/libusbd \
+    -framework CoreFoundation -framework IOKit -o "$BUILD/mac2jb-$tool"
+  codesign --force --sign - "$BUILD/mac2jb-$tool"
+  cp "$BUILD/mac2jb-$tool" "$PAYLOAD/"
+done
 cp vendor/libusbd/libusbd.dylib "$PAYLOAD/vendor/libusbd/"
 if [[ "$(lipo -archs "$NODE_BINARY")" == *x86_64* ]]; then
   lipo "$NODE_BINARY" -thin arm64 -output "$PAYLOAD/node"
@@ -135,18 +146,22 @@ print('Embedded runtime SHA-256:', digest)
 PY
 
 xcrun clang -target arm64-apple-macos14.0 -O2 -c gui/EmbeddedPayload.c -o "$BUILD/EmbeddedPayload.o"
-mkdir -p "$STAGE/Mac2jb Demo.app/Contents/MacOS"
+mkdir -p "$STAGE/mac2jb.app/Contents/MacOS" "$STAGE/mac2jb.app/Contents/Resources"
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 -O \
   -module-cache-path "$BUILD/module-cache" \
   -framework SwiftUI -framework AppKit -framework CryptoKit \
   gui/*.swift "$BUILD/PayloadMetadata.swift" "$BUILD/EmbeddedPayload.o" \
   -Xlinker -sectcreate -Xlinker __DATA -Xlinker __mac2jb -Xlinker "$BUILD/runtime.tar.gz" \
-  -o "$STAGE/Mac2jb Demo.app/Contents/MacOS/mac2jb"
-cp gui/Info.plist "$STAGE/Mac2jb Demo.app/Contents/Info.plist"
-codesign --force --sign - "$STAGE/Mac2jb Demo.app"
-codesign --verify --strict "$STAGE/Mac2jb Demo.app"
+  -o "$STAGE/mac2jb.app/Contents/MacOS/mac2jb"
+cp gui/Info.plist "$STAGE/mac2jb.app/Contents/Info.plist"
+xcrun swiftc -parse-as-library -swift-version 5 -target arm64-apple-macos14.0 -O \
+  -module-cache-path "$BUILD/module-cache" -framework SwiftUI -framework AppKit \
+  gui/KeyboardMark.swift scripts/make-app-icon.swift -o "$BUILD/make-app-icon"
+"$BUILD/make-app-icon" "$BUILD/mac2jb.iconset" "$STAGE/mac2jb.app/Contents/Resources/mac2jb.icns"
+codesign --force --sign - "$STAGE/mac2jb.app"
+codesign --verify --strict "$STAGE/mac2jb.app"
 mkdir -p "$(dirname "$APP_OUTPUT")"
 if [[ -e "$APP_OUTPUT" ]]; then rm -rf "$APP_OUTPUT"; fi
-mv "$STAGE/Mac2jb Demo.app" "$APP_OUTPUT"
+mv "$STAGE/mac2jb.app" "$APP_OUTPUT"
 echo "Created GUI demo: $APP_OUTPUT"
 echo "Corresponding source: $BUILD/mac2jb-0.3.0-demo-source.zip"

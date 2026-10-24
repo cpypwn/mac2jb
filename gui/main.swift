@@ -12,6 +12,10 @@ if CommandLine.arguments.contains("--self-test") {
             ("node", ["--version"]),
             ("mac2jb-send", ["assets/bootstrap.bas", "--dry-run"]),
             ("mac2jb-commands", ["--dry-run"]),
+            ("mac2jb-commands", ["--dry-run", "--gui-events", "--load-confirm-wait-ms", "1000",
+                                 "--load-wait-ms", "3000", "--run-wait-ms", "3000", "--remove-wait-ms", "3000"]),
+            ("mac2jb-commands", ["--gui-timing-test", "--gui-events", "--load-confirm-wait-ms", "10",
+                                 "--load-wait-ms", "10", "--run-wait-ms", "10", "--remove-wait-ms", "10"]),
             ("node", ["scripts/gui-host.cjs", "--self-test"])
         ]
         for (tool, arguments) in checks {
@@ -27,7 +31,7 @@ if CommandLine.arguments.contains("--self-test") {
             }
         }
         print("mac2jb 0.3.0-demo: embedded runtime and dry-run checks passed; no USB input sent.")
-        try? FileManager.default.removeItem(at: runtime.root)
+        try? FileManager.default.removeItem(at: testParent)
         exit(0)
     } catch {
         fputs("mac2jb self-test failed: \(error.localizedDescription)\n", stderr)

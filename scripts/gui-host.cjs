@@ -8,6 +8,26 @@ const path = require('node:path');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const root = path.resolve(__dirname, '..');
+const timingDefaults = Object.freeze({delay: 50, enumerationTimeout: 4, loadWaitMs: 3000,
+  runWaitMs: 3000, removeWaitMs: 3000, loadConfirmWaitMs: 1000});
+function hidSettings(args) {
+  const settings = {...timingDefaults};
+  const values = [...args];
+  if (values.length && !values[0].startsWith('--')) settings.delay = Number(values.shift());
+  const options = {'--enumeration-timeout': 'enumerationTimeout', '--load-wait-ms': 'loadWaitMs',
+    '--run-wait-ms': 'runWaitMs', '--remove-wait-ms': 'removeWaitMs', '--load-confirm-wait-ms': 'loadConfirmWaitMs'};
+  while (values.length) {
+    const option = values.shift(), text = values.shift();
+    if (!options[option] || text === undefined || !/^\d+$/.test(text)) throw Error('Invalid HID timing option: ' + option);
+    settings[options[option]] = Number(text);
+  }
+  for (const [name, value] of Object.entries(settings)) {
+    const minimum = name === 'delay' || name === 'enumerationTimeout' ? 1 : 0;
+    const maximum = name === 'delay' ? 2000 : name === 'enumerationTimeout' ? 120 : 120000;
+    if (!Number.isInteger(value) || value < minimum || value > maximum) throw Error(`Invalid ${name}: use ${minimum}..${maximum}.`);
+  }
+  return settings;
+}
 const redact = value => String(value).replace(/V=START\([^\r\n)]*\)/g, 'V=START(<private session>)');
 function emit(type, fields = {}) { process.stdout.write(JSON.stringify({type, ...fields}) + '\n'); }
 function lines(stream, callback) {
@@ -76,6 +96,12 @@ async function host(address) {
       const candidate = path.resolve(clean.slice('Run folder: '.length));
       if (candidate.startsWith(runs + path.sep)) {directory = candidate; emit('run-folder', {path: candidate});}
     }
+    if (clean.startsWith('Waiting for Switch 2 at '))
+      emit('host-stage', {stage: 'waiting', message: 'Waiting for the Switch to connect over the local network'});
+    else if (clean.startsWith('Connected. Checking the application'))
+      emit('host-stage', {stage: 'connected', message: 'Switch connected — checking the application'});
+    else if (/^[1-4]\/4 /.test(clean)) emit('host-stage', {
+      stage: 'pipeline', completed: Number(clean[0])-1, total: 4, message: clean});
     emit('log', {message: redact(line)});
     } catch (error) {
       publicationError ||= error;
@@ -103,46 +129,94 @@ async function host(address) {
   emit('failed', {message: redact(result?.error || 'The host ended without a verified result. Restart the console before retrying.')});
   return code || 1;
 }
-async function hid(kind, controller, delay = 50) {
+async function hid(kind, controller, settings = timingDefaults) {
   if (!['bootstrap', 'commands'].includes(kind)) throw Error('Invalid transfer kind.');
   if (controller !== 'auto' && !/^usb-drd(?:[0-9]|1[0-5])$/.test(controller)) throw Error('Choose a controller from 0 to 15.');
-  if (!Number.isInteger(delay) || delay < 1 || delay > 2000) throw Error('Invalid typing delay.');
+  const {delay, enumerationTimeout, loadWaitMs, runWaitMs, removeWaitMs, loadConfirmWaitMs} = settings;
   const candidates = controller === 'auto' ? ['usb-drd0', 'usb-drd1', 'usb-drd3'] : [controller];
   const totalLines = fs.readFileSync(path.join(root, 'assets/bootstrap.bas'), 'utf8').split('\n').length - 1;
   for (const candidate of candidates) {
     if (stopping) break;
-    emit('controller', {controller: candidate, message: `Trying ${candidate}…`});
+    emit('controller', {controller: candidate, message: `Waiting for ${candidate} to enumerate`});
     const executable = path.join(root, kind === 'bootstrap' ? 'mac2jb-send' : 'mac2jb-commands');
-    const args = kind === 'bootstrap' ? ['assets/bootstrap.bas', '--delay-ms', String(delay)] : ['--auto', '--delay-ms', String(delay)];
+    const args = kind === 'bootstrap' ? ['assets/bootstrap.bas', '--delay-ms', String(delay)] : [
+      '--auto', '--delay-ms', String(delay), '--gui-events', '--enumeration-timeout', String(enumerationTimeout),
+      '--load-wait-ms', String(loadWaitMs), '--run-wait-ms', String(runWaitMs),
+      '--remove-wait-ms', String(removeWaitMs), '--load-confirm-wait-ms', String(loadConfirmWaitMs)];
     current = spawn(executable, args, {cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: {...process.env, MAC2JB_AUTO_WORKER: '1', MAC2JB_CONTROLLER: candidate}});
+      env: {...process.env, MAC2JB_AUTO_WORKER: '1', MAC2JB_CONTROLLER: candidate,
+        MAC2JB_ENUMERATION_TIMEOUT_SECONDS: String(enumerationTimeout)}});
     const child = current;
-    let output = '', typing = false, timedOut = false, announced = false;
+    let output = '', typing = false, timedOut = false, announced = false, commandStep = 0, nativeEvents = false;
+    let timer, countdown;
+    const started = performance.now();
+    const enumerationProgress = () => {
+      const elapsed = Math.min(enumerationTimeout * 1000, Math.max(0, performance.now() - started));
+      emit('enumeration-progress', {controller: candidate, completed: elapsed, total: enumerationTimeout * 1000,
+        remainingMs: Math.max(0, enumerationTimeout * 1000 - elapsed), durationMs: enumerationTimeout * 1000});
+    };
+    const markTyping = () => {
+      typing = true; clearTimeout(timer); clearInterval(countdown);
+      if (!announced) {
+        announced = true;
+        emit('typing', {kind, completed: 0, total: kind === 'commands' ? 4 : totalLines,
+          message: kind === 'commands' ? 'USB keyboard connected. Sending four commands.' : 'USB keyboard connected. Typing the bootstrap.'});
+      }
+    };
     const observe = line => {
       output += line + '\n';
+      if (line.startsWith('MAC2JB_GUI ')) {
+        let event;
+        try {event = JSON.parse(line.slice('MAC2JB_GUI '.length));} catch {return;}
+        nativeEvents = true;
+        if (['typing', 'command-start', 'command-complete'].includes(event.type)) markTyping();
+        if (event.type === 'command-start' || event.type === 'command-complete') {
+          commandStep = event.step;
+          emit(event.type, {kind, step: event.step, completed: event.completed, total: 4, label: event.label});
+        } else if (event.type === 'wait') {
+          emit('wait', {kind, completed: event.completed, total: 4, label: event.label,
+            remainingMs: event.remainingMs, durationMs: event.durationMs});
+        }
+        return;
+      }
       if (/Keyboard enumerated\. Sending|Sent line \d+|^Sending: /.test(line)) {
-        typing = true; clearTimeout(timer);
-        if (!announced) {announced = true; emit('typing', {message: 'USB keyboard connected. Sending input…'});}
+        markTyping();
       }
       const progress = /Sent line (\d+)/.exec(line);
-      if (progress) emit('progress', {completed: Number(progress[1]), total: totalLines});
-      if (line.startsWith('Sending: ')) emit('command', {message: redact(line)});
+      if (progress) emit('progress', {kind, completed: Number(progress[1]), total: totalLines});
+      if (line.startsWith('Sending: ')) {
+        if (!nativeEvents) {
+          commandStep++;
+          emit('command-start', {kind, step: commandStep, completed: commandStep-1, total: 4,
+            label: ['LOAD', 'RUN', 'REMOVE', 'START'][commandStep-1] || 'command'});
+        }
+        emit('command', {message: redact(line)});
+      }
       else emit('log', {message: redact(line)});
     };
     lines(child.stdout, observe); lines(child.stderr, observe);
     // Once terminated, wait for close (both output streams drained) before
     // deciding whether another controller is safe. Buffered typing evidence
     // must never be missed by a timeout race.
-    const timer = setTimeout(() => {
+    enumerationProgress();
+    countdown = setInterval(enumerationProgress, 100);
+    timer = setTimeout(() => {
       if (!typing) {
+        enumerationProgress(); clearInterval(countdown);
         timedOut = true; signalGroup(child, 'SIGTERM');
         stopTimer = setTimeout(() => signalGroup(child, 'SIGKILL'), 2000); stopTimer.unref();
       }
-    }, 4000);
-    const {code, signal} = await new Promise((resolve, reject) => {
-      child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal}));
-    });
-    clearTimeout(timer); clearTimeout(stopTimer);
+    }, enumerationTimeout * 1000);
+    let code, signal;
+    try {
+      ({code, signal} = await new Promise((resolve, reject) => {
+        child.once('error', reject); child.once('close', (code, signal) => resolve({code, signal}));
+      }));
+    } finally {
+      // Spawn errors must also release timers; otherwise a 120-second selected
+      // window would keep a failed adapter alive after ENOENT or EACCES.
+      clearTimeout(timer); clearInterval(countdown); clearTimeout(stopTimer);
+    }
     if (stopping) break;
     if (code === 0 && !signal) {emit('transfer-complete', {kind, message: 'Keyboard transfer completed. Check the Switch screen.'}); return 0;}
     if (typing) {
@@ -155,7 +229,7 @@ async function hid(kind, controller, delay = 50) {
     emit('log', {message: `${candidate} did not enumerate; no typing was detected.`});
   }
   if (stopping) {emit('cancelled', {message: 'Transfer stopped. Inspect the Switch for partial input.'}); return 130;}
-  emit('failed', {message: 'No controller connected. Reconnect a data cable, check power direction, or choose a controller manually.'}); return 1;
+  emit('failed', {message: 'No controller connected. The Mac must NOT be supplying charging power to the Switch. Unplug and replug the Mac end of a data cable to renegotiate, then verify that power is directed toward the Mac. Software cannot force the power role. You can also choose a controller manually.'}); return 1;
 }
 async function main(args = process.argv.slice(2)) {
   if (args.length === 1 && args[0] === '--self-test') {
@@ -173,10 +247,10 @@ async function main(args = process.argv.slice(2)) {
   }
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
   if (args[0] === 'host' && args.length === 2) return host(args[1]);
-  if (args[0] === 'hid' && args.length >= 3 && args.length <= 4) return hid(args[1], args[2], Number(args[3] || 50));
+  if (args[0] === 'hid' && args.length >= 3) return hid(args[1], args[2], hidSettings(args.slice(3)));
   throw Error('Usage: gui-host.cjs host IPv4 | hid bootstrap|commands auto|usb-drdN [delay-ms]');
 }
-module.exports = {redact, validStart, verifiedResult, lines, main};
+module.exports = {redact, validStart, verifiedResult, hidSettings, lines, main};
 if (require.main === module) main().then(code => {process.exitCode = code;}).catch(error => {
   signalGroup(current, 'SIGTERM'); emit('failed', {message: redact(error.message)}); process.exitCode = 1;
 });

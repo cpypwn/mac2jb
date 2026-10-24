@@ -5,11 +5,12 @@
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleExecutable</key><string>mac2jb</string>
     <key>CFBundleIdentifier</key><string>io.github.cpypwn.mac2jb.demo</string>
-    <key>CFBundleName</key><string>Mac2jb Demo</string>
-    <key>CFBundleDisplayName</key><string>Mac2jb Demo</string>
+    <key>CFBundleName</key><string>mac2jb</string>
+    <key>CFBundleDisplayName</key><string>mac2jb</string>
+    <key>CFBundleIconFile</key><string>mac2jb</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.3.0-demo</string>
-    <key>CFBundleVersion</key><string>300</string>
+    <key>CFBundleVersion</key><string>301</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocalNetworkUsageDescription</key><string>mac2jb connects to your Switch 2 over your local network for the ns2jb host session.</string>
