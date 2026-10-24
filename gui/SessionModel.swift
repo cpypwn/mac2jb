@@ -37,6 +37,8 @@ private struct GUIEvent: Decodable {
     @Published var log = ""
     @Published var progress: Double?
     @Published var progressLabel = ""
+    @Published private(set) var bootstrapElapsedSeconds: Double = 0
+    @Published private(set) var bootstrapEstimatedRemainingSeconds: Double?
     @Published var isEnumerating = false
     @Published var addresses: [NetworkAddress] = []
     @Published var selectedAddress = ""
@@ -65,9 +67,16 @@ private struct GUIEvent: Decodable {
     private var sessionActivity: NSObjectProtocol?
     private var hostStageLabel = "Waiting for the Switch to connect over the local network"
     private var hostStageProgress: Double?
+    private var bootstrapStartedAt: Date?
+    private var bootstrapTimer: Timer?
+    private var hasEnumeratedSuccessfully = false
 
     var isBusy: Bool {
         [.preparing, .bootstrap, .hostStarting, .commands, .waitingForConsole].contains(phase)
+    }
+
+    var shouldShowFirstTimeFooter: Bool {
+        !hasEnumeratedSuccessfully && [.preparing, .ready, .failed, .cancelled].contains(phase)
     }
 
     func prepare() {
@@ -140,6 +149,8 @@ private struct GUIEvent: Decodable {
             reason: "Completing the mac2jb USB and console session")
         generation = UUID()
         error = nil; progress = nil; progressLabel = ""; isEnumerating = false; hostCompleted = false; runFolder = nil
+        hasEnumeratedSuccessfully = false
+        resetBootstrapTiming()
         hostStageLabel = "Waiting for the Switch to connect over the local network"
         hostStageProgress = nil
         append("mac2jb 0.3.0 demo; controller=\(controller); address=\(selectedAddress); keyDelayMs=\(keyDelayMs); enumerationTimeoutSeconds=\(enumerationTimeoutSeconds); loadConfirmWaitMs=\(loadConfirmWaitMs); loadWaitMs=\(loadWaitMs); runWaitMs=\(runWaitMs); removeWaitMs=\(removeWaitMs). Starting a fresh \(fullInstall ? "full bootstrap" : "post-bootstrap") workflow.")
@@ -165,6 +176,7 @@ private struct GUIEvent: Decodable {
         detail = "Inspect the Switch for partial input. Restart it before another exploit attempt."
         error = nil
         append("Stop requested. Only this app’s worker processes are being stopped.")
+        appendBootstrapDuration(outcome: "cancelled")
         stopWorkers()
     }
 
@@ -264,12 +276,17 @@ private struct GUIEvent: Decodable {
             }
         case "typing":
             isEnumerating = false; progress = 0
+            if phase == .bootstrap {
+                hasEnumeratedSuccessfully = true
+                startBootstrapTimingIfNeeded()
+            }
             if phase == .bootstrap { status = "Typing the SmileBASIC bootstrap"; progressLabel = "Typing bootstrap lines" }
             else if phase == .commands { status = "Sending the post-bootstrap commands"; progressLabel = "0 of 4 commands sent" }
         case "progress":
             if let done = event.completed, let total = event.total, total > 0 { progress = min(1, max(0, done / total)) }
             if let done = event.completed, let total = event.total {
                 progressLabel = "Line \(Int(done)) of \(Int(total))"
+                if phase == .bootstrap { updateBootstrapEstimate(completed: done, total: total) }
             }
         case "command-start":
             isEnumerating = false
@@ -301,9 +318,10 @@ private struct GUIEvent: Decodable {
         case "transfer-complete":
             isEnumerating = false
             if event.kind == "bootstrap" {
+                appendBootstrapDuration(outcome: "completed")
                 workflowProgress.bootstrapTransferred()
                 phase = .awaitingSave; status = "Save NS2, then enter Direct mode"
-                detail = "The bootstrap has finished typing. Inspect the program, save it as NS2 in slot 0, then enter Direct mode."
+                detail = "The bootstrap has finished typing. Enter Direct mode, type SAVE \"NS2\", and save it in slot 0 before continuing to host & commands."
                 progress = 1; progressLabel = "Bootstrap transfer complete"
             } else if !hostCompleted {
                 phase = .waitingForConsole; status = hostStageLabel
@@ -355,7 +373,43 @@ private struct GUIEvent: Decodable {
         error = clean; phase = .failed; status = "The session needs attention"
         detail = clean; progress = nil; progressLabel = ""; isEnumerating = false
         append(clean)
+        appendBootstrapDuration(outcome: "failed")
         stopWorkers()
+    }
+
+    private func resetBootstrapTiming() {
+        bootstrapTimer?.invalidate(); bootstrapTimer = nil
+        bootstrapStartedAt = nil
+        bootstrapElapsedSeconds = 0
+        bootstrapEstimatedRemainingSeconds = nil
+    }
+
+    private func startBootstrapTimingIfNeeded() {
+        guard bootstrapStartedAt == nil else { return }
+        bootstrapStartedAt = Date()
+        bootstrapTimer?.invalidate()
+        bootstrapTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            guard let self, let started = self.bootstrapStartedAt else { return }
+            self.bootstrapElapsedSeconds = Date().timeIntervalSince(started)
+        }
+    }
+
+    private func updateBootstrapEstimate(completed: Double, total: Double) {
+        guard total > 0, let started = bootstrapStartedAt else { return }
+        let elapsed = Date().timeIntervalSince(started)
+        bootstrapElapsedSeconds = elapsed
+        let fraction = min(1, max(0, completed / total))
+        if fraction > 0.01 { bootstrapEstimatedRemainingSeconds = max(0, elapsed / fraction - elapsed) }
+    }
+
+    private func appendBootstrapDuration(outcome: String) {
+        guard let started = bootstrapStartedAt else { return }
+        let elapsed = Date().timeIntervalSince(started)
+        bootstrapElapsedSeconds = elapsed
+        bootstrapTimer?.invalidate(); bootstrapTimer = nil
+        bootstrapEstimatedRemainingSeconds = outcome == "completed" ? 0 : bootstrapEstimatedRemainingSeconds
+        append(String(format: "Bootstrap typing %@ after %.1f seconds.", outcome, elapsed))
+        bootstrapStartedAt = nil
     }
 
     private func endSessionActivity() {

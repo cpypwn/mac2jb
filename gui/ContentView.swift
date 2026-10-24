@@ -273,11 +273,24 @@ struct ContentView: View {
                         Text(model.progressLabel).font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary).monospacedDigit()
                     }
+                    if model.phase == .bootstrap {
+                        HStack(spacing: 14) {
+                            Text(String(format: "Elapsed %.1f s", model.bootstrapElapsedSeconds))
+                            if let remaining = model.bootstrapEstimatedRemainingSeconds {
+                                Text(String(format: "Estimated completion in %.1f s", max(0, remaining)))
+                            } else {
+                                Text("Estimating completion…")
+                            }
+                        }
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    }
                 }
                 if model.isEnumerating { powerDirectionNotice }
                 if model.phase == .awaitingSave {
                     Divider()
-                    Text("The bootstrap has finished typing. Inspect the program, save it as **NS2** in **slot 0**, then enter **Direct mode**. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
+                    Text("The bootstrap has finished typing. Enter **Direct mode**, type `SAVE \"NS2\"`, and save it in **slot 0**. Then continue to host & commands; the GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
                         .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Toggle("NS2 is saved in slot 0 and I have entered Direct mode", isOn: $savedConfirmed)
                         .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
@@ -330,7 +343,8 @@ struct ContentView: View {
     }
 
     private var footer: some View {
-        HStack(alignment: .top, spacing: 10) {
+        if !model.shouldShowFirstTimeFooter { return AnyView(EmptyView()) }
+        return AnyView(HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle").padding(.top, 1)
             Text("First time? Install and approve a compatible USB gadget driver first. The bundled app needs no Node.js or build tools. v0.2.1 CLI remains available.")
                 .fixedSize(horizontal: false, vertical: true)
@@ -338,7 +352,7 @@ struct ContentView: View {
             Button("Setup guide ↗") {
                 NSWorkspace.shared.open(URL(string: "https://github.com/cpypwn/mac2jb#prerequisites-and-important-security-notes")!)
             }.buttonStyle(.plain).foregroundStyle(teal)
-        }.font(.system(size: 10)).foregroundStyle(.secondary)
+        }.font(.system(size: 10)).foregroundStyle(.secondary))
     }
 
     private func modeCard(full: Bool, title: String, subtitle: String, icon: String) -> some View {
