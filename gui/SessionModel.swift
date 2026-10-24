@@ -287,8 +287,8 @@ private struct GUIEvent: Decodable {
         case "transfer-complete":
             isEnumerating = false
             if event.kind == "bootstrap" {
-                phase = .awaitingSave; status = "Save NS2, then open Direct mode"
-                detail = "The bootstrap has finished typing. In [WORKSPACE], inspect the program, save it as NS2 in slot 0, then switch to Direct mode."
+                phase = .awaitingSave; status = "Save NS2, then enter Direct mode"
+                detail = "The bootstrap has finished typing. In [WORKSPACE], inspect the program, save it as NS2 in slot 0, then enter Direct mode."
                 progress = 1; progressLabel = "Bootstrap transfer complete"
             } else if !hostCompleted {
                 phase = .waitingForConsole; status = hostStageLabel

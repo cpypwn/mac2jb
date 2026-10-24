@@ -279,7 +279,7 @@ struct ContentView: View {
                     Divider()
                     Text("The bootstrap has finished typing. In **[WORKSPACE]**, inspect the program, save it as **NS2** in **slot 0**, then enter **Direct mode**. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
                         .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Toggle("NS2 is saved in slot 0 and Direct mode is open", isOn: $savedConfirmed)
+                    Toggle("NS2 is saved in slot 0 and I have entered Direct mode", isOn: $savedConfirmed)
                         .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
                     Button("Continue to host & commands") { model.confirmSavedAndDirectMode() }
                         .buttonStyle(PrimaryActionStyle()).fixedSize().disabled(!savedConfirmed)
