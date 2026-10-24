@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var driverLoading = false
     @State private var showFailure = false
     @State private var failureText = ""
+    @State private var lastActiveStage = 0
 
     private var stage: Int {
         switch model.phase {
@@ -21,7 +22,7 @@ struct ContentView: View {
         case .bootstrap, .awaitingSave: return 1
         case .hostStarting, .commands, .waitingForConsole: return 2
         case .verified: return 3
-        default: return 2
+        case .failed, .cancelled: return lastActiveStage
         }
     }
     private var canConfigure: Bool {
@@ -67,6 +68,7 @@ struct ContentView: View {
         .onChange(of: model.phase) { _, phase in
             readyConfirmed = false
             savedConfirmed = false
+            if phase != .failed && phase != .cancelled { lastActiveStage = stage }
             if phase == .failed {
                 showLogs = true
                 let location = model.diagnosticLogURL.map { "Log saved at:\n" + $0.path }
@@ -284,7 +286,7 @@ struct ContentView: View {
                 }.buttonStyle(.plain)
                 Spacer()
                 Button("Open session logs") { model.revealSessionFolder() }
-                    .font(.system(size: 11)).disabled(model.runtime == nil)
+                    .font(.system(size: 11)).disabled(model.runtime == nil && model.diagnosticLogURL == nil)
             }.foregroundStyle(.secondary)
             if showLogs {
                 ScrollViewReader { proxy in

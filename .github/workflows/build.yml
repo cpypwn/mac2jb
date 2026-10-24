@@ -61,3 +61,14 @@ jobs:
           bash make-release-zip.command
           unzip -t mac2jb-complete.zip
           python3 scripts/audit-release.py mac2jb-complete.zip
+
+      - name: Set up bundled GUI runtime version
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+
+      - name: Build and verify GUI demo without hardware
+        run: |
+          NODE_BINARY="$(command -v node)" bash scripts/build-gui.sh
+          "build/Mac2jb Demo.app/Contents/MacOS/mac2jb" --self-test
+          python3 scripts/audit-release.py .build-gui/mac2jb-0.3.0-demo-source.zip
