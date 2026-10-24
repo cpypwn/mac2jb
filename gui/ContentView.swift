@@ -229,7 +229,7 @@ struct ContentView: View {
                         if model.fullInstall {
                             Text("On the Switch: select the default **[WORKSPACE]** project, then open **Make a Program** with an empty editor. Leave the editor open while the bootstrap is typed.")
                         } else {
-                            Text("On the Switch: restart the console, open the project containing NS2 in slot 0, and enter Direct mode.")
+                            Text("On the Switch: **restart the console → open SmileBASIC → enter Direct mode**. mac2jb sends LOAD first to load NS2 from the default **[WORKSPACE]** project.")
                         }
                     }
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
