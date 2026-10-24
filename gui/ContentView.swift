@@ -102,7 +102,7 @@ struct ContentView: View {
             .padding(.top, 48)
             VStack(spacing: 26) {
                 step(0, "Prepare", "Mac, network & console")
-                step(1, "Type bootstrap", model.fullInstall ? "Save NS2 once" : "Use your saved NS2")
+                step(1, "Type bootstrap", model.fullInstall ? "Type first, then save" : "Use your saved NS2")
                 step(2, "Run & verify", "Host and commands")
             }.padding(.top, 55)
             Spacer(minLength: 40)
@@ -225,9 +225,13 @@ struct ContentView: View {
                                 .font(.system(size: 11)).disabled(driverLoading)
                         }
                     }
-                    Text(model.fullInstall
-                         ? "On the Switch: choose your SmileBASIC project and open an empty slot 0 editor."
-                         : "On the Switch: restart the console, open the project containing NS2 in slot 0, and select Direct mode.")
+                    Group {
+                        if model.fullInstall {
+                            Text("On the Switch: select the default **[WORKSPACE]** project, then open **Make a Program** with an empty editor. Leave the editor open while the bootstrap is typed.")
+                        } else {
+                            Text("On the Switch: restart the console, open the project containing NS2 in slot 0, and enter Direct mode.")
+                        }
+                    }
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     powerDirectionNotice
                     Toggle("The Switch is ready on the screen described above", isOn: $readyConfirmed)
@@ -273,7 +277,7 @@ struct ContentView: View {
                 if model.isEnumerating { powerDirectionNotice }
                 if model.phase == .awaitingSave {
                     Divider()
-                    Text("Inspect the typed program, save it as NS2 in slot 0, then enter Direct mode in the same project. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
+                    Text("The bootstrap has finished typing. In **[WORKSPACE]**, inspect the program, save it as **NS2** in **slot 0**, then enter **Direct mode**. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
                         .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Toggle("NS2 is saved in slot 0 and Direct mode is open", isOn: $savedConfirmed)
                         .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
