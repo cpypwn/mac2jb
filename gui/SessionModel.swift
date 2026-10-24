@@ -314,7 +314,8 @@ private struct GUIEvent: Decodable {
             }
         case "host-stage":
             hostStageLabel = event.message ?? hostStageLabel
-            if let message = event.message { append(message, channel: .host) }
+            // Stage events update the status only. The adapter also emits the
+            // original line as a log event, which owns the activity/log entry.
             if let done = event.completed, let total = event.total, total > 0 { hostStageProgress = min(1, max(0, done / total)) }
             else { hostStageProgress = nil }
             if phase == .waitingForConsole || phase == .hostStarting {
