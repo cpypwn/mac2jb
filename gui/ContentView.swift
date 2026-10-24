@@ -36,7 +36,7 @@ struct ContentView: View {
     private var headline: String {
         switch model.phase {
         case .preparing: return "Getting everything ready."
-        case .ready: return "From Mac to SmileBASIC."
+        case .ready: return "Get started"
         case .bootstrap: return "Your Mac is doing the typing."
         case .awaitingSave: return "A quick check on your Switch."
         case .hostStarting: return "Starting a fresh session."
@@ -106,13 +106,6 @@ struct ContentView: View {
                 step(2, "Run & verify", "Host and commands")
             }.padding(.top, 55)
             Spacer(minLength: 40)
-            Rectangle().fill(.white.opacity(0.12)).frame(height: 1)
-            VStack(alignment: .leading, spacing: 12) {
-                Label("Apple silicon", systemImage: "desktopcomputer")
-                Label("Everything bundled", systemImage: "shippingbox")
-                Label("Private session logs", systemImage: "lock")
-            }
-            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.58)).padding(.vertical, 24)
             Text("v0.3.0 · GUI DEMO")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.35))
