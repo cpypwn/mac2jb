@@ -30,7 +30,7 @@ if CommandLine.arguments.contains("--self-test") {
                               userInfo: [NSLocalizedDescriptionKey: "Check failed: \(tool)"])
             }
         }
-        print("mac2jb 0.3.0-demo: embedded runtime and dry-run checks passed; no USB input sent.")
+        print("mac2jb 0.3.0: embedded runtime and dry-run checks passed; no USB input sent.")
         try? FileManager.default.removeItem(at: testParent)
         exit(0)
     } catch {

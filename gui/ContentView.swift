@@ -95,7 +95,7 @@ struct ContentView: View {
                 step(2, "Run & verify", "Host and commands")
             }.padding(.top, 55)
             Spacer(minLength: 40)
-            Text("v0.3.0 · GUI DEMO")
+            Text("v0.3.0")
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.35))
         }
