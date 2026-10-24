@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var readyConfirmed = false
     @State private var savedConfirmed = false
     @State private var showLogs = false
+    @State private var activityTab = 0
     @State private var driverMessage: String?
     @State private var driverLoading = false
     @State private var showFailure = false
@@ -327,9 +328,15 @@ struct ContentView: View {
                     .font(.system(size: 11)).disabled(model.runtime == nil && model.diagnosticLogURL == nil)
             }.foregroundStyle(.secondary)
             if showLogs {
+                Picker("Activity log", selection: $activityTab) {
+                    Text("All activity").tag(0)
+                    Text("Host").tag(1)
+                    Text("USB & typing").tag(2)
+                }.pickerStyle(.segmented)
                 ScrollViewReader { proxy in
                     ScrollView {
-                        Text(model.log.isEmpty ? "Ready when you are. Session activity will appear here." : model.log)
+                        let selectedLog = activityTab == 1 ? model.hostLog : activityTab == 2 ? model.usbLog : model.log
+                        Text(selectedLog.isEmpty ? "Ready when you are. Session activity will appear here." : selectedLog)
                             .font(.system(size: 10, design: .monospaced)).foregroundStyle(ink.opacity(0.8))
                             .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(14)
                         Color.clear.frame(height: 1).id("end")

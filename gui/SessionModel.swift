@@ -35,6 +35,8 @@ private struct GUIEvent: Decodable {
     @Published var status = "Preparing the bundled tools"
     @Published var detail = "No system tools or downloads are needed."
     @Published var log = ""
+    @Published private(set) var hostLog = ""
+    @Published private(set) var usbLog = ""
     @Published var progress: Double?
     @Published var progressLabel = ""
     @Published private(set) var bootstrapElapsedSeconds: Double = 0
@@ -64,6 +66,8 @@ private struct GUIEvent: Decodable {
     private var generation = UUID()
     private var runFolder: URL?
     private var sessionLog: FileHandle?
+    private var hostSessionLog: FileHandle?
+    private var usbSessionLog: FileHandle?
     private var sessionActivity: NSObjectProtocol?
     private var hostStageLabel = "Waiting for the Switch to connect over the local network"
     private var hostStageProgress: Double?
@@ -253,7 +257,7 @@ private struct GUIEvent: Decodable {
 
     private func receive(_ event: GUIEvent, role: String, generation expected: UUID) {
         guard expected == generation else { return }
-        if let message = event.message { append(message) }
+        if event.type != "host-stage", let message = event.message { append(message, channel: role == "host" ? .host : .usb) }
         if phase == .cancelled || phase == .failed || phase == .verified { return }
         switch event.type {
         case "host-ready":
@@ -310,6 +314,7 @@ private struct GUIEvent: Decodable {
             }
         case "host-stage":
             hostStageLabel = event.message ?? hostStageLabel
+            if let message = event.message { append(message, channel: .host) }
             if let done = event.completed, let total = event.total, total > 0 { hostStageProgress = min(1, max(0, done / total)) }
             else { hostStageProgress = nil }
             if phase == .waitingForConsole || phase == .hostStarting {
@@ -350,7 +355,7 @@ private struct GUIEvent: Decodable {
         guard expected == generation else { return }
         if role == "host", hostProcess === process { hostProcess = nil }
         if role == "hid", hidProcess === process { hidProcess = nil }
-        if !diagnostic.isEmpty, let text = String(data: diagnostic, encoding: .utf8) { append(text) }
+        if !diagnostic.isEmpty, let text = String(data: diagnostic, encoding: .utf8) { append(text, channel: role == "host" ? .host : .usb) }
         guard phase != .cancelled, phase != .failed, phase != .verified else { return }
         if process.terminationStatus != 0 {
             fail("The \(role == "host" ? "host" : "USB transfer") stopped unexpectedly. Inspect the Switch before retrying.")
@@ -419,10 +424,20 @@ private struct GUIEvent: Decodable {
         }
     }
 
-    private func append(_ message: String) {
+    private enum LogChannel { case host, usb }
+
+    private func append(_ message: String, channel: LogChannel? = nil) {
         let clean = Self.redact(message) + "\n"
         log += clean
         if let bytes = clean.data(using: .utf8) { try? sessionLog?.write(contentsOf: bytes) }
+        if let channel {
+            switch channel {
+            case .host:
+                hostLog += clean; try? hostSessionLog?.write(contentsOf: clean.data(using: .utf8)!)
+            case .usb:
+                usbLog += clean; try? usbSessionLog?.write(contentsOf: clean.data(using: .utf8)!)
+            }
+        }
         if log.utf8.count > 50000 { log = String(log.suffix(40000)) }
     }
 
@@ -432,9 +447,17 @@ private struct GUIEvent: Decodable {
         if descriptor >= 0 {
             sessionLog = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             diagnosticLogURL = file
+            hostSessionLog = makeChannelLog(in: root, name: "host-session.log")
+            usbSessionLog = makeChannelLog(in: root, name: "usb-session.log")
             if let history = log.data(using: .utf8), !history.isEmpty { try? sessionLog?.write(contentsOf: history) }
         }
         else { error = "The private diagnostic log could not be created. Session logs may be incomplete." }
+    }
+
+    private func makeChannelLog(in root: URL, name: String) -> FileHandle? {
+        let file = root.appendingPathComponent(name)
+        let descriptor = open(file.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+        return descriptor >= 0 ? FileHandle(fileDescriptor: descriptor, closeOnDealloc: true) : nil
     }
 
     private func ensureFallbackLog() {
