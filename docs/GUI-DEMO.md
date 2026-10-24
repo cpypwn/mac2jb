@@ -4,7 +4,7 @@ v0.3.1 is the active release. A completed Mac-side transfer does not prove that 
 
 ## Run the app
 
-Extract the app ZIP and open **mac2jb.app**. It is one application to launch, with one native GUI executable containing the sender tools, Node.js runtime, host source, bootstrap, and notices. You do not need to install Node.js, Xcode, or command-line tools to run the prepared app. It extracts its embedded payload into a private session folder; “single executable” does not mean that it creates no local files.
+On an **Apple Silicon Mac running macOS 14 or newer**, extract the app ZIP and open **mac2jb.app**. Its executable bundles the sender tools, Node.js runtime, host source, bootstrap, unsigned USB driver, and notices. You do not need Node.js, Xcode, or command-line tools to run the prepared app. It extracts its embedded payload into a private session folder.
 
 The app is ad hoc signed, not Developer ID signed or notarized. If a downloaded copy is blocked by Gatekeeper, try opening it, then use **System Settings → Privacy & Security → Open Anyway**, if macOS offers it. See [Apple’s guidance for opening an app from an unidentified developer](https://support.apple.com/en-us/102445). Do not change kernel-security settings to address a Gatekeeper app warning.
 
@@ -24,7 +24,7 @@ Select the Mac’s IPv4 address on the same network as the Switch. The GUI keeps
 - **Full setup:** Open **SmileBASIC → Make a Program** with an empty editor before starting the bootstrap transfer. Allow approximately 7–10 minutes at the default typing speed. The GUI shows elapsed time and an estimate while it types, and records the final duration in the private session log. Wait until the entire bootstrap has finished typing; then enter **Direct mode**, type `SAVE "NS2"`, save it in **slot 0**, and continue to host & commands.
 - **Saved bootstrap:** With **NS2 already saved in slot 0**, **restart the console → open SmileBASIC → enter Direct mode**. mac2jb automatically sends `LOAD "TXT:NS2"` first. The GUI skips the long bootstrap transfer, starts a new host session, and sends the post-bootstrap commands using fresh pairing values.
 
-The sidebar tracks the selected flow and current attempt. **Saved bootstrap** keeps **Type bootstrap** checked. After a failure or cancellation, **Prepare** becomes active again and the interrupted step shows an **X**. Returning to Prepare does not repeat typing automatically.
+The sidebar tracks the selected flow and current attempt. Once a **Saved bootstrap** run starts, **Type bootstrap** is checked. After a failure or cancellation, **Prepare** becomes active again and the interrupted step shows an **X**. Returning to Prepare does not repeat typing automatically.
 
 Automatic USB selection tries the tested controllers 0, 1, and 3. Choose another controller manually if your Mac uses a different mapping. A retry is allowed only before typing begins. After a partial bootstrap, inspect and clear the editor before trying again. If post-bootstrap commands have started, or an exploit attempt fails or is cancelled, **restart the console before another attempt**. Do not send `REMOVE` twice in the same application process.
 
@@ -35,7 +35,7 @@ The GUI cannot inspect the Switch screen, verify a saved program, operate macOS 
 ## Before a first run
 
 1. Have an Apple Silicon Mac, a data-capable USB-C cable, and the compatible console software. The project’s tested combination is **Switch 2 system software 23.0.1 and SmileBASIC 4.4.9**, with more than **20 MiB free** in the SmileBASIC save.
-2. In macOS Recovery, enable third-party kernel extensions and disable SIP with `csrutil disable`. Restart into macOS. The GUI never changes these settings.
+2. **SIP must be disabled for the bundled unsigned driver.** In macOS Recovery, enable third-party kernel extensions and run `csrutil disable` in Terminal. Restart into macOS. You do not need to compile or sign the bundled driver. The GUI never changes Recovery settings.
 3. Click **Install & load driver…**, approve the administrator prompt, complete macOS approval if requested, and restart. The tested unsigned driver is bundled; Xcode is not required. The previous CLI also supports `bash mac2jb.command --install-driver`. See [driver setup and source-build fallback](../README.md#install-the-bundled-usb-driver-recommended).
 4. Put the Mac and Switch on the same reachable local network, select that network’s Mac IPv4 address, and allow the host through macOS networking/firewall prompts if requested. The host uses TCP port **39380**. Use a data-capable cable and check the USB power direction: on the tested hardware, enumeration failed when the Mac was charging the Switch. If the Switch shows that it is charging from the Mac, disconnect and reconnect the cable before retrying. A charging indicator does not prove that the keyboard data connection is working.
 5. Preserve compatible console software before testing. Follow the [README’s 90DNS guidance](../README.md#highly-recommended-protect-the-required-software-versions), including its regional IPv4 addresses. Its Step 3 wording remains: “Set both primary and secondary IPv6 DNS to `::`, as described in the linked guide. Save the settings and reconnect to the Wi-Fi network.”
@@ -48,4 +48,4 @@ Each GUI launch uses a private session folder under the user’s Application Sup
 
 Pairing files and upstream run data remain sensitive even though the GUI redacts pairing commands from its displayed diagnostics. Do not publish unredacted run folders or screenshots; session data is excluded from Git and release packaging. Stop the session before removing its data. Cancellation stops the processes belonging to that GUI session; it cannot undo keystrokes already delivered or replace a console restart.
 
-The application includes the runtime notices; the accompanying source preserves mac2jb’s MIT license, upstream MIT/APSL notices and modified source, and pinned ns2jb source/provenance. The root license does not relicense those components. Existing source-distribution and third-party-rights boundaries still apply. No compiled kernel extension or prior session logs are included.
+The application includes the runtime notices; the accompanying source preserves mac2jb’s MIT license, upstream MIT/APSL notices and modified source, and pinned ns2jb source/provenance. The root license does not relicense those components. The tested unsigned kernel extension is included in both the app and complete source archive; prior session logs are excluded.

@@ -22,7 +22,7 @@ Download the native Mac GUI from [the v0.3.1 release](https://github.com/cpypwn/
 `build/mac2jb.app`; see [the GUI guide](docs/GUI-DEMO.md) for setup,
 automation limits, and logging. Its single executable embeds Node.js, the
 senders, and the offline host, so users of the built app need no build tools
-or separate Node.js installation. The tested unsigned USB driver is bundled with the app and complete source distribution.
+or separate Node.js installation. The GUI requires **macOS 14 or newer** on Apple Silicon. The tested unsigned USB driver is bundled with the app and complete source distribution.
 
 The existing CLI is still available:
 `make` builds the command-line tools, and `bash mac2jb.command` runs the same
@@ -108,8 +108,8 @@ This recommendation concerns **preserving the tested firmware/software versions*
 ## Prerequisites and important security notes
 
 - An Apple silicon Mac, Nintendo Switch 2, SmileBASIC 4, and a **data-capable** USB-C connection.
-- Xcode Command Line Tools for building the mac2jb senders; **full Xcode is needed if you build the experimental kext from its Xcode project**.
-- Node.js **22 or newer** for the ns2jb host.
+- **CLI/source builds only:** Xcode Command Line Tools for the senders and Node.js **22 or newer** for the host. The prepared GUI bundles its runtime and tools.
+- **Driver-build fallback only:** full Xcode if you choose to compile the driver instead of using the included prebuilt copy.
 - The pinned vendored sources and `assets/bootstrap.bas`, as included in the complete repository/release archive.
 - A reachable local network connection between the Mac and Switch for the ns2jb host stage.
 - A compatible and **already installed/approved** experimental `usbgadget.kext` for USB gadget mode.
@@ -120,7 +120,7 @@ The tested **unsigned** prebuilt driver is at `drivers/usbgadget.kext`. Its sour
 vendor/macos_usb_gadget_poc/usbgadget/usbgadget.xcodeproj
 ```
 
-**Disable System Integrity Protection (SIP) for the unsigned/development-driver setup described here.** Reduced Security and `root:wheel` ownership alone do not remove kext signature enforcement. Enable third-party kernel extensions and complete any macOS approval/reboot prompts as well. The maintainer's working setup uses SIP disabled. Disabling SIP lowers system protection; mac2jb does not change it automatically. See [Apple's kernel security documentation](https://support.apple.com/guide/security/securely-extending-the-kernel-in-macos-sec8e454101b/web).
+**SIP must be disabled to use the bundled unsigned driver.** You do **not** need to compile or sign it. Enable third-party kernel extensions and complete any macOS approval/reboot prompts as well. The maintainer tested this unsigned driver with SIP disabled. Disabling SIP lowers system protection; mac2jb does not change it automatically. See [Apple's kernel security documentation](https://support.apple.com/guide/security/securely-extending-the-kernel-in-macos-sec8e454101b/web).
 
 `make` builds the **mac2jb command-line utilities**, not the kernel extension. It does not install or approve a kext for you.
 
@@ -132,6 +132,22 @@ vendor/macos_usb_gadget_poc/usbgadget/usbgadget.xcodeproj
 3. Approve any request in **System Settings → Privacy & Security**, then restart. Refresh the GUI's checks; the driver must be reported as loaded before starting. From Terminal, verify with `kmutil showloaded --list-only | grep -i usbgadget`.
 
 The installer checks the bundled driver's SHA-256 hashes, installs it at `/Library/Extensions/usbgadget.kext` with `root:wheel` ownership, and requests loading with `kmutil`. An existing driver is moved to a uniquely named backup; its path is printed in activity/logs. The installer never changes SIP or Recovery settings. See [driver provenance and checksums](drivers/README.md).
+
+For manual installation, after disabling SIP and enabling kernel extensions, navigate to the source checkout's `drivers` folder and run:
+
+```sh
+# Preserve an installed copy so ditto cannot merge old signature files into it.
+if [ -e /Library/Extensions/usbgadget.kext ]; then
+  sudo mv /Library/Extensions/usbgadget.kext "/Library/Extensions/.mac2jb-usbgadget-backup-$(uuidgen)"
+fi
+sudo ditto usbgadget.kext /Library/Extensions/usbgadget.kext
+sudo chown -R root:wheel /Library/Extensions/usbgadget.kext
+sudo chmod -R go-w /Library/Extensions/usbgadget.kext
+sudo sync
+sudo kmutil load -p /Library/Extensions/usbgadget.kext
+```
+
+Approve any macOS prompt and restart. The USB driver needs to be loaded for mac2jb to work. This prebuilt-driver setup follows **SocraticBliss's** recommendation; compiling is only the fallback below.
 
 If this build is incompatible with your Mac, use the source-build fallback below.
 
@@ -148,6 +164,9 @@ This is the fallback for users who cannot use the bundled prebuilt driver. If yo
    KEXT="/absolute/path/to/build/Products/Release/usbgadget.kext"
    test -d "$KEXT" || { echo "Kext bundle not found"; exit 1; }
 
+   if [ -e /Library/Extensions/usbgadget.kext ]; then
+     sudo mv /Library/Extensions/usbgadget.kext "/Library/Extensions/.mac2jb-usbgadget-backup-$(uuidgen)"
+   fi
    sudo ditto "$KEXT" /Library/Extensions/usbgadget.kext
    sudo chown -R root:wheel /Library/Extensions/usbgadget.kext
    sudo chmod -R go-w /Library/Extensions/usbgadget.kext
@@ -161,7 +180,7 @@ This is the fallback for users who cannot use the bundled prebuilt driver. If yo
    sudo kmutil load -p /Library/Extensions/usbgadget.kext
    ```
 
-   Follow any macOS approval prompts under **System Settings → Privacy & Security**, and restart if requested. A valid signing identity and appropriate kernel-extension approval may still be required; `sudo` and `chown` do not bypass signing or system security checks.
+   Follow any macOS approval prompts under **System Settings → Privacy & Security**, then restart. A signing identity is not required for the unsigned-driver setup with SIP disabled; kernel-extension policy, approval, ownership, and compatibility still apply.
 5. After the required reboot, check:
 
    ```sh
@@ -191,7 +210,7 @@ For driver diagnostics:
 kmutil showloaded | grep -i usbgadget
 ```
 
-A loaded driver is necessary for this workflow but does not mean USB enumeration is working. If mac2jb refuses to start or reports missing scripts, verify your installation is complete before changing system security settings.
+The USB driver needs to be loaded for mac2jb to work. After loading it, confirm USB input appears in SmileBASIC.
 
 ## Terminal launcher
 

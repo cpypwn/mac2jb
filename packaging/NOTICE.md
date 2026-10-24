@@ -13,7 +13,7 @@ The executable embeds the native mac2jb senders, libusbd, the pinned ns2jb
 snapshot, the bootstrap, and an Apple Silicon Node.js runtime. It extracts a
 new private session folder under `~/Library/Application Support/mac2jb/Sessions/`
 for every launch. Runtime downloads, a separate Node installation, Xcode, and
-Command Line Tools are not required to run this built demo. Those development
+Command Line Tools are not required to run this prepared app. Those development
 tools can still be needed to build and install a compatible USB gadget driver.
 
 Corresponding mac2jb and libusbd source and all retained vendor notices are
@@ -35,11 +35,11 @@ The root MIT license applies to mac2jb; it does not relicense third-party code.
 - Node.js: the bundled version's complete upstream LICENSE, including its
   third-party notices, is included as `licenses/node-LICENSE.txt`. The runtime
   version and local-binary hash are recorded in `licenses/node-provenance.json`.
-  The evaluation build uses the arm64 slice of the locally installed official
+  The app uses the arm64 slice of the locally installed official
   Node distribution, whose linked libraries must all be supplied by macOS.
 
 The GUI never silently changes Reduced Security, SIP, kernel-extension
-approval, or firewall policy. The app is ad hoc signed for local evaluation,
+approval, or firewall policy. The app is ad hoc signed,
 not Developer ID signed or notarized.
 
 The smile mark in `gui/KeyboardMark.swift` is original mac2jb artwork used
