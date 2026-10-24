@@ -1,0 +1,350 @@
+import AppKit
+import Combine
+import Darwin
+import Foundation
+
+enum SessionPhase: String {
+    case preparing, ready, bootstrap, awaitingSave, hostStarting, commands
+    case waitingForConsole, verified, failed, cancelled
+}
+
+struct NetworkAddress: Identifiable, Hashable {
+    let address: String
+    let interface: String
+    var id: String { "\(interface):\(address)" }
+    var label: String { "\(address) · \(interface)" }
+}
+
+private struct GUIEvent: Decodable {
+    let type: String
+    let message: String?
+    let kind: String?
+    let path: String?
+    let completed: Double?
+    let total: Double?
+    let partial: Bool?
+}
+
+@MainActor final class SessionModel: ObservableObject {
+    @Published var phase: SessionPhase = .preparing
+    @Published var status = "Preparing the bundled tools"
+    @Published var detail = "No system tools or downloads are needed."
+    @Published var log = ""
+    @Published var progress: Double?
+    @Published var addresses: [NetworkAddress] = []
+    @Published var selectedAddress = ""
+    @Published var controller = "auto"
+    @Published var fullInstall = true
+    @Published var driverStatus = "Checking the USB gadget driver…"
+    @Published var driverInstalled = false
+    @Published var error: String?
+    @Published private(set) var diagnosticLogURL: URL?
+    private(set) var runtime: BundledRuntime?
+    private var hostProcess: Process?
+    private var hidProcess: Process?
+    private var preparing = false
+    private var hostCompleted = false
+    private var generation = UUID()
+    private var runFolder: URL?
+    private var sessionLog: FileHandle?
+    private var sessionActivity: NSObjectProtocol?
+
+    var isBusy: Bool {
+        [.preparing, .bootstrap, .hostStarting, .commands, .waitingForConsole].contains(phase)
+    }
+
+    func prepare() {
+        guard !preparing, runtime == nil else { return }
+        preparing = true
+        refreshChecks()
+        Task {
+            do {
+                let override = ProcessInfo.processInfo.environment["MAC2JB_SESSION_PARENT"].flatMap {
+                    $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true)
+                }
+                let prepared = try await Task.detached(priority: .userInitiated) {
+                    try BundledRuntime.prepare(sessionParent: override)
+                }.value
+                runtime = prepared
+                openSessionLog(in: prepared.root)
+                phase = .ready
+                status = "Ready when you are"
+                detail = "Choose your Mac’s address on the same network as the Switch."
+                append("Offline runtime prepared. Session files are private to your account.")
+            } catch { fail("Could not prepare the bundled runtime: \(error.localizedDescription)") }
+            preparing = false
+        }
+    }
+
+    func refreshChecks() {
+        addresses = Self.localAddresses()
+        if !addresses.contains(where: { $0.address == selectedAddress }) {
+            selectedAddress = addresses.first?.address ?? ""
+        }
+        driverInstalled = FileManager.default.fileExists(atPath: "/Library/Extensions/usbgadget.kext")
+        driverStatus = driverInstalled ? "Driver installed; checking loaded status…" : "Driver not found in /Library/Extensions"
+        Task {
+            let installed = driverInstalled
+            let result = await Task.detached { Self.capture("/usr/bin/kmutil", ["showloaded", "--list-only"]) }.value
+            if result.0 == 0 {
+                driverStatus = result.1.contains("gay.bowser.usbgadget") || result.1.contains("usbgadget")
+                    ? "USB gadget driver is loaded"
+                    : (installed ? "Driver installed; not reported as loaded" : "USB gadget driver not reported as loaded")
+            } else {
+                driverStatus = installed ? "Driver installed; loaded status could not be verified" : "Driver installation and loaded status need checking"
+            }
+        }
+    }
+
+    func start() {
+        guard !isBusy, phase != .awaitingSave, hostProcess == nil, hidProcess == nil, let runtime else { return }
+        guard Self.isIPv4(selectedAddress), addresses.contains(where: { $0.address == selectedAddress }) else {
+            fail("Choose a current LAN IPv4 address for this Mac, then refresh checks.")
+            return
+        }
+        // Keep the Mac awake through typing, the save checkpoint, and host
+        // verification. This assertion is scoped to this session only.
+        endSessionActivity()
+        sessionActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled],
+            reason: "Completing the mac2jb USB and console session")
+        generation = UUID()
+        error = nil; progress = nil; hostCompleted = false; runFolder = nil
+        append("mac2jb 0.3.0 demo; controller=\(controller); address=\(selectedAddress). Starting a fresh \(fullInstall ? "full bootstrap" : "post-bootstrap") workflow.")
+        if fullInstall { startHID("bootstrap", root: runtime.root) }
+        else { startHost(root: runtime.root) }
+    }
+
+    func confirmSavedAndDirectMode() {
+        guard phase == .awaitingSave, let runtime else { return }
+        startHost(root: runtime.root)
+    }
+
+    func cancel() {
+        // Quit also calls cancel, so release the assertion even if the phase
+        // has already moved to a terminal state.
+        endSessionActivity()
+        guard isBusy || phase == .awaitingSave else { return }
+        phase = .cancelled; progress = nil
+        status = "Session stopped"
+        detail = "Inspect the Switch for partial input. Restart it before another exploit attempt."
+        error = nil
+        append("Stop requested. Only this app’s worker processes are being stopped.")
+        stopWorkers()
+    }
+
+    func revealSessionFolder() {
+        guard let folder = runtime?.root ?? diagnosticLogURL?.deletingLastPathComponent() else { return }
+        NSWorkspace.shared.open(folder)
+    }
+
+    func clearLog() { log = "" }
+
+    func recordDiagnostic(_ message: String) { append(message) }
+
+    private func startHost(root: URL) {
+        phase = .hostStarting; status = "Starting a fresh ns2jb host"
+        detail = "The Mac and Switch must be on the same local network. Allow incoming connections if macOS asks."
+        progress = nil
+        launch(arguments: ["host", selectedAddress], role: "host", root: root)
+    }
+
+    private func startHID(_ kind: String, root: URL) {
+        phase = kind == "bootstrap" ? .bootstrap : .commands
+        status = kind == "bootstrap" ? "Connecting the USB keyboard" : "Sending the four commands"
+        detail = kind == "bootstrap" ? "Keep the empty slot-0 editor focused. Transfer usually takes 7–10 minutes." : "Keep Direct mode focused. The expected Out of memory message after REMOVE is normal."
+        progress = kind == "bootstrap" ? 0 : nil
+        launch(arguments: ["hid", kind, controller, "50"], role: "hid", root: root)
+    }
+
+    private func launch(arguments: [String], role: String, root: URL) {
+        let process = Process()
+        process.executableURL = root.appendingPathComponent("node")
+        process.arguments = [root.appendingPathComponent("scripts/gui-host.cjs").path] + arguments
+        process.currentDirectoryURL = root
+        process.standardInput = FileHandle.nullDevice
+        let output = Pipe(); let stderr = Pipe()
+        process.standardOutput = output; process.standardError = stderr
+        let currentGeneration = generation
+        if role == "host" { hostProcess = process } else { hidProcess = process }
+        do { try process.run() }
+        catch {
+            if role == "host" { hostProcess = nil } else { hidProcess = nil }
+            fail("Could not launch the bundled tool: \(error.localizedDescription)")
+            return
+        }
+        // Read until EOF before processing termination: buffered enumeration or
+        // failure messages must not be overtaken by the child-exit callback.
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let stderrTask = Task.detached { stderr.fileHandleForReading.readDataToEndOfFile() }
+            var pending = Data()
+            while true {
+                let chunk = output.fileHandleForReading.availableData
+                if chunk.isEmpty { break }
+                pending.append(chunk)
+                while let newline = pending.firstIndex(of: 10) {
+                    let line = pending[..<newline]
+                    pending.removeSubrange(...newline)
+                    if let event = try? JSONDecoder().decode(GUIEvent.self, from: Data(line)) {
+                        await self?.receive(event, role: role, generation: currentGeneration)
+                    }
+                }
+                if pending.count > 131072 { pending.removeAll() }
+            }
+            if !pending.isEmpty, let event = try? JSONDecoder().decode(GUIEvent.self, from: pending) {
+                await self?.receive(event, role: role, generation: currentGeneration)
+            }
+            process.waitUntilExit()
+            let diagnostic = await stderrTask.value
+            await self?.workerExited(role: role, process: process, diagnostic: diagnostic, generation: currentGeneration)
+        }
+    }
+
+    private func receive(_ event: GUIEvent, role: String, generation expected: UUID) {
+        guard expected == generation else { return }
+        if let message = event.message { append(message) }
+        if phase == .cancelled || phase == .failed { return }
+        switch event.type {
+        case "host-ready":
+            guard role == "host", phase == .hostStarting, let runtime else { return }
+            startHID("commands", root: runtime.root)
+        case "run-folder":
+            if let path = event.path { runFolder = URL(fileURLWithPath: path) }
+        case "controller":
+            if role == "hid" { status = event.message ?? "Connecting the USB keyboard" }
+        case "typing":
+            if phase == .bootstrap { status = "Typing the SmileBASIC bootstrap" }
+        case "progress":
+            if let done = event.completed, let total = event.total, total > 0 { progress = min(1, max(0, done / total)) }
+        case "transfer-complete":
+            if event.kind == "bootstrap" {
+                phase = .awaitingSave; status = "Save NS2, then open Direct mode"
+                detail = "Inspect the text. Save it as NS2 in slot 0 in the same project, then switch to Direct mode."
+                progress = 1
+            } else if !hostCompleted {
+                phase = .waitingForConsole; status = "Commands sent — waiting for the console"
+                detail = "Keyboard delivery is complete. The host must independently verify FS execution and cleanup."
+                progress = nil
+            }
+        case "verified":
+            guard role == "host" else { return }
+            endSessionActivity()
+            hostCompleted = true
+            phase = .verified; status = "FS execution verified"
+            detail = "The host verified execution, restored the original instructions, and cleaned up scratch space. Restart the console when finished."
+            progress = 1
+        case "failed":
+            fail(event.message ?? "The session did not finish. Inspect the Switch before retrying.")
+        case "cancelled":
+            endSessionActivity()
+            phase = .cancelled; status = "Session stopped"; progress = nil
+        default: break
+        }
+    }
+
+    private func workerExited(role: String, process: Process, diagnostic: Data, generation expected: UUID) {
+        guard expected == generation else { return }
+        if role == "host", hostProcess === process { hostProcess = nil }
+        if role == "hid", hidProcess === process { hidProcess = nil }
+        if !diagnostic.isEmpty, let text = String(data: diagnostic, encoding: .utf8) { append(text) }
+        guard phase != .cancelled, phase != .failed, phase != .verified else { return }
+        if process.terminationStatus != 0 {
+            fail("The \(role == "host" ? "host" : "USB transfer") stopped unexpectedly. Inspect the Switch before retrying.")
+        } else if role == "host" && !hostCompleted {
+            fail("The host ended without independently verified FS execution.")
+        }
+    }
+
+    private func stopWorkers() {
+        for worker in [hostProcess, hidProcess].compactMap({ $0 }) where worker.isRunning { worker.terminate() }
+    }
+
+    private func fail(_ message: String) {
+        endSessionActivity()
+        let clean = Self.redact(message)
+        ensureFallbackLog()
+        error = clean; phase = .failed; status = "The session needs attention"
+        detail = clean; progress = nil
+        append(clean)
+        stopWorkers()
+    }
+
+    private func endSessionActivity() {
+        if let activity = sessionActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            sessionActivity = nil
+        }
+    }
+
+    private func append(_ message: String) {
+        let clean = Self.redact(message) + "\n"
+        log += clean
+        if let bytes = clean.data(using: .utf8) { try? sessionLog?.write(contentsOf: bytes) }
+        if log.utf8.count > 50000 { log = String(log.suffix(40000)) }
+    }
+
+    private func openSessionLog(in root: URL) {
+        let file = root.appendingPathComponent("gui-session.log")
+        let descriptor = open(file.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, S_IRUSR | S_IWUSR)
+        if descriptor >= 0 {
+            sessionLog = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            diagnosticLogURL = file
+        }
+        else { error = "The private diagnostic log could not be created. Session logs may be incomplete." }
+    }
+
+    private func ensureFallbackLog() {
+        guard sessionLog == nil else { return }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("mac2jb-gui-error-" + UUID().uuidString, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
+                                                    attributes: [.posixPermissions: 0o700])
+            openSessionLog(in: folder)
+            append("mac2jb 0.3.0 demo: runtime preparation diagnostic log.")
+        } catch { diagnosticLogURL = nil }
+    }
+
+    nonisolated static func redact(_ text: String) -> String {
+        text.replacingOccurrences(of: #"V=START\([^\r\n)]*\)"#, with: "V=START(<private session>)", options: .regularExpression)
+    }
+
+    nonisolated static func isIPv4(_ address: String) -> Bool {
+        var value = in_addr()
+        return address.withCString { inet_pton(AF_INET, $0, &value) } == 1
+    }
+
+    nonisolated private static func localAddresses() -> [NetworkAddress] {
+        var first: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&first) == 0, let initial = first else { return [] }
+        defer { freeifaddrs(first) }
+        var values: [NetworkAddress] = []
+        var item: UnsafeMutablePointer<ifaddrs>? = initial
+        while let current = item {
+            defer { item = current.pointee.ifa_next }
+            let info = current.pointee
+            guard let address = info.ifa_addr, address.pointee.sa_family == UInt8(AF_INET),
+                  (info.ifa_flags & UInt32(IFF_UP)) != 0, (info.ifa_flags & UInt32(IFF_LOOPBACK)) == 0 else { continue }
+            var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            if getnameinfo(address, socklen_t(address.pointee.sa_len), &buffer, socklen_t(buffer.count), nil, 0, NI_NUMERICHOST) == 0 {
+                let string = String(cString: buffer)
+                if !string.hasPrefix("169.254.") { values.append(NetworkAddress(address: string, interface: String(cString: info.ifa_name))) }
+            }
+        }
+        // Physical interfaces precede virtual/VPN interfaces, without guessing
+        // that the first address necessarily reaches the user's console.
+        return values.sorted { a, b in
+            let physicalA = a.interface.hasPrefix("en"), physicalB = b.interface.hasPrefix("en")
+            if physicalA != physicalB { return physicalA }
+            return a.label < b.label
+        }
+    }
+
+    nonisolated private static func capture(_ executable: String, _ arguments: [String]) -> (Int32, String) {
+        let process = Process(); let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: executable); process.arguments = arguments
+        process.standardOutput = output; process.standardError = output; process.standardInput = FileHandle.nullDevice
+        do { try process.run() } catch { return (1, error.localizedDescription) }
+        let data = output.fileHandleForReading.readDataToEndOfFile(); process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: data, as: UTF8.self))
+    }
+}

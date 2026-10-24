@@ -16,6 +16,22 @@ Use at your own risk. mac2jb is provided without a guarantee of compatibility, e
 
 ## Source provenance, licensing, and session security
 
+### v0.3.0 GUI preview
+
+The native Mac GUI is in development. Build it with `make gui` and open
+`build/Mac2jb Demo.app`; see [the demo guide](docs/GUI-DEMO.md) for setup,
+automation limits, and logging. Its single executable embeds Node.js, the
+senders, and the offline host, so users of the built app need no build tools
+or separate Node.js installation. It does not include a compiled kernel extension.
+
+**v0.2.1 remains the active release.** The existing CLI is still available:
+`make` builds the command-line tools, and `bash mac2jb.command` runs the same
+terminal workflow. GUI work does not change the vendored exploit runtime.
+
+GUI failures display the diagnostic log's exact path and an **Open logs**
+button. Session files stay in private per-launch folders outside the checkout;
+build folders and repository-local logs are also ignored by Git.
+
 The repository root `LICENSE` applies to mac2jb's MIT-licensed code and does **not**
 relicense third-party material. `vendor/libusbd/LICENSE` and
 `vendor/macos_usb_gadget_poc/usbgadget/LICENSE` retain the upstream MIT notices.

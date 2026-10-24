@@ -57,6 +57,9 @@ for item in \
     upstream.lock \
     make-release-zip.command \
     scripts \
+    gui \
+    docs \
+    packaging \
     assets \
     vendor
 do

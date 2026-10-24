@@ -46,7 +46,7 @@ jobs:
       - name: Verify ns2jb snapshot and tests
         run: |
           (cd vendor/ns2jb && shasum -a 256 -c SHA256SUMS)
-          node --test vendor/ns2jb/test.cjs
+          node --test vendor/ns2jb/test.cjs scripts/test-gui-host.cjs
 
       - name: Check shell script syntax
         run: |

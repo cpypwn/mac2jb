@@ -9,6 +9,11 @@ LDFLAGS := -arch $(ARCH) -L$(LIBUSBD_DIR) -lusbd -Wl,-rpath,@executable_path/$(L
 .PHONY: all clean check-deps
 all: check-deps mac2jb-send mac2jb-commands
 
+# Additive preview target. The default v0.2.1 CLI build remains `make`.
+.PHONY: gui
+gui:
+	bash scripts/build-gui.sh
+
 check-deps:
 	@test -f $(LIBUSBD_DIR)/Makefile || (echo 'missing bundled libusbd source' >&2; exit 1)
 

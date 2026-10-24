@@ -21,6 +21,16 @@ __pycache__/
 
 # Build artifacts
 *.dSYM
+
+# Native GUI builds, embedded runtime downloads, and local diagnostics.
+/build/
+/.build-gui/
+/logs/
+/gui-logs/
+*.session.log
+*.log
+*.log.*
+mac2jb-active-connect.txt
 # Do not commit machine-specific compiled kexts or generated Xcode user state.
 /vendor/macos_usb_gadget_poc/usbgadget.kext/
 /vendor/macos_usb_gadget_poc/usb_device/
