@@ -86,7 +86,7 @@ These are **model-specific observations**, not universal Mac port mappings. Othe
 2. Set the **IPv4 DNS** addresses for your region:
    - **North or South America:** Primary `207.246.121.77`; Secondary `163.172.141.219`.
    - **Anywhere else:** Primary `163.172.141.219`; Secondary `207.246.121.77`.
-3. - **Set **both the primary and secondary IPv6 DNS** entries to `::`, as described in the linked guide. Save the settings and reconnect to the Wi-Fi network.
+3. **On Switch 2, set both primary and secondary IPv6 DNS to `::`**, as described in the linked guide. Save the settings and reconnect to the Wi-Fi network.
 
 90DNS is a third-party DNS service intended to block Nintendo services, not only firmware updates; this may prevent eShop access, Nintendo Switch Online, and other Nintendo features. Check the [current guide](https://consolemods.org/wiki/Switch:Blocking_OFW_Updates) before use and verify the connection and filtering work on your network. **DNS filtering is not a guarantee against updates:** cached addresses, alternative networks, changed endpoints, or other paths can bypass it. The `::` IPv6 setting may also be unsuitable for IPv6-only networks. Do not rely on DNS blocking as the only protection against accidental updates.
 
