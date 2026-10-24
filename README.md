@@ -207,6 +207,7 @@ Its startup menu offers:
 1) Full install (bootstrap + post-bootstrap)
 2) Post-bootstrap only
 3) Quit
+4) Install & load bundled USB driver
 ```
 
 Option 1 — Full install: Open **SmileBASIC → Make a Program** with an empty editor. Wait until the entire bootstrap has finished typing, then inspect the program, save it as `NS2` in **slot 0**, and enter **Direct mode** before pressing Enter. The launcher then starts the ns2jb host in a separate Terminal window and waits for the current session’s pairing command before transmitting post-bootstrap commands.
@@ -214,6 +215,8 @@ Option 1 — Full install: Open **SmileBASIC → Make a Program** with an empty 
 Bootstrap transfer time: The bundled bootstrap is approximately 7,804 characters over 224 lines. At the default `--delay-ms 50`, typing typically takes about 7–10 minutes, including USB overhead and indentation adjustments. This is an estimate, not a hard timeout. After enumeration succeeds, leave the Terminal window open and the cable connected until typing completes.
 
 Option 2 — Post-bootstrap only: With `NS2` already saved in **slot 0**, **restart the console → open SmileBASIC → enter Direct mode**. The launcher skips the bootstrap transfer, starts a new ns2jb host session, and automatically sends `LOAD "TXT:NS2"` followed by the remaining post-bootstrap commands.
+
+Option 4 — Install & load bundled USB driver: Installs the included unsigned `usbgadget.kext`, preserves any existing driver in a backup, and requests loading. Disable SIP and enable kernel extensions in Recovery first; complete any macOS approval prompts and restart before choosing option 1 or 2. You can also run `bash mac2jb.command --install-driver` directly.
 
 The launcher opens the ns2jb host in another Terminal window and waits for its current session’s `V=START(...)` pairing command before submitting the post-bootstrap commands. They are sent in this order:
 
