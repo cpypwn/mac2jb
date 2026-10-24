@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-// Renders mac2jb's original app-icon keyboard geometry at the standard macOS
+// Renders mac2jb's original app-icon face geometry at the standard macOS
 // iconset sizes. Uses no SF Symbol artwork or third-party image assets.
 @main
 struct MakeAppIcon {
