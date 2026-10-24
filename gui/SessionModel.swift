@@ -174,7 +174,7 @@ private struct GUIEvent: Decodable {
     private func startHID(_ kind: String, root: URL) {
         phase = kind == "bootstrap" ? .bootstrap : .commands
         status = kind == "bootstrap" ? "Connecting the USB keyboard" : "Sending the four commands"
-        detail = kind == "bootstrap" ? "Keep Make a Program open in [WORKSPACE] until the entire bootstrap has finished typing. Using \(keyDelayMs) ms per key." : "Keep Direct mode focused. Using \(keyDelayMs) ms per key. The expected Out of memory message after REMOVE is normal."
+        detail = kind == "bootstrap" ? "Keep Make a Program open until the entire bootstrap has finished typing. Using \(keyDelayMs) ms per key." : "Keep Direct mode focused. Using \(keyDelayMs) ms per key. The expected Out of memory message after REMOVE is normal."
         progress = 0; progressLabel = "Waiting for the USB keyboard"; isEnumerating = true
         launch(arguments: ["hid", kind, controller, String(keyDelayMs),
             "--enumeration-timeout", String(enumerationTimeoutSeconds),
@@ -288,7 +288,7 @@ private struct GUIEvent: Decodable {
             isEnumerating = false
             if event.kind == "bootstrap" {
                 phase = .awaitingSave; status = "Save NS2, then enter Direct mode"
-                detail = "The bootstrap has finished typing. In [WORKSPACE], inspect the program, save it as NS2 in slot 0, then enter Direct mode."
+                detail = "The bootstrap has finished typing. Inspect the program, save it as NS2 in slot 0, then enter Direct mode."
                 progress = 1; progressLabel = "Bootstrap transfer complete"
             } else if !hostCompleted {
                 phase = .waitingForConsole; status = hostStageLabel

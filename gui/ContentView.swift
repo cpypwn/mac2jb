@@ -227,9 +227,9 @@ struct ContentView: View {
                     }
                     Group {
                         if model.fullInstall {
-                            Text("On the Switch: select the default **[WORKSPACE]** project, then open **Make a Program** with an empty editor. Leave the editor open while the bootstrap is typed.")
+                            Text("On the Switch: open SmileBASIC, then **Make a Program** with an empty editor. Leave the editor open while the bootstrap is typed.")
                         } else {
-                            Text("On the Switch: **restart the console → open SmileBASIC → enter Direct mode**. mac2jb sends LOAD first to load NS2 from the default **[WORKSPACE]** project.")
+                            Text("On the Switch: **restart the console → open SmileBASIC → enter Direct mode**. mac2jb loads NS2 automatically.")
                         }
                     }
                         .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -277,7 +277,7 @@ struct ContentView: View {
                 if model.isEnumerating { powerDirectionNotice }
                 if model.phase == .awaitingSave {
                     Divider()
-                    Text("The bootstrap has finished typing. In **[WORKSPACE]**, inspect the program, save it as **NS2** in **slot 0**, then enter **Direct mode**. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
+                    Text("The bootstrap has finished typing. Inspect the program, save it as **NS2** in **slot 0**, then enter **Direct mode**. The GUI will send LOAD, RUN, REMOVE, and this session’s START command.")
                         .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     Toggle("NS2 is saved in slot 0 and I have entered Direct mode", isOn: $savedConfirmed)
                         .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))

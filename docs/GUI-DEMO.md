@@ -4,7 +4,7 @@ This is a local preview of the v0.3.0 interface. **v0.2.1 remains the active rel
 
 ## Run the demo
 
-Extract the demo ZIP and open **mac2jb.app**. It is one application to launch, with one native GUI executable containing the sender tools, Node.js runtime, host source, bootstrap, and notices. You do not need to install Node.js, Xcode, or command-line tools to run the prepared demo. It extracts its embedded payload into a private workspace for the current session; “single executable” does not mean that it creates no local files.
+Extract the demo ZIP and open **mac2jb.app**. It is one application to launch, with one native GUI executable containing the sender tools, Node.js runtime, host source, bootstrap, and notices. You do not need to install Node.js, Xcode, or command-line tools to run the prepared demo. It extracts its embedded payload into a private session folder; “single executable” does not mean that it creates no local files.
 
 The demo is ad hoc signed, not Developer ID signed or notarized. If a downloaded copy is blocked by Gatekeeper, try opening it, then use **System Settings → Privacy & Security → Open Anyway**, if macOS offers it. See [Apple’s guidance for opening an app from an unidentified developer](https://support.apple.com/en-us/102445). Do not change kernel-security settings to address a Gatekeeper app warning.
 
@@ -21,14 +21,14 @@ open build/mac2jb.app
 
 Select the Mac’s IPv4 address on the same network as the Switch. The GUI keeps the ns2jb host and its current pairing values together, selects a USB controller automatically, displays transfer progress, and sends the four post-bootstrap commands in order. It can also request that macOS load an already installed driver, using a macOS administrator prompt; installation, signing, policy approval, and any required reboot remain separate. The extra Enter for SmileBASIC’s `LOAD` confirmation is included. The expected **Out of memory** response after `REMOVE` is part of the upstream procedure.
 
-- **Full setup:** Select the default **[WORKSPACE]** project, then open **Make a Program** with an empty editor before starting the bootstrap transfer. Allow approximately 7–10 minutes at the default typing speed. Wait until the entire bootstrap has finished typing; only then inspect the program, save it as **NS2** in **slot 0**, and enter **Direct mode in [WORKSPACE]**. Continue only after completing that checkpoint.
-- **Saved bootstrap:** **Restart the console → open SmileBASIC → enter Direct mode.** mac2jb sends `LOAD "TXT:NS2"` first to load NS2 from the default **[WORKSPACE]** project. The GUI skips the long bootstrap transfer, starts a new host session, and sends the post-bootstrap commands using fresh pairing values.
+- **Full setup:** Open **SmileBASIC → Make a Program** with an empty editor before starting the bootstrap transfer. Allow approximately 7–10 minutes at the default typing speed. Wait until the entire bootstrap has finished typing; only then inspect the program, save it as **NS2** in **slot 0**, and enter **Direct mode**. Continue only after completing that checkpoint.
+- **Saved bootstrap:** With **NS2 already saved in slot 0**, **restart the console → open SmileBASIC → enter Direct mode**. mac2jb automatically sends `LOAD "TXT:NS2"` first. The GUI skips the long bootstrap transfer, starts a new host session, and sends the post-bootstrap commands using fresh pairing values.
 
 Automatic USB selection tries the tested controllers 0, 1, and 3. Choose another controller manually if your Mac uses a different mapping. A retry is allowed only before typing begins. After a partial bootstrap, inspect and clear the editor before trying again. If post-bootstrap commands have started, or an exploit attempt fails or is cancelled, **restart the console before another attempt**. Do not send `REMOVE` twice in the same application process.
 
 The timing controls let you tune key pacing, each controller’s enumeration timeout, and the waits between commands. Defaults are **50 ms per key**, **4 seconds per controller**, **1 second before confirming LOAD**, and **3 seconds after LOAD, RUN, and REMOVE**. The key-delay range is 1–2,000 ms, the enumeration range is 1–120 seconds, and each command wait accepts 0–120,000 ms. These changes apply to the GUI sender; the existing CLI keeps its original options and timing. The progress display counts bootstrap lines, command steps, and waiting time; it does not infer console execution from a timer.
 
-The GUI cannot inspect the Switch screen, select its project, verify a saved program, operate macOS Recovery, grant kernel-extension approval, or guarantee exploit success. Keep the console focused and the USB cable connected. Only the host’s verified result establishes **FS execution verified**, including restoration and cleanup; **keyboard transfer completed** means only that the HID sender finished.
+The GUI cannot inspect the Switch screen, verify a saved program, operate macOS Recovery, grant kernel-extension approval, or guarantee exploit success. Keep the console focused and the USB cable connected. Only the host’s verified result establishes **FS execution verified**, including restoration and cleanup; **keyboard transfer completed** means only that the HID sender finished.
 
 ## Before a first run
 
@@ -42,7 +42,7 @@ Once a compatible driver is installed, approved, and loaded, the prepared applic
 
 ## Session data and distribution
 
-Each GUI launch uses a private workspace under the user’s Application Support directory. Its redacted `gui-session.log` and the upstream host’s own run files are retained for diagnosis, including after a failure. A failure dialog shows the exact diagnostic log path and an **Open logs** button. If preparation fails before the normal session folder is ready, the app attempts to save a private diagnostic log in the macOS temporary directory instead; the dialog reports if no log could be saved.
+Each GUI launch uses a private session folder under the user’s Application Support directory. Its redacted `gui-session.log` and the upstream host’s own run files are retained for diagnosis, including after a failure. A failure dialog shows the exact diagnostic log path and an **Open logs** button. If preparation fails before the normal session folder is ready, the app attempts to save a private diagnostic log in the macOS temporary directory instead; the dialog reports if no log could be saved.
 
 Pairing files and upstream run data remain sensitive even though the GUI redacts pairing commands from its displayed diagnostics. Do not publish unredacted run folders or screenshots; session data is excluded from Git and release packaging. Stop the session before removing its data. Cancellation stops the processes belonging to that GUI session; it cannot undo keystrokes already delivered or replace a console restart.
 

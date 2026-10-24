@@ -6,7 +6,7 @@ release. It contains no compiled kernel extension.
 
 The executable embeds the native mac2jb senders, libusbd, the pinned ns2jb
 snapshot, the bootstrap, and an Apple Silicon Node.js runtime. It extracts a
-new private workspace under `~/Library/Application Support/mac2jb/Sessions/`
+new private session folder under `~/Library/Application Support/mac2jb/Sessions/`
 for every launch. Runtime downloads, a separate Node installation, Xcode, and
 Command Line Tools are not required to run this built demo. Those development
 tools can still be needed to build and install a compatible USB gadget driver.

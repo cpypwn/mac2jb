@@ -231,23 +231,19 @@ run_hid() {
 
 if [[ "$mode" == 1 ]]; then
   echo
-  echo 'In SmileBASIC, select the project where NS2 will be saved in slot 0.'
-  echo 'The default [WORKSPACE] project is the setup used for all maintainer tests.'
-  echo 'Open an EMPTY SmileBASIC program editor on the Switch.'
+  echo 'Open SmileBASIC, choose Make a Program, and open an EMPTY editor on the Switch.'
   read -r -p 'Press Enter when ready... ' _
   if ! run_hid 'Sending bootstrap' env MAC2JB_AUTO_WORKER=1 ./mac2jb-send assets/bootstrap.bas --delay-ms 50; then
     echo 'Bootstrap transfer failed; post-bootstrap steps were not started.'
     exit 1
   fi
-  echo 'Bootstrap transferred. In the SAME SmileBASIC project, verify and save it as NS2 in slot 0.'
-  echo 'The default [WORKSPACE] project is the tested choice.'
+  echo 'Bootstrap transferred. Inspect the program and save it as NS2 in slot 0.'
   echo 'Switch to SmileBASIC Direct mode before continuing.'
 else
   echo
-  echo 'Restart the console after a previous failed exploit attempt.'
-  echo 'Select the SmileBASIC project that contains the saved NS2 bootstrap in slot 0.'
-  echo 'The default [WORKSPACE] project is where all maintainer tests succeeded.'
-  echo 'Open Direct mode in that project. The launcher will type LOAD "TXT:NS2" first.'
+  echo 'Restart the console, then open SmileBASIC.'
+  echo 'Make sure NS2 is already saved in slot 0.'
+  echo 'Enter Direct mode. The launcher will type LOAD "TXT:NS2" first.'
 fi
 
 cat <<'NOTICE'
@@ -255,7 +251,7 @@ cat <<'NOTICE'
 LOAD "TXT:NS2", RUN, REMOVE, then the live V=START command will be sent in order.
 HID success does not prove command execution. Keep Direct mode focused.
 NOTICE
-read -r -p 'Confirm the correct project, NS2 in slot 0, and Direct mode; press Enter to start ns2jb... ' _
+read -r -p 'Confirm NS2 is saved in slot 0 and Direct mode is open; press Enter to start ns2jb... ' _
 
 mkdir -p vendor/ns2jb/runs
 chmod 700 vendor/ns2jb/runs

@@ -202,11 +202,11 @@ Its startup menu offers:
 3) Quit
 ```
 
-Option 1 — Full install: Select the SmileBASIC project where you intend to save `NS2` (the maintainer uses `[WORKSPACE]`), and open an empty slot-0 editor. Transfer and inspect the bootstrap, save it as `NS2` in slot 0, and switch to Direct mode in the same project before pressing Enter. The launcher then starts the ns2jb host in a separate Terminal window and waits for the current session’s pairing command before transmitting post-bootstrap commands.
+Option 1 — Full install: Open **SmileBASIC → Make a Program** with an empty editor. Wait until the entire bootstrap has finished typing, then inspect the program, save it as `NS2` in **slot 0**, and enter **Direct mode** before pressing Enter. The launcher then starts the ns2jb host in a separate Terminal window and waits for the current session’s pairing command before transmitting post-bootstrap commands.
 
 Bootstrap transfer time: The bundled bootstrap is approximately 7,804 characters over 224 lines. At the default `--delay-ms 50`, typing typically takes about 7–10 minutes, including USB overhead and indentation adjustments. This is an estimate, not a hard timeout. After enumeration succeeds, leave the Terminal window open and the cable connected until typing completes.
 
-Option 2 — Post-bootstrap only: After a fresh console restart, open the SmileBASIC project containing the saved `NS2` program in slot 0 and enter Direct mode. `[WORKSPACE]` is the default project and was used for the maintainer’s successful tests. The launcher skips the bootstrap transfer but starts a new ns2jb host session and sends all post-bootstrap commands.
+Option 2 — Post-bootstrap only: With `NS2` already saved in **slot 0**, **restart the console → open SmileBASIC → enter Direct mode**. The launcher skips the bootstrap transfer, starts a new ns2jb host session, and automatically sends `LOAD "TXT:NS2"` followed by the remaining post-bootstrap commands.
 
 The launcher opens the ns2jb host in another Terminal window and waits for its current session’s `V=START(...)` pairing command before submitting the post-bootstrap commands. They are sent in this order:
 
@@ -235,13 +235,13 @@ This launcher workflow requires the matching updated `mac2jb-commands` binary. B
 
 You can still run the tools without the menu. This is useful for debugging or validating a new launcher.
 
-1. Open an **empty** SmileBASIC editor and transfer the bootstrap:
+1. Open **SmileBASIC → Make a Program** with an **empty** editor and transfer the bootstrap:
 
    ```sh
    ./mac2jb-send assets/bootstrap.bas --delay-ms 50
    ```
 
-2. Inspect and save the bootstrap as `NS2` in slot 0 of the selected project (`[WORKSPACE]` was tested), then return to Direct mode in that same project. On subsequent runs, skip the lengthy transfer and use the saved program.
+2. Wait until the entire bootstrap has finished typing, inspect and save it as `NS2` in **slot 0**, then enter **Direct mode**. On subsequent runs, skip the lengthy transfer and use the saved program.
 3. Start the ns2jb host from the project root in a separate Terminal window:
 
    ```sh
