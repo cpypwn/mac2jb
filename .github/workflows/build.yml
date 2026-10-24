@@ -38,6 +38,16 @@ jobs:
         run: |
           shasum -a 256 -c assets/bootstrap.bas.sha256
 
+      - name: Set up Node.js for ns2jb tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Verify ns2jb snapshot and tests
+        run: |
+          (cd vendor/ns2jb && shasum -a 256 -c SHA256SUMS)
+          node --test vendor/ns2jb/test.cjs
+
       - name: Check shell script syntax
         run: |
           bash -n make-release-zip.command

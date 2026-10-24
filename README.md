@@ -8,7 +8,7 @@ mac2jb bundles or references upstream work from [libusbd](https://github.com/shi
 
 ## What it does and where support ends
 
-mac2jb is responsible for the **Mac-side USB keyboard emulation, SmileBASIC bootstrap transfer, command transmission, and orchestration of the locally bundled ns2jb host**. It does not implement or modify ns2jb's exploit logic. The vendored ns2jb source is kept unchanged from its pinned upstream version; mac2jb's own host wrapper, launcher, and integration scripts are separate files.
+mac2jb is responsible for the **Mac-side USB keyboard emulation, SmileBASIC bootstrap transfer, command transmission, and orchestration of the locally bundled ns2jb host**. It does not implement or modify ns2jb's exploit logic. The vendored ns2jb runtime and exploit implementation are unchanged from the pinned upstream revision. The only downstream ns2jb source adjustment is a sanitized expected-value fixture in `vendor/ns2jb/test.cjs` (with its updated `SHA256SUMS` entry); mac2jb's own host wrapper, launcher, and integration scripts are separate files.
 
 **Support boundary:** I can investigate issues with mac2jb's installation, controller selection, USB enumeration, character transmission, launcher, and handoff to the host. **Once mac2jb has delivered its commands and ns2jb is executing its own stages, ns2jb-specific failures are outside the scope of mac2jb support.** Please consult the [upstream ns2jb project](https://gitlab.com/pepsipu/ns2jb) for details about its internals and acquisition or execution failures. I cannot provide individual troubleshooting for ns2jb itself.
 
@@ -24,8 +24,11 @@ APSL 2.0 text is included in both `vendor/libusbd/LICENSE-APSL-2.0.txt` and
 `vendor/macos_usb_gadget_poc/LICENSE-APSL-2.0.txt`. Dated changes to libusbd's
 macOS backend and build are recorded inside their respective modified files.
 
-`vendor/ns2jb` is a pinned upstream snapshot: its separate redistribution and
-third-party rights must be reviewed before public releases. The vendored
+`vendor/ns2jb` is pinned to an upstream revision; only its `test.cjs` assertion
+fixture is adapted to avoid embedding a complete numeric `V=START(...)` value,
+and its `SHA256SUMS` checksum reflects that adaptation. The runtime and exploit
+logic are unchanged. Separate redistribution and third-party rights must be
+reviewed before public releases. The vendored
 `macos_usb_gadget_poc` material is intentionally **trimmed** to its documented
 MIT-licensed `usbgadget/` kernel-extension source/Xcode project. It excludes the
 unused `usb_device/` proof of concept and the precompiled `.kext` bundle.
@@ -77,7 +80,15 @@ These are **model-specific observations**, not universal Mac port mappings. Othe
 
 **I strongly recommend configuring DNS-based blocking of Nintendo update services on the Switch 2 network connection before testing.** The purpose is to reduce the chance of an unwanted system update or SmileBASIC update that could make the tested exploit chain incompatible.
 
-Use a reputable, currently maintained blocking-DNS configuration appropriate for your network. Verify that the chosen service's documentation actually covers the relevant Nintendo update endpoints. **DNS filtering is not a guarantee:** cached addresses, alternate domains, encrypted DNS, changes in Nintendo's infrastructure, or other update paths may bypass a given blocklist. Blocking Nintendo endpoints can interfere with online play, eShop access, account services, and other features. Do not assume blocking DNS alone makes accidental updates impossible.
+**Recommended service: [90DNS (ConsoleMods guide)](https://consolemods.org/wiki/Switch:Blocking_OFW_Updates#90DNS).** Configure it on the Switch 2 network you use for testing:
+
+1. Open **System Settings → Internet → Internet Settings**, select your Wi-Fi network, and choose **Change Settings**. Set **DNS Settings** to **Manual**.
+2. Set the **IPv4 DNS** addresses for your region:
+   - **North or South America:** Primary `207.246.121.77`; Secondary `163.172.141.219`.
+   - **Anywhere else:** Primary `163.172.141.219`; Secondary `207.246.121.77`.
+3. - **Set **both the primary and secondary IPv6 DNS** entries to `::`, as described in the linked guide. Save the settings and reconnect to the Wi-Fi network.
+
+90DNS is a third-party DNS service intended to block Nintendo services, not only firmware updates; this may prevent eShop access, Nintendo Switch Online, and other Nintendo features. Check the [current guide](https://consolemods.org/wiki/Switch:Blocking_OFW_Updates) before use and verify the connection and filtering work on your network. **DNS filtering is not a guarantee against updates:** cached addresses, alternative networks, changed endpoints, or other paths can bypass it. The `::` IPv6 setting may also be unsuitable for IPv6-only networks. Do not rely on DNS blocking as the only protection against accidental updates.
 
 This recommendation concerns **preserving the tested firmware/software versions**, not making the exploit safer or more reliable.
 

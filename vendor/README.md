@@ -11,8 +11,11 @@ source files. Root `LICENSE` does not override third-party terms.
   provenance README and APSL text. The unused `usb_device/` proof of concept,
   upstream convenience shell scripts, prebuilt `usbgadget.kext/`, and machine-local
   Xcode user settings are excluded. This is **not** a byte-for-byte upstream tree.
-- **ns2jb:** pinned upstream source. Any redistributor must establish their own
-  rights to ship it; a Git URL or public availability alone is not a license.
+- **ns2jb:** pinned upstream runtime/exploit source. Only `test.cjs`'s
+  deterministic expected-value fixture was sanitized to avoid a complete
+  numeric pairing string, and its `SHA256SUMS` entry was updated. All runtime
+  and exploit files remain unchanged. Any redistributor must establish their
+  own rights to ship it; a Git URL or public availability alone is not a license.
 
 Do not run `scripts/freeze-upstream.sh` in a normal user installation. It is a
 maintainer-only source refresh requiring a new provenance, license and security
