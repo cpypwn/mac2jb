@@ -36,8 +36,8 @@ The GUI never silently changes Reduced Security, SIP, kernel-extension
 approval, or firewall policy. The app is ad hoc signed for local evaluation,
 not Developer ID signed or notarized.
 
-The keyboard mark in `gui/KeyboardMark.swift` is original mac2jb artwork,
-shared by the sidebar and the app-icon generator. The app icon does not export,
-trace, or modify an Apple SF Symbol. Other system symbols appear only as normal
+The keyboard mark in `gui/KeyboardMark.swift` is original mac2jb artwork used
+only for the app icon. The GUI's wordmark is plain text. The app icon does not
+export, trace, or modify an Apple SF Symbol. Other system symbols appear as normal
 interface elements. Apple's SF Symbols usage restrictions are documented at
 https://developer.apple.com/design/human-interface-guidelines/sf-symbols.

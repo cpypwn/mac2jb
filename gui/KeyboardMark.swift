@@ -1,7 +1,7 @@
 import SwiftUI
 
-// Original mac2jb artwork. This geometry is shared by the sidebar and app-icon
-// generator; it does not export, trace, or modify an Apple SF Symbol.
+// Original mac2jb app-icon artwork. It does not appear in the GUI, and does
+// not export, trace, or modify an Apple SF Symbol.
 struct KeyboardMark: Shape {
     func path(in rect: CGRect) -> Path {
         var result = Path()

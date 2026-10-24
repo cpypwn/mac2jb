@@ -97,7 +97,6 @@ struct ContentView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                KeyboardMark().foregroundStyle(Color.mint).frame(width: 34, height: 28)
                 Text("mac2jb").font(.system(size: 26, weight: .bold, design: .rounded)).foregroundStyle(.white)
             }
             .padding(.top, 48)
@@ -145,7 +144,6 @@ struct ContentView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
-                Text("MAC → SWITCH 2").font(.system(size: 10, weight: .bold, design: .monospaced)).tracking(1.4).foregroundStyle(teal)
                 Spacer()
                 Label("Local preview", systemImage: "circle.fill").font(.system(size: 10, weight: .medium)).foregroundStyle(teal)
                     .padding(.horizontal, 11).padding(.vertical, 7).background(teal.opacity(0.08), in: Capsule())
