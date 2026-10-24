@@ -56,6 +56,9 @@ jobs:
             bash -n "$script"
           done
 
+      - name: Verify GUI workflow transitions
+        run: bash scripts/test-workflow-progress.sh
+
       - name: Build release archive
         run: |
           bash make-release-zip.command

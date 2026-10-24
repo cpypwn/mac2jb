@@ -1,6 +1,6 @@
 # mac2jb 0.3.0 GUI demo
 
-This is a local preview of the v0.3.0 interface. **v0.2.1 remains the active release.** The preview has not been verified end to end on a connected Switch 2; a completed Mac-side transfer does not prove that the console accepted the input or that ns2jb succeeded.
+This is a development build of the v0.3.0 interface. **v0.2.1 remains the active release.** The demo has not been verified end to end on a connected Switch 2; a completed Mac-side transfer does not prove that the console accepted the input or that ns2jb succeeded.
 
 ## Run the demo
 
@@ -15,7 +15,7 @@ bash scripts/build-gui.sh
 open build/mac2jb.app
 ```
 
-`make gui` is the optional shortcut for the build. Building requires Apple Silicon, Xcode Command Line Tools, and the official standalone **Node.js v24.22.1** runtime. The build uses `/usr/local/bin/node` by default; set `NODE_BINARY` to another v24.22.1 executable if needed. Running the resulting application does not require these tools. The existing CLI workflow remains `make` followed by `bash mac2jb.command`. This preview changes no release tags or the v0.2.1 CLI workflow.
+`make gui` is the optional shortcut for the build. Building requires Apple Silicon, Xcode Command Line Tools, and the official standalone **Node.js v24.22.1** runtime. The build uses `/usr/local/bin/node` by default; set `NODE_BINARY` to another v24.22.1 executable if needed. Running the resulting application does not require these tools. The existing CLI workflow remains `make` followed by `bash mac2jb.command`. This demo changes no release tags or the v0.2.1 CLI workflow.
 
 ## What the GUI handles
 
@@ -23,6 +23,8 @@ Select the Mac’s IPv4 address on the same network as the Switch. The GUI keeps
 
 - **Full setup:** Open **SmileBASIC → Make a Program** with an empty editor before starting the bootstrap transfer. Allow approximately 7–10 minutes at the default typing speed. Wait until the entire bootstrap has finished typing; only then inspect the program, save it as **NS2** in **slot 0**, and enter **Direct mode**. Continue only after completing that checkpoint.
 - **Saved bootstrap:** With **NS2 already saved in slot 0**, **restart the console → open SmileBASIC → enter Direct mode**. mac2jb automatically sends `LOAD "TXT:NS2"` first. The GUI skips the long bootstrap transfer, starts a new host session, and sends the post-bootstrap commands using fresh pairing values.
+
+The sidebar tracks the selected flow and current attempt. **Saved bootstrap** keeps **Type bootstrap** checked. After a failure or cancellation, **Prepare** becomes active again and the interrupted step shows an **X**. Returning to Prepare does not repeat typing automatically.
 
 Automatic USB selection tries the tested controllers 0, 1, and 3. Choose another controller manually if your Mac uses a different mapping. A retry is allowed only before typing begins. After a partial bootstrap, inspect and clear the editor before trying again. If post-bootstrap commands have started, or an exploit attempt fails or is cancelled, **restart the console before another attempt**. Do not send `REMOVE` twice in the same application process.
 

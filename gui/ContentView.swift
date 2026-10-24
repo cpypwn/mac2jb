@@ -14,17 +14,6 @@ struct ContentView: View {
     @State private var driverLoading = false
     @State private var showFailure = false
     @State private var failureText = ""
-    @State private var lastActiveStage = 0
-
-    private var stage: Int {
-        switch model.phase {
-        case .preparing, .ready: return 0
-        case .bootstrap, .awaitingSave: return 1
-        case .hostStarting, .commands, .waitingForConsole: return 2
-        case .verified: return 3
-        case .failed, .cancelled: return lastActiveStage
-        }
-    }
     private var canConfigure: Bool {
         [.ready, .failed, .cancelled].contains(model.phase)
     }
@@ -73,7 +62,6 @@ struct ContentView: View {
         .onChange(of: model.phase) { _, phase in
             readyConfirmed = false
             savedConfirmed = false
-            if phase != .failed && phase != .cancelled { lastActiveStage = stage }
             if phase == .failed {
                 showLogs = true
                 let location = model.diagnosticLogURL.map { "Log saved at:\n" + $0.path }
@@ -116,31 +104,43 @@ struct ContentView: View {
     }
 
     private func step(_ number: Int, _ title: String, _ subtitle: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        let state = model.workflowProgress.state(for: number)
+        let failedColor = Color(red: 1, green: 0.58, blue: 0.58)
+        let active = state == .active
+        let stateLabel: String
+        switch state {
+        case .pending: stateLabel = "Not started"
+        case .active: stateLabel = "Current step"
+        case .complete: stateLabel = "Completed"
+        case .failed: stateLabel = "Failed or cancelled"
+        }
+        return HStack(alignment: .top, spacing: 12) {
             ZStack {
-                Circle().fill(stage == number ? Color.mint : .white.opacity(0.08)).frame(width: 29, height: 29)
-                if stage > number {
+                Circle().fill(active ? Color.mint : state == .failed ? failedColor.opacity(0.14) : .white.opacity(0.08))
+                    .frame(width: 29, height: 29)
+                if state == .complete {
                     Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Color.mint)
+                } else if state == .failed {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(failedColor)
                 } else {
                     Text(String(format: "%02d", number + 1)).font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(stage == number ? ink : .white.opacity(0.45))
+                        .foregroundStyle(active ? ink : .white.opacity(0.45))
                 }
             }
             VStack(alignment: .leading, spacing: 5) {
-                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(stage == number ? 1 : 0.65))
+                Text(title).font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(state == .failed ? failedColor : .white.opacity(active ? 1 : 0.65))
                 Text(subtitle).font(.system(size: 10)).foregroundStyle(.white.opacity(0.35))
             }.padding(.top, 2)
             Spacer(minLength: 0)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(number + 1): \(title)")
+        .accessibilityValue(stateLabel)
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 13) {
-            HStack {
-                Spacer()
-                Label("Local preview", systemImage: "circle.fill").font(.system(size: 10, weight: .medium)).foregroundStyle(teal)
-                    .padding(.horizontal, 11).padding(.vertical, 7).background(teal.opacity(0.08), in: Capsule())
-            }
             Text(headline).font(.system(size: 31, weight: .bold, design: .rounded)).tracking(-0.9).foregroundStyle(ink)
             Text(canConfigure ? "Choose your starting point. mac2jb handles the Mac side in this window." : model.detail)
                 .font(.system(size: 13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -31,6 +31,7 @@ private struct GUIEvent: Decodable {
 
 @MainActor final class SessionModel: ObservableObject {
     @Published var phase: SessionPhase = .preparing
+    @Published private(set) var workflowProgress = WorkflowProgress()
     @Published var status = "Preparing the bundled tools"
     @Published var detail = "No system tools or downloads are needed."
     @Published var log = ""
@@ -40,7 +41,9 @@ private struct GUIEvent: Decodable {
     @Published var addresses: [NetworkAddress] = []
     @Published var selectedAddress = ""
     @Published var controller = "auto"
-    @Published var fullInstall = true
+    @Published var fullInstall = true {
+        didSet { workflowProgress.selectMode(fullInstall: fullInstall) }
+    }
     @Published var keyDelayMs = 50
     @Published var enumerationTimeoutSeconds = 4
     @Published var loadWaitMs = 3000
@@ -72,6 +75,7 @@ private struct GUIEvent: Decodable {
         preparing = true
         refreshChecks()
         Task {
+            defer { preparing = false }
             do {
                 let override = ProcessInfo.processInfo.environment["MAC2JB_SESSION_PARENT"].flatMap {
                     $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true)
@@ -81,12 +85,18 @@ private struct GUIEvent: Decodable {
                 }.value
                 runtime = prepared
                 openSessionLog(in: prepared.root)
+                append("Offline runtime prepared. Session files are private to your account.")
+                // Keep a successfully prepared runtime available for retry,
+                // but never undo a cancellation while extraction was running.
+                guard phase == .preparing else { return }
                 phase = .ready
                 status = "Ready when you are"
                 detail = "Choose your Mac’s address on the same network as the Switch."
-                append("Offline runtime prepared. Session files are private to your account.")
-            } catch { fail("Could not prepare the bundled runtime: \(error.localizedDescription)") }
-            preparing = false
+            } catch {
+                let message = "Could not prepare the bundled runtime: \(error.localizedDescription)"
+                if phase == .preparing { fail(message) }
+                else { append(message) }
+            }
         }
     }
 
@@ -121,6 +131,7 @@ private struct GUIEvent: Decodable {
             fail("Use 1–2000 ms per key, 1–120 seconds for enumeration, and 0–120000 ms for each command wait.")
             return
         }
+        workflowProgress.begin(fullInstall: fullInstall)
         // Keep the Mac awake through typing, the save checkpoint, and host
         // verification. This assertion is scoped to this session only.
         endSessionActivity()
@@ -138,6 +149,7 @@ private struct GUIEvent: Decodable {
 
     func confirmSavedAndDirectMode() {
         guard phase == .awaitingSave, let runtime else { return }
+        workflowProgress.confirmSavedAndStartHost()
         startHost(root: runtime.root)
     }
 
@@ -146,6 +158,8 @@ private struct GUIEvent: Decodable {
         // has already moved to a terminal state.
         endSessionActivity()
         guard isBusy || phase == .awaitingSave else { return }
+        // Remember the active step before replacing its phase with cancelled.
+        workflowProgress.cancel()
         phase = .cancelled; progress = nil; progressLabel = ""; isEnumerating = false
         status = "Session stopped"
         detail = "Inspect the Switch for partial input. Restart it before another exploit attempt."
@@ -228,7 +242,7 @@ private struct GUIEvent: Decodable {
     private func receive(_ event: GUIEvent, role: String, generation expected: UUID) {
         guard expected == generation else { return }
         if let message = event.message { append(message) }
-        if phase == .cancelled || phase == .failed { return }
+        if phase == .cancelled || phase == .failed || phase == .verified { return }
         switch event.type {
         case "host-ready":
             guard role == "host", phase == .hostStarting, let runtime else { return }
@@ -287,6 +301,7 @@ private struct GUIEvent: Decodable {
         case "transfer-complete":
             isEnumerating = false
             if event.kind == "bootstrap" {
+                workflowProgress.bootstrapTransferred()
                 phase = .awaitingSave; status = "Save NS2, then enter Direct mode"
                 detail = "The bootstrap has finished typing. Inspect the program, save it as NS2 in slot 0, then enter Direct mode."
                 progress = 1; progressLabel = "Bootstrap transfer complete"
@@ -298,6 +313,7 @@ private struct GUIEvent: Decodable {
         case "verified":
             guard role == "host" else { return }
             endSessionActivity()
+            workflowProgress.complete()
             hostCompleted = true
             phase = .verified; status = "FS execution verified"
             detail = "The host verified execution, restored the original instructions, and cleaned up scratch space. Restart the console when finished."
@@ -306,6 +322,7 @@ private struct GUIEvent: Decodable {
             fail(event.message ?? "The session did not finish. Inspect the Switch before retrying.")
         case "cancelled":
             endSessionActivity()
+            workflowProgress.cancel()
             phase = .cancelled; status = "Session stopped"; progress = nil; progressLabel = ""; isEnumerating = false
         default: break
         }
@@ -329,6 +346,9 @@ private struct GUIEvent: Decodable {
     }
 
     private func fail(_ message: String) {
+        // Capture the failed stage atomically on the model's main actor. A
+        // later cancellation/exit callback must not infer it from .failed.
+        workflowProgress.fail()
         endSessionActivity()
         let clean = Self.redact(message)
         ensureFallbackLog()
@@ -358,6 +378,7 @@ private struct GUIEvent: Decodable {
         if descriptor >= 0 {
             sessionLog = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
             diagnosticLogURL = file
+            if let history = log.data(using: .utf8), !history.isEmpty { try? sessionLog?.write(contentsOf: history) }
         }
         else { error = "The private diagnostic log could not be created. Session logs may be incomplete." }
     }
