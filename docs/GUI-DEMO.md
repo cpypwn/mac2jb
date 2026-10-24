@@ -1,6 +1,6 @@
-# mac2jb 0.3.0 GUI demo
+# mac2jb 0.3.0 GUI
 
-This is a development build of the v0.3.0 interface. **v0.2.1 remains the active release.** The demo has not been verified end to end on a connected Switch 2; a completed Mac-side transfer does not prove that the console accepted the input or that ns2jb succeeded.
+v0.3.0 is the active release. A completed Mac-side transfer does not prove that the console accepted the input or that ns2jb succeeded; the host independently verifies execution, restoration, and cleanup.
 
 ## Run the demo
 

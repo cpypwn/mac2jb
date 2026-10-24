@@ -16,15 +16,15 @@ Use at your own risk. mac2jb is provided without a guarantee of compatibility, e
 
 ## Source provenance, licensing, and session security
 
-### v0.3.0 GUI preview
+### v0.3.0 GUI
 
-The native Mac GUI is in development. Build it with `make gui` and open
-`build/mac2jb.app`; see [the demo guide](docs/GUI-DEMO.md) for setup,
+Download the native Mac GUI from [the v0.3.0 release](https://github.com/cpypwn/mac2jb/releases/tag/v0.3.0), or build it with `make gui` and open
+`build/mac2jb.app`; see [the GUI guide](docs/GUI-DEMO.md) for setup,
 automation limits, and logging. Its single executable embeds Node.js, the
 senders, and the offline host, so users of the built app need no build tools
 or separate Node.js installation. It does not include a compiled kernel extension.
 
-**v0.2.1 remains the active release.** The existing CLI is still available:
+The existing CLI is still available:
 `make` builds the command-line tools, and `bash mac2jb.command` runs the same
 terminal workflow. GUI work does not change the vendored exploit runtime.
 
