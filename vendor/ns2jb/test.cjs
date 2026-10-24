@@ -145,7 +145,7 @@ test('payloads have their declared hashes and contain NSO images', () => {
 test('one host address and one BASIC command select the fixed Switch 2 path', async () => {
   assert.equal(await chooseHost(['192.0.2.10']), '192.0.2.10');
   assert.equal(connectCommand('192.0.2.10', [1, 2, 3, 281474976710655]),
-    'V=START(REDACTED)');
+    'V=START(' + [39380, 192, 0, 2, 10, 1, 2, 3, 281474976710655].join(',') + ')');
   await assert.rejects(chooseHost(['switch1']), /Usage/);
   await assert.rejects(chooseHost(['192.0.2.10', 'extra']), /Usage/);
   assert.deepEqual(addresses({a: [
