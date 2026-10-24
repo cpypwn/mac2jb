@@ -14,6 +14,36 @@ mac2jb is responsible for the **Mac-side USB keyboard emulation, SmileBASIC boot
 
 Use at your own risk. mac2jb is provided without a guarantee of compatibility, exploit success, or protection against data loss, system instability, or service restrictions. This support statement does not override applicable licenses or legal rights.
 
+## Source provenance, licensing, and session security
+
+The repository root `LICENSE` applies to mac2jb's MIT-licensed code and does **not**
+relicense third-party material. `vendor/libusbd/LICENSE` and
+`vendor/macos_usb_gadget_poc/usbgadget/LICENSE` retain the upstream MIT notices.
+Apple-derived headers retain their Apple Public Source License notices; the full
+APSL 2.0 text is included in both `vendor/libusbd/LICENSE-APSL-2.0.txt` and
+`vendor/macos_usb_gadget_poc/LICENSE-APSL-2.0.txt`. Dated changes to libusbd's
+macOS backend and build are recorded inside their respective modified files.
+
+`vendor/ns2jb` is a pinned upstream snapshot: its separate redistribution and
+third-party rights must be reviewed before public releases. The vendored
+`macos_usb_gadget_poc` material is intentionally **trimmed** to its documented
+MIT-licensed `usbgadget/` kernel-extension source/Xcode project. It excludes the
+unused `usb_device/` proof of concept and the precompiled `.kext` bundle.
+`upstream.lock` identifies the origin and commit, not a guarantee that every
+vendored project is an untouched full checkout.
+
+**Session confidentiality:** ns2jb may print live `V=START(...)` pairing values.
+mac2jb stores logs under `vendor/ns2jb/runs/`, excludes that directory from
+Git and source ZIPs, and sets restrictive local directory/log permissions.
+Do not post full Terminal output, screenshots, or logs without redacting live
+pairing values. To discard old logs after the host has stopped, run
+`bash scripts/clear-session-logs.sh` (it leaves the current pairing file alone).
+
+**Source releases intentionally omit compiled kernel extensions.** To use the
+USB-gadget functionality, build the kext from the included Xcode source, assess
+its privileges and signing requirements, and follow Apple's security approval
+procedures. `make` alone does not build or install the kext.
+
 ## Tested environment
 
 The maintainer's successful end-to-end test used:

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 'use strict';
+// Pairing values are sensitive local session data.
+process.umask(0o077);
 // Starts the untouched ns2jb host, captures its per-session pairing command,
 // and makes that command available to mac2jb-commands while the host is alive.
 const fs = require('node:fs');
@@ -10,6 +12,8 @@ const hostDir = path.join(root, 'vendor/ns2jb');
 const runs = path.join(hostDir, 'runs');
 const active = path.join(runs, 'mac2jb-active-connect.txt');
 fs.mkdirSync(runs, {recursive: true, mode: 0o700});
+// Existing directories may have been created with permissive modes.
+fs.chmodSync(runs, 0o700);
 let child, published = false, partial = '';
 try {
   child = spawn(process.execPath, ['run.cjs', ...process.argv.slice(2)], {

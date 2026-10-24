@@ -1,9 +1,8 @@
 #!/bin/sh
+# Offline build using the pinned, included sources. Do not clone over vendor/.
 set -eu
 cd "$(dirname "$0")"
-if [ ! -d vendor/libusbd/.git ]; then
-  mkdir -p vendor
-  git clone https://github.com/shinyquagsire23/libusbd.git vendor/libusbd
-fi
+bash scripts/check.sh
 make
-printf '\nBuilt sender. Next: ./usb-text-sender bootstrap.bas --dry-run\n'
+printf '\nBuild complete. Verify with: ./mac2jb-send --help\n'
+printf 'To launch the guided workflow: bash mac2jb.command\n'

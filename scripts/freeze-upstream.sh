@@ -26,6 +26,21 @@ for spec in \
   printf '%s %s %s\n' "$name" "$sha" "$url" >> upstream.lock
   rm -rf "$work/$name/.git"
   cp -R "$work/$name" "vendor/$name"
+  # Keep only the MIT-licensed Xcode kext sources from the PoC snapshot.
+  # Do not accidentally resurrect binaries or the unused USB-device demo.
+  if [[ "$name" == macos_usb_gadget_poc ]]; then
+    rm -rf "vendor/$name/usbgadget.kext" "vendor/$name/usb_device" \
+           "vendor/$name/build_run.sh" "vendor/$name/load.sh" \
+           "vendor/$name/unload.sh" "vendor/$name/check-kexts.sh"            "vendor/$name/usbgadget/usbgadget.xcodeproj/project.xcworkspace"
+    find "vendor/$name" -type d -name xcuserdata -prune -exec rm -rf {} +
+    cat > "vendor/$name/README.md" <<'POCNOTE'
+# macos_usb_gadget_poc (trimmed upstream source)
+Origin: https://github.com/shinyquagsire23/macos_usb_gadget_poc
+Only the `usbgadget/` Xcode project and MIT-licensed kext source are retained.
+The unused USB-device examples, precompiled kexts and machine-local files are excluded.
+See `usbgadget/LICENSE` and the root `vendor/README.md`.
+POCNOTE
+  fi
 done
 cp vendor/ns2jb/bootstrap.bas assets/bootstrap.bas
 # Keep the original ns2jb engine and host together; run in its own folder.
@@ -35,7 +50,8 @@ cat > vendor/README.md <<'NOTE'
 These are ordinary, committed SOURCE SNAPSHOTS, not Git submodules.
 The exact upstream revisions are recorded in ../upstream.lock.
 Do not run freeze-upstream.sh during normal build or on end-user machines.
-Upstream copyright, licenses and notices remain attached to their original files.
+Keep third-party notices; confirm every upstream component is redistributable before publishing.
+The macos_usb_gadget_poc snapshot is deliberately trimmed; review retained licenses after each refresh.
 Do not assume ns2jb or macos_usb_gadget_poc have an open-source license; review rights before redistributing.
 NOTE
 printf '\nSnapshots staged. REVIEW licensing, security and changes, then git add vendor assets upstream.lock and commit.\n'

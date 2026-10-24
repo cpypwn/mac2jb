@@ -1,1 +1,0 @@
-sudo sqlite3 /var/db/SystemPolicyConfiguration/KextPolicy .dump

@@ -41,6 +41,7 @@ jobs:
       - name: Check shell script syntax
         run: |
           bash -n make-release-zip.command
+          bash -n mac2jb.command
           for script in scripts/*.sh; do
             bash -n "$script"
           done
@@ -49,3 +50,4 @@ jobs:
         run: |
           bash make-release-zip.command
           unzip -t mac2jb-complete.zip
+          python3 scripts/audit-release.py mac2jb-complete.zip

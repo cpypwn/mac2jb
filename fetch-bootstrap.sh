@@ -1,9 +1,7 @@
 #!/bin/sh
+# Deprecated network fetcher; use the version-pinned bootstrap shipped in assets/.
 set -eu
 cd "$(dirname "$0")"
-# Download at use time to preserve upstream attribution and avoid a stale bundled copy.
-curl --fail --location --show-error --silent \
-  'https://gitlab.com/pepsipu/ns2jb/-/raw/main/bootstrap.bas' \
-  -o bootstrap.bas
-printf 'Downloaded upstream bootstrap.bas; review its contents and license before running.\n'
-shasum -a 256 bootstrap.bas
+echo 'The pinned bootstrap is already available at assets/bootstrap.bas.'
+echo 'No network download is performed; unpinned updates are deliberately disabled.'
+shasum -a 256 -c assets/bootstrap.bas.sha256

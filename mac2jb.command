@@ -1,5 +1,7 @@
 #!/bin/bash
 set -euo pipefail
+# Protect pairing values and logs created by this launcher.
+umask 077
 cd "$(dirname "$0")"
 
 printf '\033[2J\033[H'
@@ -256,6 +258,7 @@ NOTICE
 read -r -p 'Confirm the correct project, NS2 in slot 0, and Direct mode; press Enter to start ns2jb... ' _
 
 mkdir -p vendor/ns2jb/runs
+chmod 700 vendor/ns2jb/runs
 active='vendor/ns2jb/runs/mac2jb-active-connect.txt'
 # Stop previous ns2jb run.cjs processes from THIS installation only.
 # A PID may be reused, so checking the pairing file PID alone is insufficient.
@@ -322,7 +325,7 @@ log="vendor/ns2jb/runs/mac2jb-gui-host-$$.log"
 # The host wrapper, not this launcher, writes the live pairing file.
 printf -v root_q '%q' "$PWD"
 printf -v log_q '%q' "$log"
-host_command="cd $root_q && bash scripts/host.sh 2>&1 | tee $log_q"
+host_command="umask 077; cd $root_q && bash scripts/host.sh 2>&1 | tee $log_q"
 echo 'Opening ns2jb host in a separate Terminal window...'
 if ! osascript - "$host_command" >/dev/null <<'APPLESCRIPT'
 on run argv

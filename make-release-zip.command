@@ -1,4 +1,3 @@
-
 #!/bin/bash
 set -euo pipefail
 
@@ -15,6 +14,8 @@ for path in \
     indent-test.bas \
     upstream.lock \
     vendor/libusbd/Makefile \
+    vendor/libusbd/LICENSE-APSL-2.0.txt \
+    vendor/macos_usb_gadget_poc/LICENSE-APSL-2.0.txt \
     vendor/ns2jb/run.cjs \
     assets/bootstrap.bas \
     assets/bootstrap.bas.sha256
@@ -49,6 +50,8 @@ for item in \
     sender.c \
     commands.c \
     mac2jb.command \
+    setup.sh \
+    fetch-bootstrap.sh \
     INDENT-TEST.md \
     indent-test.bas \
     upstream.lock \
@@ -67,6 +70,12 @@ done
 # memory captures, and session logs.
 rm -rf "$TMP/mac2jb/vendor/ns2jb/runs"
 
+# A source package must not include executable kernel extensions, machine-local
+# Xcode data, or the unused unlicensed upstream USB-device example.
+rm -rf "$TMP/mac2jb/vendor/macos_usb_gadget_poc/usbgadget.kext" \
+       "$TMP/mac2jb/vendor/macos_usb_gadget_poc/usb_device"
+find "$TMP/mac2jb" -type d \( -name xcuserdata -o -name project.xcworkspace \) -prune -exec rm -rf {} +
+
 # Remove compiled binaries and local artifacts.
 find "$TMP/mac2jb" -type f \( \
     -name '.DS_Store' -o \
@@ -74,7 +83,9 @@ find "$TMP/mac2jb" -type f \( \
     -name '*.o' -o \
     -name '*.dylib' -o \
     -name 'mac2jb-send' -o \
-    -name 'mac2jb-commands' \
+    -name 'mac2jb-commands' -o \
+    -name '*.log' -o \
+    -name '*.xcuserstate' \
 \) -delete
 
 # Remove additional Git metadata if present.
@@ -86,7 +97,7 @@ rm -f "$OUT"
 
 (
     cd "$TMP"
-    /usr/bin/ditto -c -k --keepParent mac2jb "$OUT"
+    /usr/bin/ditto -c -k --norsrc --keepParent mac2jb "$OUT"
 )
 
 echo "Created release archive: $OUT"

@@ -21,3 +21,7 @@ __pycache__/
 
 # Build artifacts
 *.dSYM
+# Do not commit machine-specific compiled kexts or generated Xcode user state.
+/vendor/macos_usb_gadget_poc/usbgadget.kext/
+/vendor/macos_usb_gadget_poc/usb_device/
+/vendor/macos_usb_gadget_poc/usbgadget/usbgadget.xcodeproj/xcuserdata/
