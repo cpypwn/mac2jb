@@ -123,6 +123,8 @@ static double seconds_now(void) {
 }
 static double usb_write_seconds = 0.0, pacing_seconds = 0.0;
 static unsigned long usb_attempts = 0, usb_retries = 0;
+static double transfer_start = 0.0;
+static size_t strokes_sent = 0, strokes_planned = 0;
 
 static int usb_write_once(libusbd_ctx_t *ctx, uint8_t iface,
                           uint64_t endpoint, const uint8_t report[8],
@@ -164,6 +166,7 @@ static int send_stroke(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep,
                        uint8_t mods, uint8_t key, int delay_ms) {
     if (write_report(ctx,iface,ep,mods,key)<0 ||
         write_report(ctx,iface,ep,0,0)<0) return -1;
+    strokes_sent++;
     struct timespec pause_time = {delay_ms/1000, (long)(delay_ms%1000)*1000000L};
     double pause_start=seconds_now();
     nanosleep(&pause_time, NULL);
@@ -180,10 +183,37 @@ static unsigned char *read_text(const char *path, size_t *length) {
     if(fread(buf,1,(size_t)count,f)!=(size_t)count){fprintf(stderr,"Cannot read file\n");free(buf);fclose(f);return NULL;}
     fclose(f); *length=(size_t)count; return buf;
 }
+// same walk as the send loop in main, keep both in sync
+static size_t plan_strokes(const unsigned char *data, size_t bytes) {
+    size_t strokes=0, indent=0;
+    bool line_start=true;
+    for(size_t i=0;i<bytes;) {
+        if(data[i]=='\r' && i+1<bytes && data[i+1]=='\n') { i++; continue; }
+        if(line_start) {
+            size_t desired=0;
+            while(i+desired<bytes && data[i+desired]==' ') desired++;
+            strokes += indent>desired ? indent-desired : desired-indent; // backspaces or spaces
+            indent=desired; i+=desired; line_start=false;
+            if(i>=bytes) break;
+        }
+        unsigned char c=data[i++];
+        if(c=='\r' && i<bytes && data[i]=='\n') continue;
+        strokes++;
+        if(c=='\n') line_start=true;
+    }
+    return strokes;
+}
 static void bootstrap_line_progress(bool complete, size_t line, size_t total) {
 #ifdef MAC2JB_GUI
-    printf("MAC2JB_GUI {\"type\":\"line-%s\",\"line\":%zu,\"completed\":%zu,\"total\":%zu}\n",
+    printf("MAC2JB_GUI {\"type\":\"line-%s\",\"line\":%zu,\"completed\":%zu,\"total\":%zu",
            complete ? "complete" : "start", line, complete ? line : line-1, total);
+    // measured time per stroke so far (delay + usb write latency + retries) * strokes left
+    // nothing measured before the first stroke -> no estimate
+    if(strokes_sent>0 && strokes_planned>=strokes_sent) {
+        double per_stroke=(seconds_now()-transfer_start)/(double)strokes_sent;
+        printf(",\"remainingMs\":%.0f", per_stroke*(double)(strokes_planned-strokes_sent)*1000.0);
+    }
+    puts("}");
 #else
     printf("%s line %zu of %zu\n", complete ? "Sent" : "Typing", line, total);
 #endif
@@ -215,6 +245,7 @@ int main(int argc, char **argv) {
     }
     size_t total_lines=lines + (bytes>0 && data[bytes-1]!='\n' ? 1 : 0);
     printf("Verified %zu input bytes, %zu keystrokes, %zu newline(s).\n",bytes,characters,lines);
+    strokes_planned=plan_strokes(data,bytes);
     if(dry){puts("Dry run complete; no USB device created and no keys sent.");free(data);return 0;}
 #ifdef MAC2JB_GUI
     int enumeration_seconds=mac2jb_gui_enumeration_timeout();
@@ -233,7 +264,6 @@ int main(int argc, char **argv) {
     libusbd_ctx_t *ctx=NULL;
     int result=1;
     uint8_t iface=0; uint64_t ep=0; bool endpoint_ready=false;
-    double transfer_start=0.0;
     if(libusbd_init(&ctx)<0 || !ctx){fprintf(stderr,"libusbd_init failed; check usbgadget.kext.\n");goto done;}
     libusbd_set_pid(ctx,0x1234); libusbd_set_version(ctx,0x0100);
     libusbd_set_class(ctx,0);libusbd_set_subclass(ctx,0);libusbd_set_protocol(ctx,0);

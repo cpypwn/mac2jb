@@ -83,10 +83,14 @@ test('native bootstrap line progress follows actual sender operations without US
     return name;
   }
   const environment = extra => ({...process.env, MAC2JB_AUTO_WORKER: '1', ...extra});
-  function trace(output) {
+  // remainingMs depends on the wall clock, only the eta test looks at it
+  function trace(output, eta = false) {
     return output.split('\n').flatMap(line => {
       for (const [prefix, type] of [['MAC2JB_GUI ', 'progress'], ['TEST_USB ', 'usb'], ['TEST_WAIT ', 'wait']])
-        if (line.startsWith(prefix)) return [{type, ...JSON.parse(line.slice(prefix.length))}];
+        if (line.startsWith(prefix)) {
+          const {remainingMs, ...row} = {type, ...JSON.parse(line.slice(prefix.length))};
+          return [eta && remainingMs !== undefined ? {...row, remainingMs} : row];
+        }
       return [];
     });
   }
@@ -186,6 +190,17 @@ test('native bootstrap line progress follows actual sender operations without US
     assert.deepEqual(progress(crlf.records), expected(2));
     assert.deepEqual(crlf.records, lf.records);
     assert.equal(crlf.records.filter(row => row.type === 'usb' && row.key === 40).length, 2);
+  });
+
+  await t.test('the stroke plan matches what was sent, including indent changes', () => {
+    const result = spawnSync(executables.gui, [file('A\n  B\n    C\r\nD\n '), '--delay-ms', '50'], {
+      env: environment({}), encoding: 'utf8', timeout: 3000
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const lines = trace(result.stdout, true).filter(row => ['line-start', 'line-complete'].includes(row.type));
+    assert.equal('remainingMs' in lines[0], false);
+    assert.ok(lines.slice(1).every(row => Number.isFinite(row.remainingMs) && row.remainingMs >= 0));
+    assert.equal(lines.at(-1).remainingMs, 0); // off by any stroke -> not 0
   });
 
   await t.test('an empty file has zero line events', () => {

@@ -212,7 +212,8 @@ async function hid(kind, controller, settings = timingDefaults) {
           nativeLineEvents = true;
           markTyping();
           emit(event.type, {kind, line: event.line, completed: event.completed, total: totalLines,
-            message: `${event.type === 'line-start' ? 'Typing' : 'Sent'} line ${event.line} of ${totalLines}`});
+            message: `${event.type === 'line-start' ? 'Typing' : 'Sent'} line ${event.line} of ${totalLines}`,
+            ...(Number.isFinite(event.remainingMs) && event.remainingMs >= 0 ? {remainingMs: event.remainingMs} : {})});
           return;
         }
         nativeEvents = true;

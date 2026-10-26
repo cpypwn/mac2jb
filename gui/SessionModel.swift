@@ -94,6 +94,7 @@ private struct GUIEvent: Decodable {
     private var hostStageLabel = "Waiting for the Switch to connect over the local network"
     private var hostStageProgress: Double?
     private var bootstrapStartedAt: Date?
+    private var bootstrapFinishAt: Date?
     private var bootstrapTimer: Timer?
     private var hasEnumeratedSuccessfully = false
     private let addressProvider: () -> [NetworkAddress]
@@ -693,7 +694,7 @@ private struct GUIEvent: Decodable {
             isEnumerating = false
             progress = lineProgress.fraction
             progressLabel = lineProgress.label
-            updateBootstrapEstimate(completed: Double(lineProgress.completed), total: Double(lineProgress.total))
+            if let remaining = event.remainingMs { setBootstrapRemaining(remaining / 1000) }
         case "command-start":
             isEnumerating = false
             if let done = event.completed { progress = min(1, max(0, done / 4)) }
@@ -801,6 +802,7 @@ private struct GUIEvent: Decodable {
     private func resetBootstrapTiming() {
         bootstrapTimer?.invalidate(); bootstrapTimer = nil
         bootstrapStartedAt = nil
+        bootstrapFinishAt = nil
         bootstrapElapsedSeconds = 0
         bootstrapEstimatedRemainingSeconds = nil
     }
@@ -813,6 +815,9 @@ private struct GUIEvent: Decodable {
             Task { @MainActor [weak self] in
                 guard let self, let started = self.bootstrapStartedAt else { return }
                 self.bootstrapElapsedSeconds = Date().timeIntervalSince(started)
+                if let finish = self.bootstrapFinishAt {
+                    self.bootstrapEstimatedRemainingSeconds = max(0, finish.timeIntervalSinceNow)
+                }
             }
         }
     }
@@ -822,7 +827,14 @@ private struct GUIEvent: Decodable {
         let elapsed = Date().timeIntervalSince(started)
         bootstrapElapsedSeconds = elapsed
         let fraction = min(1, max(0, completed / total))
-        if fraction > 0.01 { bootstrapEstimatedRemainingSeconds = max(0, elapsed / fraction - elapsed) }
+        if fraction > 0.01 { setBootstrapRemaining(elapsed / fraction - elapsed) }
+    }
+
+    // the sender's number is strokes left * measured time per stroke, the timer counts down in between
+    private func setBootstrapRemaining(_ seconds: Double) {
+        guard bootstrapStartedAt != nil, seconds.isFinite else { return }
+        bootstrapFinishAt = Date().addingTimeInterval(max(0, seconds))
+        bootstrapEstimatedRemainingSeconds = max(0, seconds)
     }
 
     private func appendBootstrapDuration(outcome: String) {
@@ -830,6 +842,7 @@ private struct GUIEvent: Decodable {
         let elapsed = Date().timeIntervalSince(started)
         bootstrapElapsedSeconds = elapsed
         bootstrapTimer?.invalidate(); bootstrapTimer = nil
+        bootstrapFinishAt = nil
         bootstrapEstimatedRemainingSeconds = outcome == "completed" ? 0 : bootstrapEstimatedRemainingSeconds
         append(String(format: "Bootstrap typing %@ after %.1f seconds.", outcome, elapsed))
         bootstrapStartedAt = nil
