@@ -4,6 +4,7 @@
 // input after the device has reported readiness.
 const {spawn}=require('node:child_process');
 const path=require('node:path');
+const {autoControllers}=require('./usb-controllers.cjs');
 const MAX_TEXT_BYTES=16*1024,MAX_RECORD_BYTES=MAX_TEXT_BYTES*6+256;
 const neutral=Buffer.alloc(8);
 function prepareText(value) {
@@ -60,7 +61,7 @@ async function main(args=process.argv.slice(2),options={}) {
   if(args.length<2||mode!=='live'||
     !(controller==='auto'||/^usb-drd(?:[0-9]|1[0-5])$/.test(controller))||!/^\d+$/.test(text)||
     !Number.isInteger(timeout)||timeout<1||timeout>120||(preferredController!==undefined&&controller!=='auto'))throw Error('Invalid keyboard settings.');
-  const candidates=controller==='auto'?[...new Set([...(preferredController?[preferredController]:[]),'usb-drd0','usb-drd1','usb-drd3'])]:[controller];
+  const candidates=controller==='auto'?autoControllers(preferredController):[controller];
   let safeFailures=0;
   const root=options.root||path.resolve(__dirname,'..'),input=options.input||process.stdin;
   let child,childDone,ready=false,stopping=false,pending='',written=false,stopTimer,failure='',outputClosed=false,textJob,textTask;

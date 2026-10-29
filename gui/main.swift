@@ -37,6 +37,7 @@ if CommandLine.arguments.contains("--self-test") {
             ("node", ["--check", "scripts/host-profiles.cjs"]),
             ("node", ["--check", "scripts/prepare-host-profiles.cjs"]),
             ("node", ["scripts/prepare-host-profiles.cjs", "--check"]),
+            ("node", ["--check", "scripts/usb-controllers.cjs"]),
             ("node", ["--check", "scripts/gui-keyboard.cjs"]),
             ("node", ["scripts/gui-keyboard.cjs", "--self-test"]),
             ("node", ["--check", "scripts/gui-dump.cjs"]),

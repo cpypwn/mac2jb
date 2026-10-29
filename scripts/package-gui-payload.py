@@ -49,6 +49,7 @@ RUNTIME_FILES = (
     'packaging/GPUBrewLauncher-SHA256SUMS',
     'packaging/IZ2S-Platform-provenance.json',
     'packaging/IZ2S-Platform-SHA256SUMS', 'scripts/gui-keyboard.cjs',
+    'scripts/usb-controllers.cjs',
     'scripts/prepare-homebrew-apps.cjs', 'scripts/check-stremio-runtime.cjs',
     'packaging/ftpd-sb-v0.1.0-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-release-SHA256SUMS',

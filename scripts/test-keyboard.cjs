@@ -20,6 +20,8 @@ function fixture(t,script) {
   t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   fs.mkdirSync(path.join(directory,'scripts'));
   fs.copyFileSync(path.join(__dirname,'gui-keyboard.cjs'),path.join(directory,'scripts/gui-keyboard.cjs'));
+  fs.writeFileSync(path.join(directory,'scripts/usb-controllers.cjs'),`const real=require(${JSON.stringify(path.join(__dirname,'usb-controllers.cjs'))});
+module.exports={...real,autoControllers:preferred=>real.autoControllers(preferred,()=>[...real.fallbackControllers])};\n`);
   if(script!==undefined)fs.writeFileSync(path.join(directory,'mac2jb-keyboard'),'#!'+process.execPath+'\n'+`
     const fs=require('node:fs');
     fs.appendFileSync('attempts.txt',process.env.MAC2JB_CONTROLLER+'\\n');
