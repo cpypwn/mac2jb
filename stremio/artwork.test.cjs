@@ -21,6 +21,11 @@ async function idle(cache) {
   } finally { clearTimeout(timer); }
 }
 
+async function waitForRemoval(file) {
+  for (let attempt = 0; attempt < 150 && fs.existsSync(file); attempt++)
+    await new Promise(resolve => setTimeout(resolve, 10));
+}
+
 function cacheFor(t, options) {
   const cache = new ArtworkCache(options); t.after(() => cache.close()); return cache;
 }
@@ -132,8 +137,10 @@ test('entry, queue and concurrency limits stay bounded while cache eviction remo
   assert.ok(oldFile);
   // The lookup made entry zero newest; entry one should be the next eviction.
   const evictedFile = cache.entries.get('https://images.example.invalid/1.png').file;
+  assert.equal(fs.existsSync(evictedFile), true);
   cache.get('https://images.example.invalid/new.png', true);
   while (releases.length) releases.shift()(); await idle(cache);
+  await waitForRemoval(evictedFile);
   assert.equal(cache.entries.size, 4); assert.equal(fs.existsSync(evictedFile), false); assert.equal(fs.existsSync(oldFile), true);
 });
 
