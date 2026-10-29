@@ -25,8 +25,9 @@ test('pinned IZDOOM release stages as a standalone MintBrew GPU app',async t=>{
   assert.equal(adapter.verifyMintBrew(root,runtime).sha256,adapter.MODULE_SHA256);
   const folder=path.join(runtime,'apps/izdoom');
   const oldValidator=process.env.SPIRV_VAL,oldPath=process.env.PATH;
-  process.env.SPIRV_VAL=path.join(root,'homebrew/bin/spirv-val');
-  process.env.PATH=path.join(root,'homebrew/python/bin')+path.delimiter+oldPath;
+  const portable=path.join(root,'.build-gui/homebrew');
+  process.env.SPIRV_VAL=path.join(portable,'bin/spirv-val');
+  process.env.PATH=path.join(portable,'python/bin')+path.delimiter+oldPath;
   t.after(()=>{
     if(oldValidator===undefined)delete process.env.SPIRV_VAL;else process.env.SPIRV_VAL=oldValidator;
     process.env.PATH=oldPath;

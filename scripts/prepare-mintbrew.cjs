@@ -89,7 +89,7 @@ function main(args = process.argv.slice(2)) {
     const result = inspect(source, false);
     ouncecake.verifySource(repository);
     overlays.verifyOverlay(repository);
-    const validator = process.env.SPIRV_VAL || path.join(repository, 'homebrew/bin/spirv-val');
+    const validator = process.env.SPIRV_VAL || path.join(repository, '.build-gui/homebrew/bin/spirv-val');
     for (const stage of ['vert', 'frag', 'comp'])
       execFileSync(validator, ['--target-env', 'vulkan1.0', path.join(source, 'homebrew-launcher/shaders/launcher.' + stage + '.spv')], {stdio: 'pipe'});
     console.log('MintBrew source ready: ' + result.apps.join(', '));
