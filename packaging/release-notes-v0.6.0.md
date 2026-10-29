@@ -1,5 +1,3 @@
-# mac2jb v0.6.0
-
 <!-- mac2jb-update: {"build":520,"minimumBuild":406} -->
 
 - add MintBrew, a unified homebrew library that opens automatically after jailbreak and lets users switch compatible gpu apps in one held rpc session.
