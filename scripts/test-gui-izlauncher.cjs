@@ -52,7 +52,6 @@ if(item.role==='prepare'){
     },options.stopMs||10);
   });
   console.log(item.ready);setInterval(()=>{},1000);
-  if(options.exitOwner===item.role)setTimeout(()=>process.exit(1),60);
 }
 `);
   }
@@ -193,7 +192,13 @@ test('source session loss joins workers and does not signal or rewrite the origi
   assert.equal(trace(f).at(-1).event,'proxy-close');assert.equal(f.events.at(-1).type,'failed');
 });
 test('an unexpected native worker exit stops its siblings and blocks releasing the original RPC',{timeout:10000},async t=>{
-  const f=fixture(t,{exitOwner:'graphics'});f.api.emit=(type,value)=>f.events.push({type,...value});
+  const f=fixture(t);f.api.emit=(type,value)=>{
+    f.events.push({type,...value});
+    if(type==='running'){
+      const graphics=trace(f).find(row=>row.event==='start'&&row.script===owners[0].script);
+      assert.ok(graphics?.pid);process.kill(graphics.pid,'SIGKILL');
+    }
+  };
   await assert.rejects(main(args(f),f.api),/ended unexpectedly/);
   assert.ok(trace(f).some(row=>row.event==='joined'&&row.role==='ftp'));
   assert.equal(f.events.at(-1).cleanupBlocked,true);assert.equal(f.events.some(row=>row.type==='stopped'),false);
