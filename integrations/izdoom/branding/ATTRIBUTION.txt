@@ -1,0 +1,6 @@
+The DOOM icon used by MintBrew adapts IZMYSH's izdoom-icon.svg from
+IZDOOM v0.17.1. Its SVG source and rendered PNG are licensed under
+GPL-2.0-or-later, as described in the upstream LICENSE-SCOPE.md.
+
+The IZDOOM module and its original icon remain unchanged. The DOOM1.WAD
+shareware data was not used to make this icon.

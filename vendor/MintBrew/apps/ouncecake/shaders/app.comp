@@ -1,0 +1,35 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x=1) in;
+#include "abi.glsl"
+#include "hb.glsl"
+layout(set=0,binding=1,std430) readonly buffer OunceCakeData {uint words[];} payload;
+void main(){
+ uint pressed=hbPressed(),buttons=hbButtons();
+ c.motion.x+=1.0/60.0;c.state.z++;
+ c.transition.x=max(0.0,c.transition.x-1.0/15.0);
+ uint count=min(payload.words[2],1000u),status=payload.words[1];
+ if(status==1u&&count>0u&&c.game.z==0u){
+  int direction=0;
+  if((pressed&HB_UP)!=0u)direction=-1;
+  if((pressed&HB_DOWN)!=0u)direction=1;
+  float stick=hbStick(false).y;
+  c.motion.w=max(0.0,c.motion.w-1.0/60.0);
+  if(abs(stick)>.55&&c.motion.w<=0.0){direction=stick>0.0?-1:1;c.motion.w=.18;}
+  if(direction!=0){
+   c.game.x=uint(clamp(int(c.game.x)+direction,0,int(count)-1));
+   if(c.game.x<c.game.y)c.game.y=c.game.x;
+   if(c.game.x>=c.game.y+8u)c.game.y=c.game.x-7u;
+  }
+  if((pressed&HB_A)!=0u&&c.reserved.y==0u){c.reserved.y=c.game.x+1u;c.game.z=1u;}
+ }else if(status!=1u)c.motion.w=0.0;
+ if(status==3u){
+  if((buttons&HB_B)!=0u)c.game.w=min(c.game.w+1u,120u);
+  else if((c.state.y&HB_B)!=0u){
+   if(c.game.w>0u&&c.reserved.y==0u)c.reserved.y=0xffffffffu;
+   c.game.w=0u;
+  }
+ }else c.game.w=0u;
+ if(status==1u)c.game.z=0u;
+ c.state.y=buttons;
+}

@@ -1,3 +1,4 @@
+const removal=require('../../../core/packages/removal.cjs');
 const fs=require('node:fs/promises'),path=require('node:path'),catalog=require('../../../core/services/app-catalog.cjs'),files=require('../../../core/packages/files.cjs'),jobs=require('../../../core/packages/jobs.cjs');
 async function create({rpc,menu,directory,runtime,root=path.resolve(__dirname,'../../..'),stateRoot=process.env.IZ11_STATE_DIR||path.join(root,'data/state/current'),prepareShell=require('../../../core/services/gpu-app.cjs').prepare}){
  const repo=await require('../../../core/packages/repository.cjs').create(root);
@@ -14,7 +15,7 @@ async function create({rpc,menu,directory,runtime,root=path.resolve(__dirname,'.
   menu.commands=gpu.commands;menu.streamStorage=gpu.privateStorage||null;report.shell={id:shell.id,fingerprint:shell.fingerprint,privateStorage:gpu.privateStorage||null,ready:true};
  }
  await applyShell();
- let heroStamp='',heroUpload='',heroBytes=Buffer.alloc(0),library,libraryBytes=Buffer.alloc(0),publishedPackages=[],dirty=true,lastInventory=0,lastSequence=0,publishing=[];
+ let heroStamp='',heroUpload='',heroBytes=Buffer.alloc(0),library,libraryBytes=Buffer.alloc(0),publishedPackages=[],dirty=true,lastInventory=0,lastSequence=0,lastRemoveSequence=0,publishing=[];
  async function inventory(force=false){if(!force&&Date.now()-lastInventory<1000)return;lastInventory=Date.now();
   const next=await repo.list(),stamp=next.packages.map(p=>p.file+':'+p.sha256).join('|');
   if(library?.stamp===stamp)return;
@@ -34,24 +35,39 @@ async function create({rpc,menu,directory,runtime,root=path.resolve(__dirname,'.
   state.writeUInt32LE(mask>>>0,840);state.writeUInt32LE(lastSequence,844);state.writeUInt32LE(0,812);if(publishing.length){state.writeUInt32LE(0,800);state.writeUInt32LE(0,804);}
   await rpc.write(menu.controls.mapped+800,state.subarray(800,816));await rpc.write(menu.controls.mapped+832,state.subarray(832,848));
   publishedPackages=library?.packages||[];dirty=false;report.installed=installed.map(a=>({id:a.id,name:a.name,version:a.version,fingerprint:a.fingerprint}));report.menuReady=true;report.stage='Ready';report.updated=new Date().toISOString();
-  for(const job of publishing){const index=publishedPackages.findIndex(p=>p.id===job.packageId);if(index>=0)notifications.enqueue({id:job.id,name:job.name,bytes:libraryBytes.subarray(index*catalog.SLOT_BYTES,(index+1)*catalog.SLOT_BYTES)});job.status='ready';job.completed=new Date().toISOString();await jobs.save(stateRoot,job);await files.event(stateRoot,'loaded',job.name+' loaded into the console menu',{packageId:job.packageId,source:job.source});}publishing=[];await notifications.publish();report.notification=notifications.report;await save();
+  for(const job of publishing){const index=publishedPackages.findIndex(p=>p.id===job.packageId);if(job.operation!=='remove'&&index>=0)notifications.enqueue({id:job.id,name:job.name,bytes:libraryBytes.subarray(index*catalog.SLOT_BYTES,(index+1)*catalog.SLOT_BYTES)});job.status='ready';job.completed=new Date().toISOString();await jobs.save(stateRoot,job);await files.event(stateRoot,job.operation==='remove'?'unloaded':'loaded',job.name+(job.operation==='remove'?' removed from the console menu':' loaded into the console menu'),{packageId:job.packageId,source:job.source});}publishing=[];await notifications.publish();report.notification=notifications.report;await save();
  }
  async function pending(state){
-  await inventory();if(runtime.active)return false;
+  await inventory();if(!await removal.atMenu(runtime,state,rpc,menu.controls.mapped))return false;
   const sequence=state.readUInt32LE(808),request=state.readUInt32LE(812);
-  const work=await notifications.pending()||dirty||(request>0&&sequence!==lastSequence)||(await jobs.all(stateRoot)).some(j=>j.status==='queued');
+  const work=await notifications.pending()||dirty||(request>0&&sequence!==lastSequence)||(state.readUInt32LE(944)>0&&state.readUInt32LE(948)!==lastRemoveSequence)||(await jobs.all(stateRoot)).some(j=>j.status==='queued');
   if(!work)return false;
   // A built-in stream/calculator owns the same renderer until it returns home.
   const mode=(await rpc.read(menu.controls.mapped+0x700004,4)).readUInt32LE();return mode===0;
  }
  async function perform(state){
-  if(runtime.active)return;
+  if(!await removal.atMenu(runtime,state,rpc,menu.controls.mapped))return;
   await notifications.capture();await inventory();const sequence=state.readUInt32LE(808),request=state.readUInt32LE(812);
   if(request>0&&sequence!==lastSequence){lastSequence=sequence;const pkg=publishedPackages[request-1];if(pkg)await jobs.create(stateRoot,pkg,'console');}
+  const removeRequest=state.readUInt32LE(944),removeSequence=state.readUInt32LE(948);
+  if(removeRequest>0&&removeSequence!==lastRemoveSequence){
+   lastRemoveSequence=removeSequence;const app=(runtime.report.catalog?.apps||[])[removeRequest-1];
+   try{if(!app)throw Error('Selected module is no longer loaded');await removal.queue(stateRoot,[app.id],runtime.report.catalog.apps,'console');}
+   catch(error){await files.event(stateRoot,'error',error.message);}
+   await rpc.write(menu.controls.mapped+940,Buffer.alloc(8));
+  }
   const pending=(await jobs.all(stateRoot)).filter(j=>j.status==='queued');
   const ids=new Set((runtime.report.catalog?.apps||[]).map(a=>a.id));
   for(const job of pending){job.status='loading';job.started=new Date().toISOString();await jobs.save(stateRoot,job);
-   try{const pkg=await repo.inspect(job.file);if(pkg.id!==job.packageId)throw Error('Package changed identity');
+   try{
+    if(job.operation==='remove'){
+     const current=await catalog.scan(menu.catalog.root);const app=current.apps.find(a=>a.id===job.packageId);
+     if(!app)throw Error('Module is no longer loaded on the console');
+     await require('./composition.cjs').build(current.apps.filter(a=>a.id!==app.id),require('../../../core/session/preload.cjs').cacheRoot(root));
+     job.result=await removal.remove(menu.catalog.root,app.id);job.activityType='removed';job.version=app.version;
+     ids.delete(app.id);job.status='publishing';publishing.push(job);await jobs.save(stateRoot,job);continue;
+    }
+    const pkg=await repo.inspect(job.file);if(pkg.id!==job.packageId)throw Error('Package changed identity');
     if(ids.size>=15&&!ids.has(pkg.id))throw Error('The menu supports 15 loaded apps per session');
     await files.event(stateRoot,'unpack','Verifying and unpacking '+job.name+' .izm');
     // Compile on the PC before publishing any catalog change to the console.
@@ -61,7 +77,7 @@ async function create({rpc,menu,directory,runtime,root=path.resolve(__dirname,'.
     job.result=await repo.install(job.file,menu.catalog.root);ids.add(pkg.id);job.status='publishing';publishing.push(job);await jobs.save(stateRoot,job);
    }catch(e){job.status='failed';job.error=e.message;await jobs.save(stateRoot,job);await files.event(stateRoot,'error',job.name+': '+e.message);}
   }
-  if(publishing.length){const counter=Buffer.alloc(4);counter.writeFloatLE(state.readFloatLE(104)+1);await rpc.write(menu.controls.mapped+104,counter);}
+  if(publishing.length){await rpc.write(menu.controls.mapped+940,Buffer.alloc(8));const counter=Buffer.alloc(4);counter.writeFloatLE(state.readFloatLE(104)+1);await rpc.write(menu.controls.mapped+104,counter);}
  }
  await inventory(true);await publish();await files.event(stateRoot,'ready','IZlauncher ready. Press X or touch the on-screen + to browse packages.');
  return {pending,perform,async atBoundary(){if(!runtime.active)await applyShell();dirty=true;await publish();},async sample(batch){report.lastFrameBatch=batch;report.active=runtime.report.active||null;report.updated=new Date().toISOString();await save();},async close(){report.menuReady=false;report.stage='Disconnected';report.completed=new Date().toISOString();await save();},report};

@@ -155,6 +155,11 @@ async function createWindowServer({
           await manager.loadPackages(body.ids);
           return { ok: true };
         }
+        if(url.pathname==='/api/unload'){
+          if(manager.preview)throw Error('Preview cannot remove console modules');
+          await manager.unloadPackages(body.ids);
+          return {ok:true};
+        }
         if (url.pathname === '/api/delete') {
           await manager.remove(body.id);
           return { ok: true };

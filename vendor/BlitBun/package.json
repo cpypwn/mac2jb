@@ -1,0 +1,23 @@
+{
+  "name": "blitbun",
+  "version": "1.14.4",
+  "private": true,
+  "description": "PC-to-Switch 2 streaming · video, audio and optional controller forwarding",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "node tools/module.cjs check",
+    "pack": "node tools/module.cjs pack",
+    "release": "node tools/module.cjs release"
+  },
+  "license": "GPL-2.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byizmysh/BlitBun.git"
+  },
+  "homepage": "https://github.com/byizmysh/BlitBun#readme",
+  "bugs": {
+    "url": "https://github.com/byizmysh/BlitBun/issues"
+  }
+}

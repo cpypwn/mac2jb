@@ -31,7 +31,7 @@ enum SessionRunMode: String, CaseIterable, Identifiable {
         switch self {
         case .bootstrapOnly: return "Type bootstrap.bas into the editor, then save it as NS2."
         case .exploitOnly: return "Run the exploit and finish after verification."
-        case .heldRPC: return "Required for GPUBrewLauncher, OunceCake and Stremio. Run the exploit and keep the connection open."
+        case .heldRPC: return "Run the exploit, hold RPC and launch MintBrew automatically."
         case .systemCodeDump: return "Run the exploit, save system code, then finish."
         case .commandsOnly: return "Type selected commands without starting a host."
         case .hostOnly: return "Start the host and enter the console commands yourself."

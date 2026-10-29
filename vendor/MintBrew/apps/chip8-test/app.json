@@ -1,0 +1,25 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "chip8-test",
+  "name": "CHIP-8 Test",
+  "version": "0.1.0",
+  "description": "A small GPU emulator with an original moving-sprite test program",
+  "transition": "none",
+  "icon": "assets/icon.png",
+  "initialState": "assets/state.bin",
+  "data": "assets/text.bin",
+  "memory": {
+    "bytes": 20480,
+    "initial": "assets/memory.bin"
+  },
+  "cpuBridge": {
+    "kind": "counter-v1",
+    "offset": 0
+  },
+  "shaders": {
+    "vertex": "app.vert.spv",
+    "fragment": "app.frag.spv",
+    "compute": "app.comp.spv"
+  }
+}

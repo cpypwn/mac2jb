@@ -36,6 +36,13 @@ import Foundation
         precondition(failed.receive("homebrew-stopped") && failed.homebrewStage == .failed)
         precondition(failed.finish() && failed.receive("rpc-finishing") && failed.receive("verified"))
 
+        var retry = held()
+        precondition(retry.launchHomebrew() && retry.receive("homebrew-started"))
+        precondition(retry.receive("homebrew-failed", retrySafe: true) && retry.homebrewStage == .idle)
+        precondition(retry.heldConfirmed && retry.canLaunchHomebrew && retry.canCheckStatus)
+        precondition(retry.launchHomebrew() && retry.homebrewStage == .launching)
+        precondition(retry.receive("homebrew-failed") && !retry.canLaunchHomebrew)
+
         var ended = held()
         ended.launchHomebrew(); ended.receive("homebrew-running")
         precondition(ended.receive("homebrew-stopped") && ended.homebrewStage == .stopped)

@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 'use strict';
-// Native GUI adapter. Keep the audited ns2jb snapshot unchanged and preserve
-// the host's command output in the GUI's diagnostic stream.
 process.umask(0o077);
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
-const {selectedProfile, profileById, validStartCommand} = require('./host-profiles.cjs');
+const {selectedProfile, profileById, validStartCommand, incompatibleLegacyStartHint} = require('./host-profiles.cjs');
 const root = path.resolve(__dirname, '..');
 const timingDefaults = Object.freeze({delay: 10, enumerationTimeout: 4, loadWaitMs: 1000,
-  runWaitMs: 1000, removeWaitMs: 1000, loadConfirmWaitMs: 1000});
+  runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0});
 function hidSettings(args) {
   const settings = {...timingDefaults};
   const values = [...args];
@@ -39,7 +37,7 @@ function hidSettings(args) {
   }
   return settings;
 }
-function commandsOnlySettings(args, profile = profileById('BermTheSequel')) {
+function commandsOnlySettings(args, profile = profileById('kurumuz')) {
   const timings=[];let csv,startCommand,startPrefix=false;
   for(let index=0;index<args.length;index++) {
     const option=args[index];
@@ -77,16 +75,16 @@ function lines(stream, callback, limit = 65536) {
   });
   stream.on('end', () => {if (pending) callback(pending);});
 }
-function validStart(line, address, profile = profileById('BermTheSequel')) {
+function validStart(line, address, profile = profileById('kurumuz')) {
   return validStartCommand(line,profile,address);
 }
 function verifiedResult(result) {
   return result?.verified === true && result?.fs?.verified === true &&
     result?.fs?.restored === true && result?.fs?.cleanup?.cleanedUp === true;
 }
-function networkBindFailure(line, address) {
+function networkBindFailure(line, address, port = 39380) {
   const match = /\blisten\s+EADDRNOTAVAIL\b.*?\s(\d+(?:\.\d+){3}):(\d+)\b/.exec(line);
-  if (!match || match[1] !== address || match[2] !== '39380') return null;
+  if (!match || match[1] !== address || match[2] !== String(port)) return null;
   return {address, diagnostic: line.trim().slice(0, 2048)};
 }
 function networkUnavailableMessage(address) {
@@ -114,24 +112,27 @@ async function host(address) {
   // existing record, including a symlink or a record from another host.
   if (fs.existsSync(active) || (() => {try {fs.lstatSync(active); return true;} catch {return false;}})())
     throw Error('This session already has a pairing record. Stop it and start a fresh session.');
-  current = spawn(process.execPath, ['run.cjs', address], {
-    cwd: folder, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+  const izmysh = profile.engine === 'izmysh';
+  const engineFolder = izmysh ? path.join(root, profile.sourceDirectory) : folder;
+  current = spawn(process.execPath, izmysh ? [path.join(engineFolder, 'server/host.cjs'), address] : ['run.cjs', address], {
+    cwd: engineFolder, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     // Use the selected host's matching bootstrap without changing its source.
     // GUI sessions finish after verification, regardless of inherited settings.
-    env: {...process.env, NS2_BASIC_ARITY: String(profile.startArgumentCount), NS2_RPC_MODE: '0'}
+    env: {...process.env, NS2_BASIC_ARITY: String(profile.startArgumentCount), NS2_RPC_MODE: '0',
+      ...(izmysh ? {IZ_SESSION_DIR: runs, HB_PORT: String(profile.startPort)} : {})}
   });
   const child = current;
-  let published = false, directory, publicationError, networkFailure, networkTimer, progressed = false;
+  let published = false, directory, publicationError, networkFailure, networkTimer, progressed = false, qualified = false;
   function output(line) {
     try {
     const clean = line.trim();
-    const bindFailure = networkBindFailure(clean, address);
+    const bindFailure = networkBindFailure(clean, address, profile.startPort);
     if (bindFailure && !networkFailure) {
       networkFailure = bindFailure;
       signalGroup(child, 'SIGTERM');
       networkTimer = setTimeout(() => signalGroup(child, 'SIGKILL'), 2000); networkTimer.unref();
     }
-    if (validStart(clean, address, profile) && !published && !stopping && !networkFailure) {
+    if (/^V=START\(\d+(?:,\d+)+\)$/.test(clean) && validStart(clean, address, profile) && !published && !stopping && !networkFailure) {
       const temporary = active + '.' + process.pid + '.tmp';
       fs.writeFileSync(temporary, `${child.pid}\n${clean}\n`, {mode: 0o600, flag: 'wx'});
       // link provides no-replace publication, unlike rename on an existing file.
@@ -143,14 +144,19 @@ async function host(address) {
       const candidate = path.resolve(clean.slice('Run folder: '.length));
       if (candidate.startsWith(runs + path.sep)) {directory = candidate; progressed = true; emit('run-folder', {path: candidate});}
     }
-    if (/^(?:Waiting for Switch 2 at |Connected\b|[1-4]\/4 |Sending: |MAC2JB_GUI |Keyboard enumerated\. Sending|Typing line |Sent line )/.test(clean)) progressed = true;
-    if (clean.startsWith('Waiting for Switch 2 at '))
+    if (/^(?:Waiting for Switch 2 at |Console listener ready at |Connected\b|[1-4]\/4 |Sending: |MAC2JB_GUI |Keyboard enumerated\. Sending|Typing line |Sent line )/.test(clean)) progressed = true;
+    if (clean.startsWith('Waiting for Switch 2 at ') || clean.startsWith('Console listener ready at '))
       emit('host-stage', {stage: 'waiting', message: 'Waiting for the Switch to connect over the local network'});
     else if (clean.startsWith('Connected. Checking the application'))
       emit('host-stage', {stage: 'connected', message: 'Switch connected — checking the application'});
     else if (/^[1-4]\/4 /.test(clean)) emit('host-stage', {
       stage: 'pipeline', completed: Number(clean[0])-1, total: 4, message: clean});
-    emit('log', {message: line});
+    if (izmysh && clean === 'Qualified native session ready.') {
+      qualified = true;
+      emit('host-stage', {stage: 'verified', message: 'IZMYSH native session qualified; closing its RPC connection.'});
+      signalGroup(child, 'SIGTERM');
+    }
+    if (!incompatibleLegacyStartHint(clean, profile.startArgumentCount)) emit('log', {message: line});
     } catch (error) {
       publicationError ||= error;
       signalGroup(child, 'SIGTERM');
@@ -179,7 +185,14 @@ async function host(address) {
     return 1;
   }
   if (stopping) {emit('cancelled', {message: 'Session stopped. Restart the console before another exploit attempt.'}); return 130;}
-  if (code === 0 && !signal && !publicationError && verifiedResult(result)) {
+  const izmyshVerified = izmysh && qualified && result?.engine === 'izmysh' &&
+    result.qualification?.verified === true && result.qualification?.scratchRestored === true &&
+    result.qualification?.importRestored === true && typeof result.completed === 'string' && !result.error;
+  if (code === 0 && !signal && !publicationError && (izmyshVerified || verifiedResult(result))) {
+    if (izmyshVerified) {
+      emit('verified', {message: 'IZMYSH verified the native session and restored its scratch memory and import.'});
+      return 0;
+    }
     emit('verified', {message: 'FS execution verified; original instructions restored and scratch cleaned up.'}); return 0;
   }
   emit('failed', {message: result?.error || 'The host ended without a verified result. Restart the console before retrying.'});
@@ -209,7 +222,8 @@ async function hid(kind, controller, settings = timingDefaults) {
     const executable = path.join(root, textTransfer ? 'mac2jb-send' : 'mac2jb-commands');
     const args = textTransfer ? [asset, '--delay-ms', String(delay)] : [
       '--auto', ...(kind !== 'bootstrap' && settings.demo ? ['--demo'] : []), '--delay-ms', String(delay), '--gui-events', '--enumeration-timeout', String(enumerationTimeout),
-      ...(profile.startArgumentCount === 9 ? ['--start-arity','9'] : []),
+      ...(profile.startArgumentCount === 9 ? ['--start-arity','9'] : []), '--start-port', String(profile.startPort),
+      '--save-name', profile.saveName || 'NS2', '--load-name', profile.saveName || 'NS2',
       '--load-wait-ms', String(loadWaitMs), '--run-wait-ms', String(runWaitMs),
       '--remove-wait-ms', String(removeWaitMs), '--load-confirm-wait-ms', String(loadConfirmWaitMs),
       ...(saveBootstrap ? ['--save-bootstrap'] : []),
@@ -278,7 +292,7 @@ async function hid(kind, controller, settings = timingDefaults) {
         if(event.type==='command-prefix-complete') {
           if(kind!=='commands-only'||!settings.startPrefix||prefixCompleted||event.step!==commandTotal||
             event.completed!==commandTotal-1||event.total!==commandTotal||event.label!=='START'||
-            event.prefix!=='V=START(39380,'||event.startPending!==true||completedCommands.size!==commandTotal-1)return;
+            event.prefix!==`V=START(${profile.startPort},`||event.startPending!==true||completedCommands.size!==commandTotal-1)return;
           prefixCompleted=true;
           markTyping();
           emit(event.type,{kind,step:event.step,completed:event.completed,total:commandTotal,label:'START',startPending:true});return;
@@ -389,7 +403,8 @@ async function main(args = process.argv.slice(2)) {
   }
   if (args.length === 1 && args[0] === '--self-test') {
     const address = '192.0.2.1';
-    const value = 'V=START(' + [39380, ...address.split('.')].join(',') + ')';
+    const profile = profileById('BermTheSequel');
+    const value = 'V=START(' + [profile.startPort, ...address.split('.')].join(',') + ')';
     if (!validStart(value, address) || validStart(value, '192.0.2.2') ||
         validStart(value.slice(0, -1) + ',0,0,0,0)', address) ||
         verifiedResult({verified: true}) || !verifiedResult({verified: true,

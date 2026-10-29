@@ -292,6 +292,8 @@ final class StremioAccount: ObservableObject {
     private var operation: Task<Void, Never>?
     private var deadlineTask: Task<Void, Never>?
     private var progressTask: Task<Void, Never>?
+    private var progressStatusTask: Task<Void, Never>?
+    private var progressStatusGeneration = UUID()
     private var library: [String: [String: Any]] = [:]
     private var pendingProgress: [String: StremioWatchProgress] = [:]
     private var pendingProgressOrder: [String: UInt64] = [:]
@@ -325,11 +327,30 @@ final class StremioAccount: ObservableObject {
             } catch { status = "Your saved Stremio sign-in could not be opened. Unlock your Mac keychain and try again." }
         }
     }
-    deinit { operation?.cancel(); deadlineTask?.cancel(); progressTask?.cancel(); invalidateTransport() }
+    deinit { operation?.cancel(); deadlineTask?.cancel(); progressTask?.cancel(); progressStatusTask?.cancel(); invalidateTransport() }
+
+    private func setProgressStatus(_ message: String, clearAfter delay: Duration? = nil) {
+        progressStatusTask?.cancel()
+        progressStatusTask = nil
+        progressStatusGeneration = UUID()
+        let id = progressStatusGeneration
+        watchProgressStatus = message
+        guard let delay else { return }
+        progressStatusTask = Task { [weak self] in
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard let self, self.progressStatusGeneration == id else { return }
+            self.watchProgressStatus = ""
+            self.progressStatusTask = nil
+        }
+    }
 
     private func cancelCloudWork(clearHistory: Bool = false) {
         progressTask?.cancel()
         progressTask = nil
+        progressStatusTask?.cancel()
+        progressStatusTask = nil
+        progressStatusGeneration = UUID()
+        watchProgressStatus = ""
         progressGeneration = UUID()
         pendingProgress = [:]
         pendingProgressOrder = [:]
@@ -547,6 +568,7 @@ final class StremioAccount: ObservableObject {
         pendingProgress[identity] = update
         progressReceipt += 1
         pendingProgressOrder[identity] = progressReceipt
+        setProgressStatus("Syncing watch progress…")
         guard progressTask == nil else { return }
         let progressID = UUID()
         progressGeneration = progressID
@@ -599,10 +621,14 @@ final class StremioAccount: ObservableObject {
                     updateLibraryCount()
                     lastProgressWrite[identity] = Date()
                     lastPlayedSeconds[identity] = observed
-                    watchProgressStatus = "Watch progress synced."
+                    if pendingProgress.isEmpty {
+                        setProgressStatus("Watch progress synced.", clearAfter: .seconds(4))
+                    } else {
+                        setProgressStatus("Syncing watch progress…")
+                    }
                 } catch {
                     if Task.isCancelled { break }
-                    watchProgressStatus = "Watch progress could not be synced. This update was not retried."
+                    setProgressStatus("Watch progress could not be synced. This update was not retried.", clearAfter: .seconds(8))
                 }
             }
         }

@@ -2,6 +2,7 @@
 const {AddonCollection, clean, redactText} = require('./addons.cjs');
 const {renderMenu} = require('./menu.cjs');
 const library = require('./library.cjs');
+const {SourcePreferences} = require('./source-preferences.cjs');
 const {AUTO_HIDE_MS, SEEK_GESTURE_TIMEOUT_MS, playbackOverlayModel, hitTestPlaybackOverlay, nextPlaybackFocus, validPoint, seekPositionAtX} = require('./playback-controls.cjs');
 const {CATALOG_PAGE_SIZE, LIST_PAGE_SIZE, TAB_PAGE_SIZE, pageStart, clamp, buildNavigation, hitTestNavigation} = require('./navigation.cjs');
 const BUTTONS = new Set(['up', 'down', 'left', 'right', 'a', 'b', 'x', 'y', 'l', 'r', 'zl', 'zr', 'plus', 'seekLeft', 'seekRight']);
@@ -25,8 +26,9 @@ const progressInfo = (position, duration) => {
 };
 
 class Controller {
-  constructor({addonUrls = [], libraryItems = [], callbacks = {}, onChange = () => {}, onLog = () => {}, now = () => Date.now(), ...networkOptions} = {}) {
+  constructor({addonUrls = [], libraryItems = [], sourcePreferences = new SourcePreferences(), callbacks = {}, onChange = () => {}, onLog = () => {}, now = () => Date.now(), ...networkOptions} = {}) {
     this.callbacks = callbacks; this.onChange = onChange; this.onLog = onLog;
+    this.sourcePreferences = sourcePreferences;
     this.abort = new AbortController(); this.closed = false;
     this.addons = new AddonCollection({addonUrls, ...networkOptions, signal: this.abort.signal, onLog: value => this._log(value)});
     this.catalogs = []; this.catalogIndex = 0; this.catalogItems = [];
@@ -39,7 +41,7 @@ class Controller {
     this.focusArea = 'content'; this.sidebarSelected = 0; this.tabSelected = 0;
     this.mainFocus = 'content'; this.section = 'home'; this.libraryEmpty = false;
     this.busy = false; this.notice = ''; this.loading = '';
-    this.playback = {paused: false, position: 0, duration: 0, volume: 1};
+    this.playback = {paused: false, position: 0, duration: 0};
     this.playTitle = '';
     this.playGeneration = 0; this.playStarting = false;
     this.now = now;
@@ -177,13 +179,17 @@ class Controller {
     return actions;
   }
 
-  async _openStreams(video = null) {
+  async _openStreams(video = null, autoResume = false) {
     const id = videoID(this.meta, video);
     const streams = await this.addons.streams(this.meta.type, id);
     if (video) this._rememberEpisode(video);
     this.video = video; this.streams = streams;
     this.view = 'sources'; this.selected = 0; this.sourceSelected = 0;
     if (!streams.length) this.notice = 'No sources were returned for this video.';
+    if (autoResume) {
+      const preferred = this.sourcePreferences.find(this.meta.type, this.meta.id, id, streams);
+      if (preferred >= 0) await this._startStream(streams[preferred], preferred);
+    }
   }
 
   _rows() {
@@ -285,7 +291,7 @@ class Controller {
     if (this.view === 'sources') { title = this.video ? episodeLabel(this.video) : this.meta?.name || title; subtitle = 'Choose a source'; }
     if (this.view === 'playing') {
       title = this.playTitle;
-      subtitle = `${this.playback.paused ? 'Paused' : 'Playing'} · ${time(this.playback.position)} / ${time(this.playback.duration)} · ${Math.round(this.playback.volume * 100)}%`;
+      subtitle = `${this.playback.paused ? 'Paused' : 'Playing'} · ${time(this.playback.position)} / ${time(this.playback.duration)}`;
     }
     const model = {width: 640, height: 360, view: this.view, title, subtitle,
       ...this._presentation(rows, selected, start), selected: selected - start, offset: start, count: rows.length,
@@ -294,9 +300,9 @@ class Controller {
       description: this.view === 'details' ? this.meta?.description || '' : '',
       message: this.busy ? this.loading : this.notice, busy: this.busy, isPlaying: this.view === 'playing',
       playbackOverlay: this.view === 'playing' ? this._overlayModel() : null,
-      footer: this.view === 'playing' ? 'A Select / Pause  X / + Controls  L / R Episodes  Hold ZL / ZR or left stick Seek  ↑/↓ Vol  B Hide / Stop' :
+      footer: this.view === 'playing' ? 'A Select / Pause  X / + Controls  L / R Episodes  Hold ZL / ZR or left stick Seek  B Hide / Stop' :
         this.focusArea === 'sidebar' ? '↑/↓ Menu  A Open  → Return  B Return' : this.focusArea === 'tabs' ? '←/→ Catalogs  A Open  ↓ Titles  B Menu' :
-        this.view === 'catalog' ? '←/→ Titles  ↑ Catalogs  A Open  B Menu  X Refresh  Y Next catalog' : '↑/↓ Browse  A Open  B Back  ← Menu  X Refresh'};
+        this.view === 'catalog' ? '←/→ Titles  ↑ Catalogs  L/R Tabs  A Open  B Menu  X Refresh  Y Next catalog' : '↑/↓ Browse  L/R Tabs  A Open  B Back  ← Menu  X Refresh'};
     model.navigation = buildNavigation(model, {focusArea: this.focusArea, sidebarIndex: this.sidebarSelected,
       tabIndex: this.tabSelected, section: this.section});
     return model;
@@ -315,7 +321,7 @@ class Controller {
       if (action?.action === 'resume') {
         const video = this.meta.videos.find(video => video.id === action.id) ||
           {id: action.id, title: this.meta.name, season: null, episode: null, released: ''};
-        await this._openStreams(video); return;
+        await this._openStreams(video, true); return;
       }
       if (action?.action === 'currentSeason') {
         const group = this._seasonGroups().find(group => group.season === action.season);
@@ -417,10 +423,13 @@ class Controller {
         ...(this.meta.type === 'series' ? {videoIds: this.meta.videos.map(video => video.id)} : {})};
       const resume = library.resumePosition(this.libraryItem, id);
       this.playback = {paused: false, position: resume,
-        duration: this.libraryItem && (this.libraryItem.state.video_id || this.libraryItem._id) === id ? this.libraryItem.state.duration / 1000 : 0,
-        volume: this.playback.volume};
+        duration: this.libraryItem && (this.libraryItem.state.video_id || this.libraryItem._id) === id ? this.libraryItem.state.duration / 1000 : 0};
       await this.callbacks.play({url: source.url, headers: {...source.headers}, title: this.playTitle,
         meta: {id: this.meta.id, type: this.meta.type, videoId: id}, resumePosition: resume, libraryInfo: info});
+      if (generation === this.playGeneration) {
+        try { await this.sourcePreferences.remember(this.meta.type, this.meta.id, id, this.streams, sourceIndex); }
+        catch { this._log('The last playback source could not be saved.'); }
+      }
     } finally { this.playStarting = false; }
     if (generation !== this.playGeneration) return;
     this.view = 'playing'; this.selected = 0;
@@ -546,20 +555,12 @@ class Controller {
     if (['zl', 'zr', 'seekLeft', 'seekRight'].includes(button))
       return this._playbackAction('seek', ['right', 'zr', 'seekRight'].includes(button) ? 10 : -10);
     if (button === 'l' || button === 'r') return this._playbackAction(button === 'r' ? 'nextEpisode' : 'prevEpisode');
-    if (button === 'up' || button === 'down') {
-      this._showOverlay();
-      const delta = button === 'up' ? 0.05 : -0.05;
-      const volume = Math.min(1, Math.max(0, this.playback.volume + delta));
-      const generation = this.playGeneration;
-      await this._playbackCallback('volume', delta);
-      if (generation === this.playGeneration && this.view === 'playing') this.playback.volume = volume;
-    }
     if (button === 'b') return this._playbackAction('stop');
   }
 
   async handleButton(button) {
     if (!BUTTONS.has(button) || this.busy || this.closed || this.view === 'playing' && this.playback.seeking) return false;
-    if (this.view !== 'playing' && ['l', 'r', 'zl', 'zr', 'plus', 'seekLeft', 'seekRight'].includes(button)) return false;
+    if (this.view !== 'playing' && ['zl', 'zr', 'plus', 'seekLeft', 'seekRight'].includes(button)) return false;
     if (this.view === 'playing') {
       if (!PLAYBACK_BUTTONS.has(button)) return false;
       if (this.overlay.visible && this.overlay.mode !== 'controls' && !['l', 'r'].includes(button)) {
@@ -569,6 +570,12 @@ class Controller {
         if (button === 'up' || button === 'down') {
           this.overlay.optionSelected = clamp(this.overlay.optionSelected + (button === 'down' ? 1 : -1), this._overlayModel().optionCount);
           this._showOverlay(); this._emit(); return true;
+        }
+        if (button === 'left' || button === 'right') {
+          const action = button === 'left' ? 'previousOptions' : 'nextOptions';
+          const page = this._overlayModel().optionPaging.find(row => row.action === action && !row.disabled);
+          if (!page) return false;
+          this.overlay.optionSelected = page.index; this._showOverlay(); this._emit(); return true;
         }
         if (button === 'a') {
           const row = this._overlayModel().optionRows.find(row => row.focused);
@@ -593,7 +600,10 @@ class Controller {
         if (control.id === 'audio' || control.id === 'subtitles') { this._openTrackOptions(control.id); this._emit(); return true; }
         return this._operation('Updating playback…', () => this._playbackAction(control.id));
       }
+      if (button === 'up' || button === 'down') return false;
     }
+    if (this.view !== 'playing' && (button === 'l' || button === 'r'))
+      return this._operation('Loading…', () => this._loadCatalog(this.catalogIndex + (button === 'r' ? 1 : -1)));
     if (this.view !== 'playing' && this._moveBrowseFocus(button)) return true;
     return this._operation(this.view === 'playing' ? 'Updating playback…' : 'Loading…', async () => {
       if (this.view === 'playing') { await this._playingButton(button); return; }
@@ -795,20 +805,25 @@ class Controller {
 
   updatePlayback(update = {}) {
     if (this.closed) return;
+    const wasPaused = this.playback.paused;
+    const wasSeeking = this.playback.seeking;
     const previousPosition = this.playback.position;
-    const previous = [Math.floor(this.playback.position), Math.floor(this.playback.duration), this.playback.volume, this.playback.paused, this.playback.seeking].join(':');
-    for (const key of ['position', 'duration', 'volume']) if (Number.isFinite(update[key]) &&
-      (key === 'volume' || update[key] >= 0 && update[key] <= library.MAX_SECONDS))
-      this.playback[key] = key === 'volume' ? Math.max(0, Math.min(1, update[key])) : Math.max(0, update[key]);
+    const previous = [Math.floor(this.playback.position), Math.floor(this.playback.duration), this.playback.paused, this.playback.seeking].join(':');
+    for (const key of ['position', 'duration']) if (Number.isFinite(update[key]) &&
+      update[key] >= 0 && update[key] <= library.MAX_SECONDS)
+      this.playback[key] = update[key];
     if (typeof update.paused === 'boolean') this.playback.paused = update.paused;
     if (typeof update.seeking === 'boolean') this.playback.seeking = update.seeking;
+    if (wasSeeking && update.seeking === false) this._cancelSeek();
+    if ((wasPaused && update.paused === false) || (wasSeeking && update.seeking === false))
+      this.overlay.lastInteraction = this.now();
     if (this.seekPreview !== null) this.seekPreview = this.playback.duration ? Math.max(0, Math.min(
       this.playback.duration - (this.seekGesture?.owner === 'touch' ? 0 : 0.1),
       this.seekPreview + (this.seekGesture?.owner === 'touch' ? 0 : this.playback.position - previousPosition))) : null;
     if (['audioTracks', 'subtitleTracks', 'selectedAudioId', 'audioTrackId', 'selectedSubtitleId', 'subtitleTrackId'].some(key =>
       Object.prototype.hasOwnProperty.call(update, key))) this.setMediaTracks(update);
     this._updateLibrarySnapshot(false);
-    const changed = previous !== [Math.floor(this.playback.position), Math.floor(this.playback.duration), this.playback.volume, this.playback.paused, this.playback.seeking].join(':');
+    const changed = previous !== [Math.floor(this.playback.position), Math.floor(this.playback.duration), this.playback.paused, this.playback.seeking].join(':');
     if (changed && (this.view !== 'playing' || this.overlay.visible)) this._emit();
   }
 
@@ -845,6 +860,9 @@ class Controller {
 
   playbackFailed(message = 'Playback failed. Check the Mac activity log.') {
     if (this.closed || this.view !== 'playing' && !this.playStarting) return;
+    if (this.meta && this.streams[this.sourceSelected])
+      this.sourcePreferences.forget(this.meta.type, this.meta.id, videoID(this.meta, this.video),
+        this.streams, this.sourceSelected).catch(() => this._log('The failed playback source could not be cleared.'));
     this._updateLibrarySnapshot(false); this.playGeneration++;
     this._cancelSeek();
     this.overlay.mode = 'controls'; this.overlay.visible = false;

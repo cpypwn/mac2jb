@@ -1,18 +1,35 @@
 {
   "project": "IZ2S Platform",
   "repository": "https://github.com/byizmysh/IZ2S-Platform",
-  "version": "0.16.0-rc.3",
-  "commit": "907de0d9f5a4e358079306e7f04a8c43d463142a",
-  "sourceUrl": "https://github.com/byizmysh/IZ2S-Platform/tree/907de0d9f5a4e358079306e7f04a8c43d463142a",
+  "version": "0.16.0-rc.5",
+  "commit": "d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
+  "sourceUrl": "https://github.com/byizmysh/IZ2S-Platform/tree/d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
   "snapshotPath": "vendor/IZ2S-Platform",
-  "distributionType": "Complete pinned tracked source snapshot; Git metadata omitted.",
-  "fileCount": 480,
-  "totalBytes": 2585365,
+  "distributionType": "Complete pinned upstream tracked source snapshot with the listed mac2jb changes; Git metadata omitted.",
+  "fileCount": 598,
+  "totalBytes": 5207747,
   "integrityManifest": "IZ2S-Platform-SHA256SUMS",
-  "integrityManifestSha256": "fd35e84485e74aac2e2b8dd42bdf6d15b0125a643e3edd087ee413971f9e728b",
-  "modifications": [],
-  "runtimeOverlay": "scripts/prepare-izlauncher.cjs creates a separate Mac base-shell runtime from this unchanged snapshot.",
-  "scope": "IZlauncher base shell and File Exchange 1.1.1 on an existing verified held RPC session, including BermTheSequel demo sessions; no platform bootstrap, desktop panel, HID agent or streaming modules.",
+  "integrityManifestSha256": "bafbf27e48dc9879263977d910fc58fffdb275a95f81f752547f603a3ab0cca0",
+  "modifications": [
+    {
+      "path": "core/module-paths.cjs",
+      "reason": "Cache module archive descriptors so repeated discovery does not block the control panel and frame loop."
+    },
+    {
+      "path": "distribution/tests/module-paths-cache.test.cjs",
+      "reason": "Verify cache reuse and invalidation when module archives change."
+    },
+    {
+      "path": "shells/izlauncher/app/shaders/app-menu.glsl",
+      "reason": "Render the narrow I glyph and close application menus with X."
+    },
+    {
+      "path": "shells/izlauncher/app/shaders/pc-screen-input.glsl",
+      "reason": "Close the PC stream menu and overlay with X."
+    }
+  ],
+  "runtimeOverlay": "scripts/prepare-izlauncher.cjs creates a separate Mac IZlauncher runtime with File Exchange, pinned BlitBun and VacooTube adaptations, an offline shader compiler and a precompiled shell from this pinned snapshot; the IZMYSH host profile launches its bundled server source for native-session verification.",
+  "scope": "IZlauncher, File Exchange 1.1.1, BlitBun and VacooTube on an existing verified held RPC session, including kurumuz and BermTheSequel demo sessions; compatible custom IZlauncher modules may be added to the private runtime. The optional IZMYSH host profile uses NS2I and port 39395 for native-session verification, then closes RPC. IZPSlauncher source is bundled but not started by mac2jb; no platform bootstrap, desktop panel or HID agent is included.",
   "licenseNotice": "Independently authored IZMYSH code declares GPL-2.0-or-later. Inherited component licenses and prior grants remain applicable. Upstream THIRD_PARTY.json explicitly requires inherited-source review and says license review is not fully verified; no blanket redistribution permission is asserted.",
   "retainedNotices": [
     {

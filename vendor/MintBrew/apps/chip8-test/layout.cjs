@@ -1,0 +1,21 @@
+const layout=Object.freeze({
+  bytes:20480,
+  memory:256,
+  registers:4352,
+  state:4368,
+  stack:4384,
+  display:4400,
+  pc:0,
+  i:1,
+  sp:2,
+  delay:3,
+  sound:4,
+  random:5,
+  halted:6,
+  lastClock:7,
+  clockPhase:8,
+  clockReady:9,
+  frame:10,
+  instructions:11
+});
+module.exports=layout;

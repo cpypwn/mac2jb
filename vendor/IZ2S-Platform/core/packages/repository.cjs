@@ -6,6 +6,9 @@ const registry = require('../modules.cjs'),
   archive = require('../archive.cjs');
 async function create(root, options = {}) {
   root = path.resolve(root);
+  const shell=options.shell||process.env.IZ2S_SHELL||process.env.IZ15_SHELL||'izlauncher';
+  const shellDescriptor=require('../descriptors.cjs').scan(root,'shell').items.find(item=>item.id===shell);
+  const compatibilityOptions={...options,shell,shellDescriptor};
   const folder = path.join(root, 'data/imports');
   await fs.mkdir(folder, { recursive: true });
   async function inspect(name) {
@@ -29,7 +32,7 @@ async function create(root, options = {}) {
     if (manifest.id !== m.id) throw Error('Switch/module identity differs');
     const compatibility = require('../compatibility.cjs').moduleCompatibility(
       m.descriptor,
-      options,
+      compatibilityOptions,
     );
     for (const dependency of m.descriptor.dependencies || [])
       if (dependency.kind === 'module') {

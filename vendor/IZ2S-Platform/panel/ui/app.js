@@ -1085,6 +1085,10 @@ function renderLibrary() {
         card.append(details);
       }
       card.append(folderButton('module', pkg.module?.id || pkg.id, 'Open module folder'));
+      const unload=element('button','secondary module-unload','Remove from console');
+      unload.type='button';unload.title='Unload this module from the console menu. The PC package remains available.';
+      unload.onclick=async()=>{if(!window.confirm('Remove '+pkg.name+' from the console menu? You can load it again from this PC.'))return;selection.delete(pkg.id);await act('/api/unload',{ids:[pkg.id]});};
+      card.append(unload);
       $('library').append(card);
     }
   }
@@ -1094,6 +1098,9 @@ function renderLibrary() {
     card.classList.toggle('installed', loaded);
     card.dataset.installed = String(loaded);
     card.querySelector('img').title = loaded ? 'Loaded on console' : 'Not loaded on console';
+    const unload=card.querySelector('.module-unload'),pending=state.jobs.some(job=>job.packageId===card.dataset.appId&&['queued','loading','publishing'].includes(job.status));
+    unload.hidden=!loaded;unload.disabled=busy||state.preview||!state.connected||pending;
+    unload.textContent=pending?'Operation queued…':'Remove from console';
   }
   const hostList = $('module-host-actions'),
     hostStamp = JSON.stringify([packageStamp, state.moduleCatalog, state.hostModules, state.moduleStates]);
@@ -1159,7 +1166,7 @@ function renderLibrary() {
     const row = element('div', 'job ' + job.status);
     row.append(
       element('strong', '', job.name),
-      element('span', '', job.status === 'complete' ? 'Loaded' : job.status),
+      element('span', '', ['complete','ready'].includes(job.status) ? (job.operation==='remove'?'Removed from console':'Loaded') : job.status),
     );
     if (job.error) row.title = job.error;
     $('jobs').append(row);

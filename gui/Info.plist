@@ -9,12 +9,13 @@
     <key>CFBundleDisplayName</key><string>mac2jb</string>
     <key>CFBundleIconFile</key><string>mac2jb</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.5.0</string>
-    <key>CFBundleVersion</key><string>517</string>
-    <key>MAC2JBTestBuild</key><false/>
+    <key>CFBundleShortVersionString</key><string>0.6.0</string>
+    <key>CFBundleVersion</key><string>520</string>
+    <key>MAC2JBTestBuild</key><true/>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocalNetworkUsageDescription</key><string>mac2jb connects to your Switch 2 over your local network for the ns2jb host session.</string>
+    <key>NSAudioCaptureUsageDescription</key><string>mac2jb captures Mac audio when you choose to stream with VacooTube.</string>
     <key>NSPrincipalClass</key><string>NSApplication</string>
 </dict>
 </plist>

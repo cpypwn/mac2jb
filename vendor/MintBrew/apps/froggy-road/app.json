@@ -1,0 +1,29 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "froggy-road",
+  "name": "Froggy Road",
+  "version": "1.0.0",
+  "description": "An 8-bit top-down frog crossing game with five goal pads.",
+  "icon": "assets/icon.png",
+  "initialState": "assets/state.bin",
+  "data": "assets/font.bin",
+  "shaders": {
+    "vertex": "app.vert.spv",
+    "fragment": "app.frag.spv",
+    "compute": "app.comp.spv"
+  },
+  "audio": {
+    "sampleRate": 48000,
+    "channels": 2,
+    "format": "s16le",
+    "effects": {
+      "1": "sounds/hop.pcm",
+      "2": "sounds/squash.pcm",
+      "3": "sounds/goal.pcm",
+      "4": "sounds/win.pcm",
+      "5": "sounds/gameover.pcm",
+      "6": "sounds/bump.pcm"
+    }
+  }
+}

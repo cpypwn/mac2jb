@@ -1,0 +1,15 @@
+{
+  "upstream": "https://github.com/ozkl/doomgeneric",
+  "commit": "e257a09527062bfb986b6e5e0780839b6cbd5b71",
+  "sourceInventory": "source-SHA256SUMS",
+  "sourceInventorySha256": "b4900944d294bed9679ec2a87768cc33c7a85f1e93adf056a5f3ddd9458baab1",
+  "sourceFileCount": 194,
+  "sourceLicense": "GPL-2.0-or-later",
+  "macPort": "doom-mac.c",
+  "macBinary": "doom-headless",
+  "macBinarySha256": "9521f644a40ad6b020b79a6579a4621710baee562c0002b9e489f90d6cd9efc9",
+  "gameData": "../assets/freedoom1.wad",
+  "gameDataSha256": "7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d",
+  "audio": "not implemented in this test build",
+  "consoleValidation": "not performed"
+}

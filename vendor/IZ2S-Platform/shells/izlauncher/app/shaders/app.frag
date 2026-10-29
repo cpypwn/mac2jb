@@ -65,6 +65,7 @@ vec3 focusSearchDraw(vec2 p,vec3 col){
  col=mix(col,MUTED,focusText(p,vec2(570,785),F_ASELECT,1));col=mix(col,MUTED,focusText(p,vec2(765,785),F_BBACK,1));
  return col;
 }
+#include "menu-removal-draw.glsl"
 void main(){
  vec2 p=gl_FragCoord.xy;
 #ifdef IZ_CONTROLLERS
@@ -125,5 +126,5 @@ void main(){
   if(p.y>886.0&&p.y<916.0&&p.x>1400.0){uint tickCount=min(realCount,16u),selectedTick=min(ordinal,tickCount-1u);float start=1850.0-(float(tickCount-1u)*22.0+36.0);for(uint i=0u;i<tickCount;i++){bool on=i==selectedTick;float x=start+float(i)*22.0+(i>selectedTick?30.0:0.0)+(on?18.0:3.0);float d=on?box(p,vec2(x,901),vec2(18,3),3):length(p-vec2(x,901))-3.0;col=mix(col,on?BLUE:vec3(.29),fill(d));}}
  }
 
- menuFooter(p,col);if(c.rows[1]!=0u)col=focusSearchDraw(p,col);outColor=vec4(notification(p,col)*(1.0-c.transition.x),1);
+ menuFooter(p,col);if(c.rows[1]!=0u)col=focusSearchDraw(p,col);col=menuRemovalDraw(p,col,1008.0);outColor=vec4(notification(p,col)*(1.0-c.transition.x),1);
 }

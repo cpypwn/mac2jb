@@ -1,4 +1,3 @@
-"""Draw the Stremio television interface; output one opaque RGBA frame."""
 import argparse
 import hashlib
 import json
@@ -50,13 +49,47 @@ def font(size):
     size = max(1, round(size * SCALE))
     return ImageFont.truetype(args.font, size) if args.font else ImageFont.load_default(size=size)
 
-def text(x, y, value, size=12, fill=INK, width=None):
+def fitted(value, size, width=None):
     value = str(value or '').replace('\n', ' ')[:600]
-    face = font(size)
     if width is not None:
+        face = font(size)
         while value and draw.textlength(value, font=face) > width:
             value = value[:-2] + '…' if len(value) > 2 else ''
-    draw.text((x, y), value, font=face, fill=fill)
+    return value
+
+def text(x, y, value, size=12, fill=INK, width=None):
+    value = fitted(value, size, width)
+    draw.text((x, y), value, font=font(size), fill=fill)
+
+def catalog_title(card, rect, focused=False, selected=False, elapsed_ms=0):
+    x, y, right, bottom = rect
+    size, inset = 10, 5
+    value = fitted(card.get('title') or card.get('label'), size)
+    face = font(size)
+    available = right - x - inset * 2
+    measured = draw.textlength(value, font=face)
+    color = INK if selected else MUTED
+    if measured <= available:
+        text(x + (right - x - measured) / 2, y, value, size, color)
+        return
+    if not focused:
+        label = fitted(value, size, available)
+        text(x + (right - x - draw.textlength(label, font=face)) / 2, y, label, size, color)
+        return
+    distance = measured - available
+    travel = distance / 28
+    phase = (max(0, elapsed_ms) / 1000) % (travel * 2 + 1.6)
+    if phase < .8:
+        offset = 0
+    elif phase < .8 + travel:
+        offset = (phase - .8) * 28
+    elif phase < 1.6 + travel:
+        offset = distance
+    else:
+        offset = distance - (phase - 1.6 - travel) * 28
+    layer = Image.new('RGBA', (round(available * SCALE), round((bottom - y) * SCALE)), (0, 0, 0, 0))
+    ImageDraw.Draw(layer).text((-offset * SCALE, 0), value, font=face, fill=color)
+    image.alpha_composite(layer, (round((x + inset) * SCALE), round(y * SCALE)))
 
 def wrap(x, y, value, width, size=11, lines=2, fill=MUTED):
     words = str(value or '').replace('\n', ' ').split()
@@ -125,8 +158,11 @@ def poster(card, rect, selected=False):
             mask = Image.new('L', image.size)
             ScaledDraw(mask).rounded_rectangle(rect, radius=7, fill=255)
             image.alpha_composite(Image.composite(layer, Image.new('RGBA', image.size), mask))
-        title = str(card.get('title') or card.get('label') or 'STREMIO')
-        wrap(x + 9, y + max(12, (bottom - y) // 2 - 12), title, right - x - 18, 12, 3, INK)
+        title = str(card.get('title') or card.get('label') or 'Stremio')
+        initials = ''.join(word[:1] for word in title.split()[:2]).upper() or 'S'
+        face = font(23)
+        text(x + (right - x - draw.textlength(initials, font=face)) / 2,
+             y + (bottom - y - 23) / 2, initials, 23, INK)
     progress = card.get('progress') or {}
     ratio = max(0, min(1, float(progress.get('ratio') or 0)))
     if ratio:
@@ -242,12 +278,8 @@ def catalog_view():
             if card is None:
                 continue
             focused, selected = target.get('focused'), target.get('selected')
-            if focused:
-                box(nav_rect(target), (35, 28, 51, 255), 9, PURPLE, 2)
-            poster(card, nav_rect(target['poster']))
-            title_rect = target['title']
-            text(title_rect['x'] / 2, title_rect['y'] / 2, card.get('title') or card.get('label'),
-                 10, INK if selected else MUTED, title_rect['width'] / 2)
+            poster(card, nav_rect(target['poster']), focused)
+            catalog_title(card, nav_rect(target['title']), focused, selected, model.get('titleMarqueeMs', 0))
     else:
         box((64, 190, 624, 322), (25, 25, 38, 255), 10)
         text(85, 216, 'Nothing here yet', 19, INK)
@@ -399,7 +431,6 @@ def playback_overlay():
         box((x, y + 7, x + width * ratio, y + 10), PURPLE, 2)
     draw.ellipse((x + width * ratio - 4, y + 4, x + width * ratio + 4, y + 12), fill=INK)
     text(x, y + 17, state.get('timeLabel'), 11, INK, 250)
-    text(428, y + 17, f"Volume {round(float(state.get('volume', 1)) * 100)}%", 10, MUTED, 155)
     for control in state.get('controls', []):
         x, y = control['x'] / 2, control['y'] / 2
         width, height = control['width'] / 2, control['height'] / 2

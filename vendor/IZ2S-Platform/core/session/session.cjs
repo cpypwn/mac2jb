@@ -435,7 +435,7 @@ function createSessionManager({
           row.selectedModules.length +
           ' selected modules from the local library',
       );
-      await prepareModules(root, row.selectedModules, apps);
+      await prepareModules(root, row.selectedModules, apps,{shell:launchEnvironment.IZ2S_SHELL||launchEnvironment.IZ15_SHELL||'izlauncher'});
     }
     if (
       current !== row ||
@@ -608,7 +608,7 @@ function createSessionManager({
         );
       const selectedModules =
         kind === 'launch'
-          ? await require('./preload.cjs').resolve(root, moduleIds)
+          ? await require('./preload.cjs').resolve(root, moduleIds,{shell:launchEnvironment.IZ2S_SHELL||launchEnvironment.IZ15_SHELL||'izlauncher'})
           : [];
       const checks = await refresh(true);
       if (epoch !== ownEpoch) throw Error('Start cancelled by STOP');
@@ -924,7 +924,7 @@ function createSessionManager({
       } catch {}
     }
     try {
-      const repo = await require('../packages/repository.cjs').create(root);
+      const repo = await require('../packages/repository.cjs').create(root,{shell:launchEnvironment.IZ2S_SHELL||launchEnvironment.IZ15_SHELL||'izlauncher'});
       library = (await repo.list()).packages.map(
         require('../packages/repository.cjs').publicPackage,
       );
@@ -989,7 +989,7 @@ function createSessionManager({
       !(await snapshot()).connected
     )
       throw Error('Start and connect the launcher first');
-    const repo = await require('../packages/repository.cjs').create(root),
+    const repo = await require('../packages/repository.cjs').create(root,{shell:launchEnvironment.IZ2S_SHELL||launchEnvironment.IZ15_SHELL||'izlauncher'}),
       list = await repo.list();
     if (!Array.isArray(ids) || !ids.length || ids.length > 16)
       throw Error('Select an app');
@@ -1002,6 +1002,12 @@ function createSessionManager({
         'browser',
       );
     }
+  }
+  async function unloadPackages(ids) {
+    if(preview)throw Error('Preview cannot remove console modules');
+    const state=await snapshot();
+    if(!current?.runDirectory||current.status!=='running'||!state.connected)throw Error('Start and connect the launcher first');
+    return require('../packages/removal.cjs').queue(journal.session(current.id),ids,state.installed,'browser');
   }
   async function configureConnection(body) {
     await recoveryReady;
@@ -1036,6 +1042,7 @@ function createSessionManager({
     hardStop,
     snapshot,
     loadPackages,
+    unloadPackages,
     setupAction,
     configureConnection,
     async retry() {

@@ -1,0 +1,20 @@
+MintBrew source ancestry
+========================
+
+RavensClawX created HBLauncher and its GPU app environment. MintBrew uses the
+same app ABI.
+
+NiftyNova maintains GPUBrewLauncher, the fork whose console host/runtime is
+the base of MintBrew. MintBrew includes GPUBrewLauncher's Hello World and
+Froggy Road app builds.
+
+GPUBrewLauncher's credits additionally name fuyuka / touhoufagyuri and Rosalie
+for changes and improvements. The original source snapshots remain in this
+repository as vendor/HBLauncher and vendor/GPUBrewLauncher.
+
+mac2jb contributes the MintBrew name, dark/mint menu, curated catalog, and Mac
+packaging integration. The published ftpd-sb v0.1.0 app is added separately by
+mac2jb's pinned overlay workflow.
+
+The imported source snapshots do not include license files. This document is
+attribution and provenance, not a claim about redistribution rights.

@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "BlitBun: check",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/module.cjs",
+        "check",
+        "--platform",
+        "${input:platform}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "BlitBun: package",
+      "type": "process",
+      "command": "node",
+      "args": [
+        "tools/module.cjs",
+        "pack",
+        "--platform",
+        "${input:platform}"
+      ],
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "platform",
+      "type": "promptString",
+      "description": "Absolute path to IZ2S Platform"
+    }
+  ]
+}

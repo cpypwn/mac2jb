@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Audit complete source distributions and the explicitly approved driver."""
 import hashlib
 import json
 import stat
@@ -22,6 +21,7 @@ required = {
     'mac2jb/vendor/ns2jb/run.cjs',
     'mac2jb/vendor/ns2jb-hosts/pepsipu/run.cjs',
     'mac2jb/vendor/ns2jb-hosts/kurumuz/run.cjs',
+    'mac2jb/vendor/IZ2S-Platform/engines/izmysh/server/host.cjs',
     'mac2jb/gui/HostProfile.swift',
     'mac2jb/scripts/host-profiles.cjs',
     'mac2jb/scripts/prepare-host-profiles.cjs',
@@ -32,11 +32,61 @@ required = {
     'mac2jb/vendor/GPUBrewLauncher/homebrew-launcher/launcher.cjs',
     'mac2jb/vendor/GPUBrewLauncher/CREDITS',
     'mac2jb/vendor/GPUBrewLauncher/REFERENCE.md',
+    'mac2jb/vendor/MintBrew/homebrew-launcher/launcher.cjs',
+    'mac2jb/vendor/MintBrew/manifest.json',
+    'mac2jb/vendor/MintBrew/README.md',
+    'mac2jb/vendor/MintBrew/CREDITS',
+    'mac2jb/vendor/MintBrew/apps/hello-world/app.json',
+    'mac2jb/vendor/MintBrew/apps/froggy-road/app.json',
     'mac2jb/scripts/gui-gpubrewlauncher.cjs',
     'mac2jb/scripts/gui-hblauncher.cjs',
+    'mac2jb/scripts/gui-mintbrew.cjs',
+    'mac2jb/scripts/prepare-mintbrew.cjs',
+    'mac2jb/integrations/mintbrew-stremio/adapter.cjs',
     'mac2jb/scripts/gui-izlauncher.cjs',
+    'mac2jb/scripts/izlauncher-modules.cjs',
+    'mac2jb/scripts/izlauncher-panel.cjs',
+    'mac2jb/scripts/stage-custom-izmodule.cjs',
+    'mac2jb/scripts/gui-custom-homebrew.cjs',
+    'mac2jb/scripts/custom-rpc-package.cjs',
     'mac2jb/scripts/prepare-izlauncher.cjs',
     'mac2jb/scripts/check-izlauncher-runtime.cjs',
+    'mac2jb/vendor/BlitBun/LICENSE',
+    'mac2jb/vendor/BlitBun/module.json',
+    'mac2jb/integrations/blitbun/prepare.cjs',
+    'mac2jb/integrations/mac-stream-host.cjs',
+    'mac2jb/integrations/blitbun/mac-panel.cjs',
+    'mac2jb/integrations/blitbun/mac-doom.cjs',
+    'mac2jb/integrations/blitbun/upstream-SHA256SUMS',
+    'mac2jb/integrations/blitbun/ADAPTATION-SHA256SUMS',
+    'mac2jb/integrations/blitbun/freedoom-assets.cjs',
+    'mac2jb/integrations/blitbun/freedoom-provenance.md',
+    'mac2jb/integrations/blitbun/assets/freedoom1.wad',
+    'mac2jb/integrations/blitbun/assets/COPYING.txt',
+    'mac2jb/integrations/blitbun/assets/CREDITS.txt',
+    'mac2jb/integrations/blitbun/assets/CREDITS-MUSIC.txt',
+    'mac2jb/integrations/blitbun/doom-engine/source-SHA256SUMS',
+    'mac2jb/integrations/blitbun/doom-engine/PROVENANCE.json',
+    'mac2jb/integrations/blitbun/doom-engine/source/LICENSE',
+    'mac2jb/integrations/blitbun/doom-engine/doom-mac.c',
+    'mac2jb/integrations/blitbun/doom-engine/build.cjs',
+    'mac2jb/integrations/blitbun/doom-engine/doom-headless',
+    'mac2jb/integrations/vacootube/prepare.cjs',
+    'mac2jb/integrations/vacootube/PROVENANCE.json',
+    'mac2jb/integrations/vacootube/UPSTREAM-SHA256SUMS',
+    'mac2jb/integrations/vacootube/ADAPTATION-SHA256SUMS',
+    'mac2jb/integrations/vacootube/upstream/LICENSE',
+    'mac2jb/integrations/vacootube/upstream/module.json',
+    'mac2jb/integrations/vacootube/upstream/app/package-lock.json',
+    'mac2jb/integrations/vacootube/overlay/module.json',
+    'mac2jb/integrations/izlauncher-shell/prepare.cjs',
+    'mac2jb/integrations/izlauncher-shell/provenance.json',
+    'mac2jb/integrations/izlauncher-shell/prebuilt-SHA256SUMS',
+    'mac2jb/integrations/izdoom/prepare.cjs',
+    'mac2jb/vendor/IZDOOM/IZDOOM-v0.17.1-IZ2S.izm',
+    'mac2jb/vendor/IZDOOM/IZDOOM-v0.17.1-source.tar.gz',
+    'mac2jb/vendor/IZDOOM/SHA256SUMS',
+    'mac2jb/vendor/IZDOOM/PROVENANCE.md',
     'mac2jb/vendor/IZ2S-Platform/LICENSE',
     'mac2jb/vendor/IZ2S-Platform/COPYRIGHT',
     'mac2jb/vendor/IZ2S-Platform/LICENSE-SCOPE.md',
@@ -49,6 +99,7 @@ required = {
     'mac2jb/packaging/GPUBrewLauncher-SHA256SUMS',
     'mac2jb/scripts/gui-homebrew.cjs',
     'mac2jb/scripts/gui-stremio.cjs',
+    'mac2jb/stremio/source-preferences.cjs',
     'mac2jb/scripts/gui-ouncecake.cjs',
     'mac2jb/keyboard.c',
     'mac2jb/gui/PostBootstrapCommand.swift',
@@ -82,11 +133,11 @@ required = {
     'mac2jb/scripts/prepare-homebrew-apps.cjs',
     'mac2jb/assets/homebrew-apps/ftpd-sb/README.md',
     'mac2jb/assets/homebrew-apps/ftpd-sb/app.json',
-    'mac2jb/drivers/README.md',
     'mac2jb/drivers/LICENSE',
     'mac2jb/drivers/LICENSE-APSL-2.0.txt',
     'mac2jb/drivers/SHA256SUMS',
     'mac2jb/scripts/install-driver.sh',
+    'mac2jb/scripts/package-gui-payload.py',
     'mac2jb/assets/bootstrap.bas',
     'mac2jb/mac2jb.command',
     'mac2jb/setup.sh',
@@ -98,6 +149,38 @@ block_suffixes = ('.o', '.dylib', '.log', '.xcuserstate', '.pyc', '.bak', '.kate
 violations = []
 with zipfile.ZipFile(archive) as z:
     names = set(z.namelist())
+    def audit_inventory(label, manifest, prefix, manifest_sha256, count, exact=True):
+        try:
+            data = z.read(manifest)
+            if hashlib.sha256(data).hexdigest() != manifest_sha256:
+                raise ValueError('changed inventory manifest')
+            expected = {}
+            for line in data.decode().splitlines():
+                digest, relative = line.split('  ', 1)
+                parts = relative.split('/')
+                if (len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)
+                        or not relative or relative.startswith('/') or '\\' in relative
+                        or any(part in ('', '.', '..') for part in parts)
+                        or any(ord(character) < 32 for character in relative)
+                        or relative in expected):
+                    raise ValueError('invalid inventory entry')
+                expected[relative] = digest
+            if len(expected) != count:
+                raise ValueError('unexpected inventory length')
+            actual = {name[len(prefix):] for name in names if name.startswith(prefix) and not name.endswith('/')}
+            if exact and actual != set(expected):
+                violations.append('incomplete or unexpected ' + label + ' source distribution')
+            for relative, digest in expected.items():
+                name = prefix + relative
+                if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
+                    violations.append('missing or changed ' + label + ' source: ' + name)
+                elif stat.S_IFMT(z.getinfo(name).external_attr >> 16) not in (0, stat.S_IFREG):
+                    violations.append('non-regular ' + label + ' source: ' + name)
+            return expected
+        except (KeyError, ValueError, UnicodeError):
+            violations.append('missing or malformed ' + label + ' inventory')
+            return {}
+
     for missing in sorted(required - names):
         violations.append('missing required file: ' + missing)
     for path in sorted(names):
@@ -132,22 +215,40 @@ with zipfile.ZipFile(archive) as z:
             registry = json.loads(z.read(host_profiles))
             pins = {
                 'pepsipu': '95f5525089273c5fce0b95047f3600f8442e96ae',
-                'kurumuz': '857aa2c7240218580250cb777dc0c2ceecff56cb',
-                'BermTheSequel': '84619429e937c132e27a6d576892515ea0018d86',
+                'kurumuz': '81d5bb114c856109dadaf1077d927a9f297fe58d',
+                'BermTheSequel': '9accf75508f4e7033ffc6912b2ebb7e0b6704e84',
+                'izmysh': 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b',
             }
             profiles = registry['profiles']
-            if (registry.get('format') != 'mac2jb-host-profiles-v1' or registry.get('default') != 'BermTheSequel'
-                    or len(profiles) != 3 or {row['id'] for row in profiles} != set(pins)):
+            if (registry.get('format') != 'mac2jb-host-profiles-v1' or registry.get('default') != 'kurumuz'
+                    or len(profiles) != 4 or {row['id'] for row in profiles} != set(pins)):
                 raise ValueError('invalid host profile registry')
             for row in profiles:
                 host = row['id']
-                folder = 'vendor/ns2jb' if host == 'BermTheSequel' else 'vendor/ns2jb-hosts/' + host
-                if (row['label'] != host or row['revision'] != pins[host] or row['sourceDirectory'] != folder
-                        or row['startArgumentCount'] != (9 if host == 'pepsipu' else 5)
-                        or row['supportsHeldRPC'] != (host != 'pepsipu')
-                        or row['supportsDemo'] != (host == 'BermTheSequel') or not row.get('licenseStatus')):
+                folder = ('vendor/IZ2S-Platform/engines/izmysh' if host == 'izmysh' else
+                          'vendor/ns2jb' if host == 'BermTheSequel' else 'vendor/ns2jb-hosts/' + host)
+                label = 'IZMYSH' if host == 'izmysh' else host
+                held = host not in ('pepsipu', 'izmysh')
+                demo = host in ('kurumuz', 'BermTheSequel')
+                arity = 9 if host in ('pepsipu', 'izmysh') else 5
+                port = 39395 if host == 'izmysh' else 39380
+                save_name = 'NS2I' if host == 'izmysh' else 'NS2'
+                if (row['label'] != label or row['revision'] != pins[host] or row['sourceDirectory'] != folder
+                        or row['startArgumentCount'] != arity or row.get('startPort', 39380) != port
+                        or row.get('saveName', 'NS2') != save_name or row['supportsHeldRPC'] != held
+                        or row['supportsDemo'] != demo or not row.get('licenseStatus')):
                     raise ValueError('changed host provenance or capabilities')
                 prefix = 'mac2jb/' + folder + '/'
+                if host == 'izmysh':
+                    entries = [name[len(prefix):] for name in names if name.startswith(prefix) and not name.endswith('/')]
+                    entries.sort()
+                    source_entries = [[name, hashlib.sha256(z.read(prefix + name)).hexdigest()] for name in entries]
+                    source_digest = hashlib.sha256(json.dumps(source_entries, separators=(',', ':')).encode()).hexdigest()
+                    bootstrap = z.read('mac2jb/' + row['bootstrap'])
+                    if (source_digest != row['sourceSha256'] or hashlib.sha256(bootstrap).hexdigest() != row['bootstrapSha256']
+                            or bootstrap != z.read(prefix + 'bootstrap.bas') or row.get('distributionManifest') != 'packaging/IZ2S-Platform-SHA256SUMS'):
+                        violations.append('changed IZMYSH host source or bootstrap digest')
+                    continue
                 expected = {}
                 for line in z.read(prefix + 'SHA256SUMS').decode().splitlines():
                     digest, relative = line.split('  ', 1)
@@ -230,7 +331,7 @@ with zipfile.ZipFile(archive) as z:
     iz_prefix = 'mac2jb/vendor/IZ2S-Platform/'
     try:
         manifest_bytes = z.read(iz_manifest)
-        if hashlib.sha256(manifest_bytes).hexdigest() != 'fd35e84485e74aac2e2b8dd42bdf6d15b0125a643e3edd087ee413971f9e728b':
+        if hashlib.sha256(manifest_bytes).hexdigest() != 'bafbf27e48dc9879263977d910fc58fffdb275a95f81f752547f603a3ab0cca0':
             raise ValueError('changed IZ2S manifest')
         expected = {}
         for line in manifest_bytes.decode().splitlines():
@@ -241,16 +342,141 @@ with zipfile.ZipFile(archive) as z:
                 raise ValueError('invalid IZ2S manifest')
             expected[iz_prefix + relative] = digest
         actual = {name for name in names if name.startswith(iz_prefix) and not name.endswith('/')}
-        if len(expected) != 480 or actual != set(expected):
+        if len(expected) != 598 or actual != set(expected):
             violations.append('incomplete or unexpected IZ2S source distribution')
         for name, digest in expected.items():
             if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
                 violations.append('missing or changed IZ2S source: ' + name)
         provenance = json.loads(z.read('mac2jb/packaging/IZ2S-Platform-provenance.json'))
-        if provenance.get('commit') != '907de0d9f5a4e358079306e7f04a8c43d463142a' or provenance.get('modifications') != []:
+        modifications = provenance.get('modifications')
+        changed_paths = {
+            'core/module-paths.cjs',
+            'distribution/tests/module-paths-cache.test.cjs',
+            'shells/izlauncher/app/shaders/app-menu.glsl',
+            'shells/izlauncher/app/shaders/pc-screen-input.glsl',
+        }
+        if (provenance.get('commit') != 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b' or
+                provenance.get('version') != '0.16.0-rc.5' or
+                provenance.get('fileCount') != 598 or
+                provenance.get('totalBytes') != sum(z.getinfo(name).file_size for name in expected) or
+                provenance.get('integrityManifestSha256') != hashlib.sha256(manifest_bytes).hexdigest() or
+                not isinstance(modifications, list) or len(modifications) != len(changed_paths) or
+                not all(isinstance(row, dict) and isinstance(row.get('reason'), str) and row['reason']
+                        for row in modifications) or
+                {row['path'] for row in modifications} != changed_paths):
             violations.append('changed IZ2S upstream provenance')
     except (KeyError, ValueError, UnicodeError):
         violations.append('missing or malformed IZ2S source/provenance')
+    audit_inventory('BlitBun',
+                    'mac2jb/integrations/blitbun/upstream-SHA256SUMS',
+                    'mac2jb/vendor/BlitBun/',
+                    'c8e6cccddfe9562fa3240cfe01c460905def134dd14daaf4d22d7ea357b6f39d', 78)
+    audit_inventory('DoomGeneric source',
+                    'mac2jb/integrations/blitbun/doom-engine/source-SHA256SUMS',
+                    'mac2jb/integrations/blitbun/doom-engine/source/',
+                    'b4900944d294bed9679ec2a87768cc33c7a85f1e93adf056a5f3ddd9458baab1', 194)
+    blit_prefix = 'mac2jb/integrations/blitbun/'
+    blit_adaptation = audit_inventory('BlitBun adaptation',
+                                      blit_prefix + 'ADAPTATION-SHA256SUMS',
+                                      blit_prefix,
+                                      '3eacda27cf240b66edd440d8b02f068869e2639c3b6b4f25cd1ca95be77df7b2',
+                                      208, exact=False)
+    blit_files = {name[len(blit_prefix):] for name in names
+                  if name.startswith(blit_prefix) and not name.endswith('/')}
+    if blit_files != set(blit_adaptation) | {'ADAPTATION-SHA256SUMS', 'upstream-SHA256SUMS'}:
+        violations.append('incomplete or unexpected BlitBun adaptation')
+    blit_assets = {
+        'COPYING.txt': '7c62f2c520769c798774f416637eec4921e5f0aafdac1245ae7c8a8cf65fe102',
+        'CREDITS-MUSIC.txt': '2bb77677bbc4e587bba44ccb6514ee0f5397c7bb8ae9580b9188d3d6a57c0a31',
+        'CREDITS.txt': '72364333d295c598d75ef9553d3b3661ad0b60e27271c87b7637c74b2f46918a',
+        'freedoom1.wad': '7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d',
+    }
+    blit_asset_prefix = blit_prefix + 'assets/'
+    asset_files = {name[len(blit_asset_prefix):] for name in names
+                   if name.startswith(blit_asset_prefix) and not name.endswith('/')}
+    if asset_files != set(blit_assets):
+        violations.append('incomplete or unexpected Freedoom assets')
+    for relative, digest in blit_assets.items():
+        name = blit_asset_prefix + relative
+        if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
+            violations.append('missing or changed Freedoom asset: ' + name)
+    try:
+        if z.read(blit_asset_prefix + 'freedoom1.wad')[:4] != b'IWAD':
+            violations.append('invalid Freedoom IWAD header')
+        if b'Redistribution and use in source and binary forms' not in z.read(blit_asset_prefix + 'COPYING.txt'):
+            violations.append('missing Freedoom license notice')
+        if b'GNU GENERAL PUBLIC LICENSE' not in z.read(blit_prefix + 'doom-engine/source/LICENSE'):
+            violations.append('missing DoomGeneric GPL license text')
+        engine_name = blit_prefix + 'doom-engine/doom-headless'
+        engine_bytes = z.read(engine_name)
+        engine_info = z.getinfo(engine_name)
+        if (engine_bytes[:4] != b'\xcf\xfa\xed\xfe' or
+                int.from_bytes(engine_bytes[4:8], 'little') != 0x0100000c or
+                not stat.S_IMODE(engine_info.external_attr >> 16) & 0o111):
+            violations.append('invalid or non-executable arm64 Doom engine')
+        engine = json.loads(z.read(blit_prefix + 'doom-engine/PROVENANCE.json'))
+        if (engine.get('upstream') != 'https://github.com/ozkl/doomgeneric' or
+                engine.get('commit') != 'e257a09527062bfb986b6e5e0780839b6cbd5b71' or
+                engine.get('sourceInventorySha256') != 'b4900944d294bed9679ec2a87768cc33c7a85f1e93adf056a5f3ddd9458baab1' or
+                engine.get('sourceFileCount') != 194 or
+                engine.get('sourceLicense') != 'GPL-2.0-or-later' or
+                engine.get('macBinarySha256') != '9521f644a40ad6b020b79a6579a4621710baee562c0002b9e489f90d6cd9efc9' or
+                hashlib.sha256(engine_bytes).hexdigest() != engine.get('macBinarySha256') or
+                engine.get('gameDataSha256') != blit_assets['freedoom1.wad']):
+            violations.append('changed DoomGeneric or Freedoom provenance')
+    except (KeyError, ValueError, UnicodeError):
+        violations.append('missing Freedoom or DoomGeneric license material')
+    upstream_prefix = 'mac2jb/integrations/vacootube/upstream/'
+    upstream = audit_inventory('VacooTube upstream',
+                               'mac2jb/integrations/vacootube/UPSTREAM-SHA256SUMS',
+                               upstream_prefix,
+                               '0fd54ec5e75978a54de6a70bdbf2472164f8187df0f603de73851fb85ff43ac8', 272)
+    adaptation_prefix = 'mac2jb/integrations/vacootube/'
+    adaptation = audit_inventory('VacooTube adaptation',
+                                 adaptation_prefix + 'ADAPTATION-SHA256SUMS',
+                                 adaptation_prefix,
+                                 'a1c81d55d600d5dbf39b51153d686833b5a1aac209e391f1a4132c465a000061',
+                                 12, exact=False)
+    overlay_files = {name[len(adaptation_prefix):] for name in names
+                     if name.startswith(adaptation_prefix + 'overlay/') and not name.endswith('/')}
+    if overlay_files != {name for name in adaptation if name.startswith('overlay/')}:
+        violations.append('incomplete or unexpected VacooTube adaptation overlay')
+    vacoo_files = {name[len(adaptation_prefix):] for name in names
+                   if name.startswith(adaptation_prefix) and not name.endswith('/')}
+    vacoo_expected = (set(adaptation) | {'prepare.cjs', 'UPSTREAM-SHA256SUMS', 'ADAPTATION-SHA256SUMS'} |
+                      {'upstream/' + name for name in upstream})
+    if vacoo_files != vacoo_expected:
+        violations.append('incomplete or unexpected VacooTube integration files')
+    audit_inventory('IZlauncher prebuilt shell',
+                    'mac2jb/integrations/izlauncher-shell/prebuilt-SHA256SUMS',
+                    'mac2jb/integrations/izlauncher-shell/prebuilt/',
+                    'e640d308eff16f195d2cd72a18b914c481b6f28857f0f723d1970ecb3faa1281', 95)
+    shell_prefix = 'mac2jb/integrations/izlauncher-shell/'
+    shell_files = {name[len(shell_prefix):] for name in names
+                   if name.startswith(shell_prefix) and not name.endswith('/')}
+    shell_manifest = {name[len(shell_prefix):] for name in names
+                      if name.startswith(shell_prefix + 'prebuilt/') and not name.endswith('/')}
+    if shell_files != shell_manifest | {'prepare.cjs', 'provenance.json', 'prebuilt-SHA256SUMS'}:
+        violations.append('incomplete or unexpected IZlauncher shell integration')
+    try:
+        vacoo = json.loads(z.read(adaptation_prefix + 'PROVENANCE.json'))
+        if (vacoo.get('tag') != 'v1.4.1' or
+                vacoo.get('commit') != 'f28e762a085c4a4adcd655f12b40f4a68d646a4f' or
+                vacoo.get('upstreamInventorySha256') != '0fd54ec5e75978a54de6a70bdbf2472164f8187df0f603de73851fb85ff43ac8' or
+                vacoo.get('appPackageLockSha256') != '1591b7219b83241a0f84ceec2d81e89bf627b7ea3d040566f8713e9aa3b12ad2' or
+                vacoo.get('electron', {}).get('sha256') != '1d75703019bb16461ae65f3081d7e6f5c0b11e901d0ccb5c343bcf7bcdd6435c'):
+            violations.append('changed VacooTube upstream provenance')
+        shell = json.loads(z.read('mac2jb/integrations/izlauncher-shell/provenance.json'))
+        if (shell.get('platformCommit') != 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b' or
+                shell.get('moduleCommits') != {
+                    'blitbun': '7d4098df26909016ace0fb4760ef9269cd2b4743',
+                    'vacootube': 'f28e762a085c4a4adcd655f12b40f4a68d646a4f'} or
+                shell.get('variants') != {
+                    'iz-shell-926e77aeaca833b4': ['blitbun', 'iz-exchange'],
+                    'iz-shell-d37f5c9d3aeab4c6': ['blitbun', 'iz-exchange', 'vacootube']}):
+            violations.append('changed IZlauncher shell provenance')
+    except (KeyError, ValueError, TypeError, UnicodeError):
+        violations.append('missing or malformed homebrew integration provenance')
     # The app overlay must be the exact published package, independently of
     # the frozen GPUBrewLauncher tree and its unchanged integrity manifest.
     ftpd_manifest = 'mac2jb/packaging/ftpd-sb-v0.1.0-SHA256SUMS'

@@ -62,6 +62,7 @@ for item in \
     make-release-zip.command \
     scripts \
     stremio \
+    integrations \
     gui \
     packaging \
     drivers \
@@ -87,6 +88,8 @@ rm -rf "$TMP/mac2jb/vendor/ns2jb/runs"
 rm -rf "$TMP/mac2jb/vendor/ns2jb/dumps"
 rm -rf "$TMP/mac2jb/vendor/HBLauncher/runs" "$TMP/mac2jb/vendor/HBLauncher/tools" "$TMP/mac2jb/vendor/HBLauncher/dist"
 rm -rf "$TMP/mac2jb/vendor/GPUBrewLauncher/runs" "$TMP/mac2jb/vendor/GPUBrewLauncher/tools" "$TMP/mac2jb/vendor/GPUBrewLauncher/dist"
+rm -rf "$TMP/mac2jb/integrations/vacootube/upstream/runtime"
+rm -f "$TMP/mac2jb/integrations/vacootube/overlay/server/local-package/vacootube-audio"
 
 # A source package must not include executable kernel extensions, machine-local
 # Xcode data, or the unused unlicensed upstream USB-device example.

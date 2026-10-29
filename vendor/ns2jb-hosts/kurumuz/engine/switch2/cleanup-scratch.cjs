@@ -25,7 +25,10 @@ async function main() {
   try {
     await s.initialize();
     const {normal} = paths(s, domain);
-    for (const name of ['save', 'tmp']) {
+    const captured = require('./app/mounts.json');
+    const targets = ['save'];
+    if (captured.mounts?.some(m => m.name === 'tmp')) targets.push('tmp');
+    for (const name of targets) {
       const handle = await mounted.cloneMountedFilesystem(s, name);
       const root = await filesystem.listDirectory(s, handle, '/', 4096);
       const gaps = root.filter(gapScratch).map(item => ({name, path: '/' + item.name}));

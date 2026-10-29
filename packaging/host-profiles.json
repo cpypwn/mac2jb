@@ -1,6 +1,6 @@
 {
   "format": "mac2jb-host-profiles-v1",
-  "default": "BermTheSequel",
+  "default": "kurumuz",
   "profiles": [
     {
       "id": "pepsipu",
@@ -24,26 +24,27 @@
     {
       "id": "kurumuz",
       "label": "kurumuz",
-      "revision": "857aa2c7240218580250cb777dc0c2ceecff56cb",
+      "revision": "81d5bb114c856109dadaf1077d927a9f297fe58d",
       "upstream": "https://gitlab.com/kurumuz/ns2jb",
       "sourceDirectory": "vendor/ns2jb-hosts/kurumuz",
-      "sourceSha256": "6a076f771db76499cdc810a97b0f46b15ec8c5c48ca613b3a80d595391f42f1b",
+      "sourceSha256": "d1b2b2901423862c7d74d55dbd95a08c7d5c6de4d3309d0f030644b9e2da439f",
       "bootstrap": "assets/hosts/kurumuz/bootstrap.bas",
       "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
       "startArgumentCount": 5,
       "supportsHeldRPC": true,
-      "supportsDemo": false,
+      "supportsDemo": true,
       "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
       "distributionManifest": "vendor/ns2jb-hosts/kurumuz/SHA256SUMS",
-      "upstreamManifest": "packaging/ns2jb-kurumuz-857aa2c-SHA256SUMS.upstream",
+      "upstreamManifest": "packaging/ns2jb-kurumuz-81d5bb1-SHA256SUMS.upstream",
       "supportedSmileBASIC": [
-        "4.4.9 full"
+        "4.4.9 full",
+        "4.4.6 demo"
       ]
     },
     {
       "id": "BermTheSequel",
       "label": "BermTheSequel",
-      "revision": "84619429e937c132e27a6d576892515ea0018d86",
+      "revision": "9accf75508f4e7033ffc6912b2ebb7e0b6704e84",
       "upstream": "https://gitlab.com/BermTheSequel/ns2jb2",
       "sourceDirectory": "vendor/ns2jb",
       "sourceSha256": "9092da0b105498603bf43340661ca30b135c7c2731507db20a33f6fd2234fac2",
@@ -54,10 +55,31 @@
       "supportsDemo": true,
       "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
       "distributionManifest": "vendor/ns2jb/SHA256SUMS",
-      "upstreamManifest": "packaging/ns2jb-8461942-SHA256SUMS.upstream",
+      "upstreamManifest": "packaging/ns2jb-9accf75-SHA256SUMS.upstream",
       "supportedSmileBASIC": [
         "4.4.9 full",
         "4.4.6 demo"
+      ]
+    },
+    {
+      "id": "izmysh",
+      "label": "IZMYSH",
+      "revision": "d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
+      "upstream": "https://github.com/byizmysh/IZ2S-Platform",
+      "sourceDirectory": "vendor/IZ2S-Platform/engines/izmysh",
+      "sourceSha256": "ce74321f98f1cd50cfdd335a45f6d27c882afa1074eab8b58cef52a677097fc2",
+      "bootstrap": "vendor/IZ2S-Platform/engines/izmysh/bootstrap.bas",
+      "bootstrapSha256": "2261f65fb9ec0ed708ce0f0b6da5057168f706e541d956f658a3c2655e9e8c36",
+      "startArgumentCount": 9,
+      "startPort": 39395,
+      "saveName": "NS2I",
+      "engine": "izmysh",
+      "supportsHeldRPC": false,
+      "supportsDemo": false,
+      "licenseStatus": "IZMYSH code is GPL-2.0-or-later; inherited component terms and prior grants remain applicable.",
+      "distributionManifest": "packaging/IZ2S-Platform-SHA256SUMS",
+      "supportedSmileBASIC": [
+        "4.4.9 full"
       ]
     }
   ]

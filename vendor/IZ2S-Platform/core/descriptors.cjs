@@ -91,11 +91,13 @@ function validate(value, kind, id) {
       );
     }
   }
-  if (kind === 'shell')
+  if (kind === 'shell') {
     assert(
       value.entry && Number.isInteger(value.consoleAbi),
       'Shell entry and console ABI required',
     );
+    if(value.moduleShells!==undefined)assert(Array.isArray(value.moduleShells)&&value.moduleShells.length<=16&&value.moduleShells.every(item=>typeof item==='string'&&ID.test(item))&&new Set(value.moduleShells).size===value.moduleShells.length,'Invalid module shell compatibility list');
+  }
   if (kind === 'profile')
     assert(
       value.entry && Array.isArray(value.fields),

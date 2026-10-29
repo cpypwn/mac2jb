@@ -78,10 +78,11 @@ jobs:
           (cd vendor/HBLauncher && shasum -a 256 -c ../../packaging/HBLauncher-v0.2.0-SHA256SUMS)
           node scripts/prepare-bootstrap.cjs --check
           node scripts/prepare-host-profiles.cjs --check
+          node scripts/prepare-mintbrew.cjs --check-source
           node scripts/prepare-izlauncher.cjs --check-source
           node scripts/prepare-homebrew-apps.cjs --check
           node --test vendor/ns2jb/test.cjs vendor/ns2jb/engine/switch2/retained/*.test.cjs vendor/ns2jb/engine/switch2/ro/layout.test.cjs scripts/test-gui-host.cjs scripts/test-gui-session.cjs scripts/test-gui-homebrew.cjs scripts/test-gui-stremio.cjs scripts/test-gui-dump.cjs scripts/test-fork-integration.cjs scripts/test-start-command.cjs scripts/test-bootstrap-progress.cjs scripts/test-driver-package.cjs scripts/test-homebrew-apps.cjs
-          node --test scripts/test-host-profiles.cjs scripts/test-rpc-attachment.cjs scripts/test-gui-attach.cjs scripts/test-gui-izlauncher.cjs scripts/test-izlauncher-runtime.cjs
+          node --test scripts/test-host-profiles.cjs scripts/test-rpc-attachment.cjs scripts/test-gui-attach.cjs scripts/test-gui-izlauncher.cjs scripts/test-izlauncher-runtime.cjs scripts/test-izdoom.cjs
 
       - name: Verify experimental media protocol and Stremio addon client
         run: node --test stremio/*.test.cjs stremio/test-*.cjs

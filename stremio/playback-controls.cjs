@@ -21,7 +21,7 @@ const seekPositionAtX = (x, duration) => Number.isFinite(x) && Number.isFinite(d
   Math.max(0, Math.min(duration, (x - seekbar.x) / seekbar.width * duration)) : null;
 
 function playbackOverlayModel({visible = false, focused = 'playPause', title = '', paused = false,
-  position = 0, duration = 0, volume = 1, busy = false, message = '', canPreviousEpisode = false, canNextEpisode = false,
+  position = 0, duration = 0, busy = false, message = '', canPreviousEpisode = false, canNextEpisode = false,
   mode = 'controls', seeking = false, previewKind = null, optionSelected = 0, audioTracks = [], subtitleTracks = []} = {}) {
   busy = Boolean(busy || seeking);
   position = validSeconds(position); duration = validSeconds(duration);
@@ -47,7 +47,7 @@ function playbackOverlayModel({visible = false, focused = 'playPause', title = '
         disabled: Boolean(busy || optionOffset + optionRows.length >= options.length), x: 770, y: 520, width: 220, height: 46}],
     position, duration, ratio, timeLabel: `${formatTime(position)} / ${formatTime(duration)}`,
     canPreviousEpisode: Boolean(canPreviousEpisode), canNextEpisode: Boolean(canNextEpisode),
-    volume: Math.min(1, Math.max(0, Number.isFinite(volume) ? volume : 1)), busy: Boolean(busy), message,
+    busy: Boolean(busy), message,
     controls: controls.map(control => ({...control,
       label: {prevEpisode: 'Previous', playPause: paused ? 'Play' : 'Pause', nextEpisode: 'Next episode', audio: 'Audio', subtitles: 'Subtitles', stop: 'Stop'}[control.id],
       focused: control.id === focused,

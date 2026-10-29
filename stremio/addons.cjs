@@ -149,9 +149,9 @@ function requestHeaders(raw) {
   return headers;
 }
 
-function normalizeStream(raw, addonName) {
+function normalizeStream(raw, addonName, providerKey) {
   const label = clean(raw?.name || raw?.title || raw?.description, 100) || 'Unnamed source';
-  const result = {label, addonName, playable: false, reason: '', url: null, headers: {}};
+  const result = {label, addonName, providerKey, playable: false, reason: '', url: null, headers: {}};
   if (typeof raw?.url === 'string') {
     try {
       result.url = httpURL(raw.url, 16384).href;
@@ -235,7 +235,8 @@ class AddonClient {
     if (!this.supports('stream', type, id)) return [];
     const data = await requestJSON(this.resourceURL('stream', type, id), this.options);
     if (!Array.isArray(data.streams)) throw Error('The addon did not return a stream list.');
-    return data.streams.slice(0, 200).map(stream => normalizeStream(stream, this.manifest.name));
+    const providerKey = createHash('sha256').update(this.url.href).digest('hex');
+    return data.streams.slice(0, 200).map(stream => normalizeStream(stream, this.manifest.name, providerKey));
   }
   async subtitles(type, id, extra = {}) {
     if (!id || !this.supports('subtitles', type, id)) return [];

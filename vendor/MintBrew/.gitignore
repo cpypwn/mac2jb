@@ -1,0 +1,13 @@
+/runs/
+/tools/
+/smilebasic/reference/*.bin
+/smilebasic/pico-keyboard/secret
+__pycache__/
+*.pyc
+**/settings.toml
+.env
+.venv/
+/homebrew-launcher/game-compute-check
+/homebrew-launcher/game-render
+
+/dist/

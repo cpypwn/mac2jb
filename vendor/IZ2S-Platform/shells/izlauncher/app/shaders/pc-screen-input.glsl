@@ -1,10 +1,7 @@
-// Native monotonic ticks are published before each render, independent of FPS.
-// The existing ACK flags carry classification, so host jitter cannot turn a
-// double tap into a game press. The sampled HID masks remain input-owned.
 uint streamMenuPressed(uint pressed){
  uint phase=c.atlas[SB+46u]&255u,sequence=c.atlas[SB+47u]&255u,now=c.atlas[SB+60u];bool down=(hbButtons()&HB_MINUS)!=0u,toggle=false,blocked=(c.atlas[SB+46u]&256u)!=0u;
  if(c.atlas[SB+62u]!=31250000u){c.atlas[SB+46u]=0u;c.atlas[SB+24u]&=0x1f00ffffu;return pressed&~HB_MINUS;}
- // Compare the full monotonic counter, including long HOME pauses and wrap.
+ // compare the full monotonic counter, including long home pauses and wrap.
  uint first=c.atlas[SB+45u],elapsed=now-first,highElapsed=c.atlas[SB+61u]-c.atlas[SB+51u]-(now<first?1u:0u);
  if((phase==1u||phase==2u)&&(highElapsed!=0u||elapsed>=7812500u)){if(!blocked&&c.atlas[SB+25u]==0u&&c.atlas[SB+38u]==0u)sequence=(sequence+1u)&255u;phase=phase==1u&&down?3u:0u;}
  if((pressed&HB_MINUS)!=0u){
@@ -16,7 +13,7 @@ uint streamMenuPressed(uint pressed){
  c.atlas[SB+24u]=(c.atlas[SB+24u]&0x1f00ffffu)|0x80000000u|(phase==1u||phase==2u?0x40000000u:0u)|(phase==3u&&!blocked&&c.atlas[SB+25u]==0u?0x20000000u:0u)|(sequence<<16u);
  return (pressed&~HB_MINUS)|(toggle?HB_MINUS:0u);
 }
-// Read the independent sensor publication through a coherent alias; retain the
+// read the independent sensor publication through a coherent alias; retain the
 // last complete sample during the sampler's bounded invalidate/commit window.
 layout(set=0,binding=0,std430) coherent volatile readonly buffer StreamSensors{uint words[];}streamSensors;
 uint streamSensorWord(uint offset){return streamSensors.words[(0x7f0000u+544u+offset)/4u];}
@@ -41,7 +38,7 @@ void streamFreshness(bool acceptedFrame){
  c.atlas[SB+66u]=pub;c.atlas[SB+75u]=heartbeat;
  if(progress&&routeReady&&(!blackout||initial)&&pub!=c.atlas[SB+71u])c.atlas[SB+72u]=c.atlas[SB+70u];
  if(routeReady&&c.atlas[SB+41u]==1u&&c.atlas[SB+63u]==0u&&c.atlas[SB+72u]==c.atlas[SB+70u]&&c.atlas[SB+73u]==c.atlas[SB+70u])c.atlas[SB+69u]=1u;
- // Additive ACK telemetry: visible, sensor, route, host readiness, then schema.
+ // additive ack telemetry: visible, sensor, route, host readiness, then schema.
  c.atlas[SB+24u]=(c.atlas[SB+24u]&0xe0ff00ffu)|((c.atlas[SB+70u]&255u)<<8u)|0x10000000u|(c.atlas[SB+69u]==1u?0x01000000u:0u)|(sensorReady?0x02000000u:0u)|(routeReady?0x04000000u:0u)|(c.atlas[SB+41u]==1u&&c.atlas[SB+63u]==0u?0x08000000u:0u);
 }
 void streamLatch(){
@@ -64,7 +61,8 @@ void streamInput(uint pressed){
  pressed=streamMenuPressed(pressed);
  bool held=c.touch[2]>0u,tap=held&&(c.touch[6]&2u)==0u&&c.atlas[CB+2u]==0u;vec2 p=vec2(c.touch[8],c.touch[9])*1.5;
  uint menu=c.atlas[SB+25u],sel=c.atlas[SB+39u];
- if((pressed&HB_MINUS)!=0u){c.atlas[SB+25u]=menu==0u?1u:0u;c.atlas[SB+39u]=0u;c.atlas[SB+38u]=0u;}
+ if((pressed&HB_X)!=0u&&(menu!=0u||c.atlas[SB+38u]!=0u)){c.atlas[SB+25u]=0u;if(c.atlas[SB+38u]!=0u){c.atlas[CB+1u]=0u;c.atlas[SB+38u]=0u;c.library.w=held?1u:0u;}}
+ else if((pressed&HB_MINUS)!=0u){c.atlas[SB+25u]=menu==0u?1u:0u;c.atlas[SB+39u]=0u;c.atlas[SB+38u]=0u;}
  else if(menu==2u){
   if((pressed&(HB_LEFT|HB_RIGHT|HB_UP|HB_DOWN))!=0u)sel^=1u;
   if(tap&&abs(p.y-540.0)<80.0&&p.x>560.0&&p.x<1360.0){sel=p.x<960.0?0u:1u;streamCommand(sel+1u);}

@@ -10,5 +10,9 @@
     "pepsipu",
     "kurumuz"
   ],
-  "nodeMajor": 24
+  "nodeMajor": 24,
+  "shells": [
+    "izlauncher",
+    "izpslauncher"
+  ]
 }

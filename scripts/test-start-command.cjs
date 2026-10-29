@@ -167,7 +167,7 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       Array.from({length: 4}, (_, index) => [['command-start', index + 1], ['command-complete', index + 1]]).flat());
     const waits = new Map(native.filter(row => row.type === 'wait').map(row => [row.label, row.durationMs]));
     assert.deepEqual([...waits], [['LOAD confirmation', 111],
-      ...(automatic ? [['LOAD', 222], ['RUN', 333], ['REMOVE', 444]] : [])]);
+      ['LOAD', 222], ...(automatic ? [['RUN', 333], ['REMOVE', 444]] : [])]);
   }
   for (const build of ['cli', 'gui']) for (const demo of [false, true]) {
     await t.test(`${build} ${demo ? "demo" : "full"} LOAD preserves bytes, Enters and waits`, () => {
@@ -175,16 +175,16 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       const groups = submitted(result.records);
       assert.deepEqual(groups.map(group => group.command), [demo ? 'PRGEDIT 0:LOADV "TXT:NS2" OUT C$:PRGSET C$' : 'LOAD "TXT:NS2"', '', ...following]);
       assert.equal(groups.length, 5);
-      const confirmationMs = build === 'gui' ? 111 : 1000;
-      const waits = build === 'gui' ? [222, 333, 444] : [1000, 1000, 1000];
+      const confirmationMs = build === 'gui' ? 111 : 0;
+      const waits = build === 'gui' ? [222, 333, 444] : [1000, 0, 0];
       assert.equal((groups[1].enterAt - groups[0].enterAt) / 1000000, 50 + confirmationMs);
       for (let next = 2, wait = 0; next < groups.length; next++, wait++)
         assert.equal((groups[next].firstAt - groups[next - 1].enterAt) / 1000000, 50 + waits[wait]);
       if (build === 'gui') events(result, demo, true);
-      else assert.deepEqual(result.records.filter(row => row.kind === 'sleep').map(row => row.seconds), [1, 1, 1, 1]);
+      else assert.deepEqual(result.records.filter(row => row.kind === 'sleep').map(row => row.seconds), [1]);
     });
   }
-  await t.test('both editions default to 10 ms keys and 1 s confirmation and command waits in GUI and CLI', () => {
+  await t.test('both editions default to 10 ms keys and one second after the second LOAD Enter', () => {
     for (const build of ['cli','gui']) for (const demo of [false,true]) {
       const result=run(build,demo,['--auto'],'',{},true,true);
       assert.equal(result.status,0,result.stderr);
@@ -193,11 +193,17 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       assert.ok(first>=0);
       assert.equal((usb[first+2].atNs-usb[first].atNs)/1000000,10);
       const groups=submitted(result.records);
-      assert.equal((groups[1].enterAt-groups[0].enterAt)/1000000,1010,
-        build+' '+(demo?'demo':'full')+' LOAD confirmation retains its 1 s default');
+      assert.equal((groups[1].enterAt-groups[0].enterAt)/1000000,10,
+        build+' '+(demo?'demo':'full')+' sends the second LOAD Enter without a wait');
       for(let next=2;next<groups.length;next++)
-        assert.equal((groups[next].firstAt-groups[next-1].enterAt)/1000000,1010,
+        assert.equal((groups[next].firstAt-groups[next-1].enterAt)/1000000,next===2?1010:10,
           build+' '+(demo?'demo':'full')+' default wait before '+groups[next].command);
+      if(build==='gui'){
+        assert.deepEqual([...new Map(result.records.filter(row=>row.type==='wait').map(row=>[row.label,row.durationMs]))],[['LOAD',1000]]);
+        const enters=result.records.flatMap((row,index)=>row.kind==='usb'&&row.report[2]===40?[index]:[]);
+        assert.ok(result.records.findIndex(row=>row.type==='wait'&&row.label==='LOAD')>enters[1],
+          'the one-second LOAD wait starts after the second Enter');
+      }else assert.deepEqual(result.records.filter(row=>row.kind==='sleep').map(row=>row.seconds),[1]);
     }
   });
   await t.test('manual first-step prompts describe the selected command and retain approval boundaries', () => {
@@ -207,7 +213,7 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       const groups=submitted(result.records);
       assert.equal(groups.length,5);
       assert.equal(groups[1].command,'');
-      assert.equal((groups[1].enterAt-groups[0].enterAt)/1000000,50+(build==='gui'?111:1000));
+      assert.equal((groups[1].enterAt-groups[0].enterAt)/1000000,50+(build==='gui'?111:0));
       if (build === 'gui') events(result, demo, false);
       else assert.deepEqual(result.records.filter(row => row.kind === 'sleep').map(row => row.seconds), [1]);
     }
@@ -238,7 +244,7 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       assert.ok(enterIndices.length>=3);
       const cancelled=run(build,demo,args,'',build==='gui'?{TEST_CANCEL_AT_WAIT:String(load.length+2)}:{TEST_CANCEL_AT_SLEEP:'1'});
       assert.equal(cancelled.status,1,cancelled.stderr);
-      assert.deepEqual(submitted(cancelled.records).map(row=>row.command),[load],mode+' '+(demo?'demo':'full'));
+      assert.deepEqual(submitted(cancelled.records).map(row=>row.command),build==='gui'?[load]:[load,''],mode+' '+(demo?'demo':'full'));
       assert.equal(cancelled.records.some(row=>row.type==='command-start'&&row.label==='RUN'),false);
       const failed=run(build,demo,args,'',{TEST_FAIL_AT:String(enterIndices[1])});
       assert.equal(failed.status,1,failed.stderr);
@@ -274,8 +280,9 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       assert.deepEqual(native.filter(row=>row.type.startsWith('command-')).map(row=>[row.type,row.step,row.completed,row.total,row.label]),
         selected.flatMap((name,index)=>[['command-start',index+1,index,total,name.toUpperCase()],['command-complete',index+1,index+1,total,name.toUpperCase()]]));
       const expectedWaits=[];
-      if(selected.includes('load'))expectedWaits.push(['LOAD confirmation',111]);
-      for(const name of selected.slice(0,-1))expectedWaits.push([name.toUpperCase(),{load:222,run:333,remove:444}[name]]);
+      if(selected.includes('load'))expectedWaits.push(['LOAD confirmation',111],['LOAD',222]);
+      for(const name of selected.slice(0,-1).filter(name=>name!=='load'))
+        expectedWaits.push([name.toUpperCase(),{run:333,remove:444}[name]]);
       assert.deepEqual([...new Map(native.filter(row=>row.type==='wait').map(row=>[row.label,row.durationMs]))],expectedWaits);
       assert.ok(native.every(row=>row.total===total));
       assert.equal(fs.existsSync(path.join(temporary,'vendor')),false);
@@ -351,7 +358,7 @@ test('native full-game and demo command modes preserve actual HID ordering and w
       const load=run('gui',demo,[...extra,'--commands','load']);assert.equal(load.status,0,load.stderr);
       assert.equal(load.records.some(row=>row.kind==='usb'),false);
       if(extra[0]==='--dry-run')assert.ok(load.stdout.includes(demo?'LOADV receives one additional Enter to accept its OK confirmation.':'LOAD receives one additional Enter to accept its YES confirmation.'));
-      else assert.deepEqual([...new Map(load.records.filter(row=>row.type==='wait').map(row=>[row.label,row.durationMs]))],[['LOAD confirmation',111]]);
+      else assert.deepEqual([...new Map(load.records.filter(row=>row.type==='wait').map(row=>[row.label,row.durationMs]))],[['LOAD confirmation',111],['LOAD',222]]);
     }
     const preview=run('gui',false,['--dry-run','--commands','start','--start-command',start]);
     assert.equal(preview.status,0);assert.match(preview.stdout,/1: V=START\(39380,192,0,2,1\) \[Enter\]/);

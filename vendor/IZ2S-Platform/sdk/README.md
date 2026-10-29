@@ -246,3 +246,7 @@ also require development source and published IZM contents to match, and ensure
 A descriptor may set `installationDirectory` (for example `BlitBun`) independently of its stable API `id` (`blitbun`). Use `core/module-paths.cjs` or the SDK data-directory helper to locate installed files; do not construct a physical path from the API id. Paths in `server.implementations` remain logical `modules/<id>/server/...` references resolved by the adapter. The SDK advertises `moduleDirectories: true`. Module folders must contain their matching descriptor or one valid IZM; duplicates are rejected.
 
 Independent modules may declare `server.activation.exclusiveGroup`, such as `video-stream`, together with distinct initial activation values. Session hooks suspend/join the previous owner before handing over the shared console resource. Subsequent controls reach only the active owner. BlitBun and VacooTube use this contract and declare no dependency on each other; VacooTube embeds its own copy of the BlitBun streaming engine.
+
+## Compatible module shell formats
+
+A console shell may declare `moduleShells`, a bounded list of existing shell/module-format IDs it implements. IZPSlauncher declares `izlauncher` for ABI-1 compatibility. Package discovery uses the selected shell descriptor; declaring a compatible format does not bypass host-platform or console-ABI validation. Existing module manifests can keep `requires.shell: "izlauncher"`.

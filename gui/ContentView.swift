@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 
 private let ink = Mac2jbTheme.ink
 private let teal = Mac2jbTheme.mint
@@ -50,29 +51,29 @@ struct ContentView: View {
     }
     private var headline: String {
         switch model.phase {
-        case .preparing: return "Getting everything ready."
-        case .ready: return "Jailbreak your Switch."
-        case .bootstrap: return "Your Mac is doing the typing."
-        case .awaitingSave: return "One more step on your Switch."
+        case .preparing: return "Getting everything ready"
+        case .ready: return "Jailbreak your Switch"
+        case .bootstrap: return "Your Mac is doing the typing"
+        case .awaitingSave: return "One more step on your Switch"
         case .savingBootstrap: return model.status
         case .hostStarting: return model.hostIsExploiting ? "Jailbreaking…" : "Starting ns2jb host…"
         case .rpcAttaching: return "Connecting to open RPC…"
-        case .rpcDetached: return "Disconnected."
+        case .rpcDetached: return "Disconnected"
         case .waitingForConsole:
-            return model.hostIsExploiting ? "Jailbreaking…" : model.activeRunMode.isHostOnly ? "Waiting for your console commands." : "Waiting for the Switch to respond."
+            return model.hostIsExploiting ? "Jailbreaking…" : model.activeRunMode.isHostOnly ? "Waiting for your console commands" : "Waiting for the Switch to respond"
         case .commands: return model.status
-        case .commandsSent: return model.keyboardIsLoading ? "Loading…" : "Commands sent."
-        case .rpcHeld: return "You’re ready to go."
-        case .dumpingFirmware: return "Saving system code."
-        case .rpcFinishing: return "Finishing up safely."
-        case .launchingHomebrew: return model.postRun.homebrewStage == .selecting ? "Choose a game." : "Opening \(model.homebrewTitle)."
-        case .homebrewRunning: return "\(model.homebrewTitle) is running."
-        case .homebrewStopped: return model.postRun.cleanupBlocked ? "Restart your Switch." : "Ready to finish."
+        case .commandsSent: return model.keyboardIsLoading ? "Loading…" : "Commands sent"
+        case .rpcHeld: return "You’re ready to go"
+        case .dumpingFirmware: return "Saving system code"
+        case .rpcFinishing: return "Finishing up safely"
+        case .launchingHomebrew: return model.postRun.homebrewStage == .selecting ? "Choose a game" : "Opening \(model.homebrewTitle)"
+        case .homebrewRunning: return "\(model.homebrewTitle) is running"
+        case .homebrewStopped: return model.postRun.cleanupBlocked ? "Restart your Switch" : "Ready to finish"
         case .keyboardConnecting: return "Loading…"
-        case .keyboardForwarding: return "Your Mac is the keyboard."
-        case .verified: return "All done."
-        case .failed: return "Let’s check what happened."
-        case .cancelled: return "Session stopped."
+        case .keyboardForwarding: return "Your Mac is the keyboard"
+        case .verified: return "All done"
+        case .failed: return "Let’s check what happened"
+        case .cancelled: return "Session stopped"
         }
     }
 
@@ -88,7 +89,7 @@ struct ContentView: View {
                             toolsBubble
                             Text("mac2jb · v\(AppBuildIdentity.version)")
                                 .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .frame(maxWidth: 820).padding(.horizontal, 30).padding(.vertical, 24)
                         .frame(maxWidth: .infinity, minHeight: viewport.size.height)
@@ -102,10 +103,17 @@ struct ContentView: View {
         .preferredColorScheme(.dark).tint(teal)
         .onAppear {
             model.accountProgressHandler = { [weak account] update in account?.handleProgress(update) }
+            model.mintBrewAccountProvider = { [weak account] in
+                (account?.addonURLs ?? [], account?.libraryPayload() ?? [])
+            }
             model.prepare(); updater.start()
             NSApp.activate(ignoringOtherApps: true)
         }
-        .onDisappear { model.accountProgressHandler = nil; account.cancelSignIn() }
+        .onDisappear {
+            model.accountProgressHandler = nil
+            model.mintBrewAccountProvider = nil
+            account.cancelSignIn()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshNetworkAddressesIfIdle()
         }
@@ -163,20 +171,21 @@ struct ContentView: View {
                     essentials
                     Divider().overlay(.white.opacity(0.04))
                     VStack(alignment: .leading, spacing: 10) {
-                        demoEditionCheckbox
                         Text("Restart your Switch and open SmileBASIC → Make a Program.")
                             .font(.system(size: 12))
-                        Label("USB power: Switch → Mac. The Mac must not charge the Switch.", systemImage: "cable.connector")
+                        Text("USB power: Switch → Mac. The Mac must not charge the Switch.")
                             .font(.system(size: 11))
-                        Label("Connect both devices by Ethernet to the same local network.", systemImage: "network")
+                        Text("Connect both devices to the same local network. The Switch must use Ethernet.")
                             .font(.system(size: 11))
                     }
                     .foregroundStyle(Mac2jbTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
-                    Toggle("My Switch is ready and connected by USB", isOn: $readyConfirmed).toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
-                        .fixedSize().disabled(configurationLocked)
+                    VStack(alignment: .leading, spacing: 10) {
+                        demoEditionCheckbox.foregroundStyle(Mac2jbTheme.muted)
+                        Toggle("My Switch is ready and connected by USB", isOn: $readyConfirmed).toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
+                            .fixedSize().disabled(configurationLocked)
+                    }
                     VStack(alignment: .leading, spacing: 14) {
-                        Text("Host: \(model.selectedHost.label)").font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                         Button { beginRun(model.selectedHost.supportsHeldRPC ? .heldRPC : .exploitOnly) } label: {
                             HStack(spacing: 14) { Text("Jailbreak"); Image(systemName: "arrow.right") }
                         }.buttonStyle(PrimaryActionStyle(large: true))
@@ -198,7 +207,7 @@ struct ContentView: View {
         .toggleStyle(.checkbox)
         .font(.system(size: 12))
         .disabled(configurationLocked || updater.blocksNewSession || !model.selectedHost.supportsDemo)
-        .help(model.selectedHost.supportsDemo ? "Use the demo LOADV command." : "Choose BermTheSequel to use the SmileBASIC demo.")
+        .help(model.selectedHost.supportsDemo ? "Use the demo LOADV command." : "Choose Kurumuz or BermTheSequel to use the SmileBASIC demo.")
     }
 
     private var essentials: some View {
@@ -267,7 +276,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 18) {
                 Label("Open SmileBASIC → Make a Program with an empty editor.", systemImage: "keyboard")
                     .font(.system(size: 13, weight: .medium))
-                Text("Keep the editor open. Your Mac will type the bootstrap, then guide you through saving it as NS2.")
+                Text("Keep the editor open. Your Mac will type the bootstrap, then guide you through saving it as \(model.selectedHost.saveName).")
                     .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 demoEditionCheckbox
                 Text("After typing, return to Direct mode so mac2jb can type the save command.")
@@ -295,7 +304,9 @@ struct ContentView: View {
                     Text("After changing hosts, type and save the selected host’s bootstrap before running Jailbreak.")
                         .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     if !model.selectedHost.supportsHeldRPC {
-                        Text("pepsipu closes RPC after verification. Choose kurumuz or BermTheSequel for held RPC and homebrew.")
+                        Text(model.selectedHost == .izmysh
+                             ? "IZMYSH uses its own host and START protocol. This GUI profile currently supports exploit verification only; use Kurumuz or BermTheSequel for held RPC and homebrew."
+                             : "pepsipu closes RPC after verification. Choose kurumuz or BermTheSequel for held RPC and homebrew.")
                             .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     }
                     if !model.selectedHost.supportsDemo {
@@ -307,7 +318,7 @@ struct ContentView: View {
             panel {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Additional tools").font(.system(size: 15, weight: .semibold))
-                    Text("To start a new host or exploit, restart the Switch and open SmileBASIC → Make a Program with NS2 saved.")
+                    Text("To start a new host or exploit, restart the Switch and open SmileBASIC → Make a Program with \(model.selectedHost.saveName) saved.")
                         .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     HStack(spacing: 16) {
                         Button("Run host only") { model.startHostOnly(keepRPC: hostOnlyKeepRPC) }
@@ -315,19 +326,24 @@ struct ContentView: View {
                         Toggle("Hold RPC after success", isOn: $hostOnlyKeepRPC)
                             .toggleStyle(.checkbox).font(.system(size: 12)).disabled(configurationLocked || !model.selectedHost.supportsHeldRPC)
                     }
-                    if showHostOnlyHomebrew { homebrewSection }
+                    if showHostOnlyHomebrew && (canConfigure || !model.postRun.dumpInProgress) { homebrewSection }
                     Divider()
                     existingRPCControls
                     Divider()
                     Toggle("The Switch is ready on the command screen", isOn: $developerReady).toggleStyle(.checkbox).font(.system(size: 12))
                     HStack(spacing: 12) {
                         Button("Run exploit only") { beginRun(.exploitOnly) }
-                        Button("Dump system code") { beginRun(.systemCodeDump) }.disabled(!model.selectedHost.supportsHeldRPC)
-                    }.disabled(startBlocked || !developerReady || model.selectedAddress.isEmpty)
+                            .disabled(startBlocked || !developerReady || model.selectedAddress.isEmpty)
+                        Button("Dump system code") {
+                            if model.canDumpSystemCode { model.dumpSystemCode() }
+                            else { beginRun(.systemCodeDump) }
+                        }.disabled(!model.canDumpSystemCode &&
+                                   (startBlocked || !developerReady || model.selectedAddress.isEmpty || !model.selectedHost.supportsHeldRPC))
+                    }
                     Divider()
                     Text("Commands to send").font(.system(size: 12, weight: .semibold))
                     VStack(alignment: .leading, spacing: 10) {
-                        commandToggle(.load, title: "LOAD \"TXT:NS2\"")
+                        commandToggle(.load, title: model.selectedHost == .izmysh ? "LOAD \"TXT:NS2I\"" : "LOAD \"TXT:NS2\"")
                         commandToggle(.run, title: "RUN")
                         commandToggle(.remove, title: "REMOVE NSR,&H60000000,&H3FFFFFFF")
                         commandToggle(.start, title: "START — finish with keyboard")
@@ -336,11 +352,12 @@ struct ContentView: View {
                         model.startCommandsOnly(commands: selectedCommands, startPrefix: commandsToSend.contains(.start))
                     }.disabled(startBlocked || !developerReady || !model.canStartCommandsOnly(commands: selectedCommands, startPrefix: commandsToSend.contains(.start)))
                     if commandsToSend.contains(.start) {
-                        Text("START types V=START(39380, without Enter, then opens keyboard mirroring.")
+                        Text("START types V=START(\(model.selectedHost.startPort), without Enter, then opens keyboard mirroring.")
                             .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     }
                 }
             }
+            panel { stremioSettings }
             panel { keyboardControls }.id("keyboard-controls")
             panel { usbTimingSettings }
             panel {
@@ -477,12 +494,12 @@ struct ContentView: View {
             timingField("After RUN → before REMOVE", units: "ms", value: $model.runWaitMs, range: 0...120000)
             timingField("After REMOVE → before START", units: "ms", value: $model.removeWaitMs, range: 0...120000)
             HStack {
-                Text("Defaults: 10 ms/key · 4 s connection · 1 s LOAD confirmation · 1 s between commands.")
+                Text("Defaults: 10 ms/key · 4 s connection · 1 s after LOAD confirmation; other command waits are 0.")
                     .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                 Spacer(minLength: 8)
                 Button("Reset defaults") {
                     model.keyDelayMs = 10; model.enumerationTimeoutSeconds = 4
-                    model.loadConfirmWaitMs = 1000; model.loadWaitMs = 1000; model.runWaitMs = 1000; model.removeWaitMs = 1000
+                    model.loadConfirmWaitMs = 0; model.loadWaitMs = 1000; model.runWaitMs = 0; model.removeWaitMs = 0
                 }.font(.system(size: 10))
             }
             if !timingSettingsValid { Text("Enter values within the ranges shown before starting.").font(.system(size: 11)).foregroundStyle(.orange) }
@@ -551,9 +568,16 @@ struct ContentView: View {
                    model.phase == .waitingForConsole, !model.hostStartCommand.isEmpty {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Enter these once in SmileBASIC:").font(.system(size: 12, weight: .semibold))
-                        Text([model.activeEdition.loadCommand, "RUN", "REMOVE NSR,&H60000000,&H3FFFFFFF", model.hostStartCommand].joined(separator: "\n"))
+                        Text([model.activeEdition.loadCommand(for: model.activeHost.saveName), "RUN", "REMOVE NSR,&H60000000,&H3FFFFFFF", model.hostStartCommand].joined(separator: "\n"))
                             .font(.system(size: 13, design: .monospaced)).textSelection(.enabled)
                         Text("Enter each line separately. Confirm LOAD when prompted. “Out of memory” after REMOVE is expected.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                        Button("Send commands over USB") { model.sendHostOnlyCommands() }
+                            .buttonStyle(PrimaryActionStyle())
+                            .disabled(!model.canSendHostOnlyCommands)
+                        Text(model.driverLoaded
+                             ? "Use this before entering any commands manually. It sends the current host’s START command."
+                             : "Load the USB driver to send these commands automatically.")
                             .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     }
                 }
@@ -566,7 +590,16 @@ struct ContentView: View {
                     Button("Back to start") { model.returnToStart() }.buttonStyle(PrimaryActionStyle()).disabled(!model.canReturnToStart)
                 }
                 if model.postRun.isActive { postRunControls }
-                if !showHostOnlyHomebrew && model.activeSessionSupportsHomebrew && (model.postRun.heldConfirmed || model.postRun.homebrewAttempted) { homebrewSection }
+                if !showHostOnlyHomebrew && model.activeSessionSupportsHomebrew &&
+                    model.postRun.stage == .held && !model.postRun.dumpInProgress &&
+                    (model.postRun.heldConfirmed || model.postRun.homebrewAttempted) {
+                    if model.activeRunMode == .heldRPC && model.postRun.homebrewAttempted &&
+                        model.homebrewApp == .mintBrew {
+                        mintBrewFolderControls
+                    } else {
+                        homebrewSection
+                    }
+                }
                 if model.postRun.dumpCompleted, model.dumpFolder != nil { Button("Open dump folder") { model.revealDumpFolder() } }
                 if model.isBusy || model.phase == .awaitingSave {
                     HStack {
@@ -585,12 +618,12 @@ struct ContentView: View {
             if model.bootstrapSaveCommandSent {
                 Label("Save command typed", systemImage: "keyboard")
                     .font(.system(size: 13, weight: .semibold))
-                Text("Confirm saving on the Switch. Overwrite the existing NS2 file if prompted, then wait for saving to finish.")
+                Text("Confirm saving on the Switch. Overwrite the existing \(model.activeHost.saveName) file if prompted, then wait for saving to finish.")
                     .font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted)
             } else {
                 Text(model.workflowProgress.bootstrapTypingWasSkipped
-                     ? model.activeEdition.saveInstructions.replacingOccurrences(of: "The bootstrap has finished typing. ", with: "Check that the complete current bootstrap is already in PRG0. ")
-                     : model.activeEdition.saveInstructions).font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted)
+                     ? model.activeEdition.saveInstructions(for: model.activeHost.saveName).replacingOccurrences(of: "The bootstrap has finished typing. ", with: "Check that the complete current bootstrap is already in PRG0. ")
+                     : model.activeEdition.saveInstructions(for: model.activeHost.saveName)).font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted)
                 Toggle("Direct mode is open with an empty command prompt", isOn: $saveDirectModeReady)
                     .toggleStyle(.checkbox).font(.system(size: 12)).disabled(model.hasLiveWorkers)
                 Button("Type save command") { model.typeBootstrapSave(directModeConfirmed: saveDirectModeReady) }
@@ -601,12 +634,12 @@ struct ContentView: View {
                 }
             }
             DisclosureGroup("Save command (manual option)") {
-                Text(model.activeEdition.saveCommands.joined(separator: "\n"))
+                Text(model.activeEdition.saveCommands(for: model.activeHost.saveName).joined(separator: "\n"))
                     .font(.system(size: 14, design: .monospaced)).textSelection(.enabled)
             }.font(.system(size: 12))
-            Toggle(model.activeEdition.savedConfirmation, isOn: $savedConfirmed)
+            Toggle(model.activeEdition.savedConfirmation(for: model.activeHost.saveName), isOn: $savedConfirmed)
                 .toggleStyle(.checkbox).font(.system(size: 12)).disabled(model.hasLiveWorkers)
-            Button("NS2 saved — back to start") { model.finishBootstrapOnly() }
+            Button("\(model.activeHost.saveName) saved — back to start") { model.finishBootstrapOnly() }
                 .buttonStyle(PrimaryActionStyle()).disabled(!savedConfirmed || model.hasLiveWorkers)
         }
     }
@@ -626,6 +659,10 @@ struct ContentView: View {
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
             HStack {
                 Button("Session details…") { showDeveloperOptions = true }.font(.system(size: 11))
+                if model.canDumpSystemCode {
+                    Button("Dump system code") { model.dumpSystemCode() }
+                        .font(.system(size: 11))
+                }
                 Spacer()
                 Button(model.isAttachedRPCSession ? "Disconnect" : "Finish session") { model.finishPostRun() }.buttonStyle(PrimaryActionStyle()).disabled(!model.postRun.canFinish)
             }
@@ -673,6 +710,20 @@ struct ContentView: View {
             .background(teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
     }
 
+    private var mintBrewFolderControls: some View {
+        HStack(spacing: 14) {
+            Button("Open MintBrew apps folder") { model.openMintBrewAppsFolder() }
+                .disabled(model.runtime == nil)
+            if model.homebrewFolder != nil {
+                Button("Open homebrew logs") { model.revealHomebrewLogs() }
+            }
+            Spacer(minLength: 0)
+        }
+        .font(.system(size: 11, weight: .medium))
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+    }
+
     private var homebrewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Choose an app")
@@ -685,147 +736,43 @@ struct ContentView: View {
                     ? "One app per console session. Restart the console and start a fresh host session before choosing another."
                     : model.postRun.heldConfirmed ? "Your Switch is connected. Choose one app for this session." : "Waiting for the host to verify the Switch and hold RPC open.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "gamecontroller.fill").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("GPUBrewLauncher").font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text(homebrewCaption).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                    Text("Includes Hello World, Froggy Road and ftpd-sb v0.1.0.")
-                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+            homebrewRow(icon: "square.grid.3x3.fill", title: "MintBrew",
+                        description: "Launch the combined homebrew library on your Switch.",
+                        actionTitle: model.postRun.homebrewAttempted && model.homebrewApp == .mintBrew
+                            ? homebrewActionTitle : "Launch MintBrew",
+                        enabled: model.canLaunchHomebrew, action: {
+                            model.launchMintBrew(accountAddons: account.addonURLs,
+                                                 libraryItems: account.libraryPayload())
+                        }) {
+                Button("Open MintBrew apps folder") { model.openMintBrewAppsFolder() }
+                    .font(.system(size: 11)).disabled(model.runtime == nil)
+                    .font(.system(size: 11))
+                Text("Add or remove apps while this session is open. Refresh the list on your Switch.")
+                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                if model.homebrewFolder != nil {
+                    Button("Open homebrew logs") { model.revealHomebrewLogs() }
+                        .font(.system(size: 11))
                 }
-                Spacer(minLength: 8)
-                Button(!canConfigure && model.postRun.homebrewAttempted && model.homebrewTitle.contains("GPUBrewLauncher") ? homebrewActionTitle : "Launch GPUBrew") {
-                    model.launchGPUBrewLauncher()
-                }.font(.system(size: 11, weight: .medium)).disabled(!model.canLaunchHomebrew)
-            }
-            Divider()
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "square.grid.2x2.fill").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("HBLauncher").font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text(model.homebrewTitle == "HBLauncher" && model.postRun.homebrewAttempted
-                         ? model.homebrewMessage : "Open HBLauncher in the current held RPC session.")
-                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                }
-                Spacer(minLength: 8)
-                Button(model.postRun.homebrewAttempted && model.homebrewTitle == "HBLauncher" ? homebrewActionTitle : "Launch HBLauncher") {
-                    model.launchHBLauncher()
-                }.font(.system(size: 11, weight: .medium)).disabled(!model.canLaunchHomebrew)
-            }
-            Divider()
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "square.stack.3d.up.fill").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("IZlauncher").font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text(model.homebrewTitle == "IZlauncher" && model.postRun.homebrewAttempted
-                         ? model.homebrewMessage : "Open the IZlauncher console shell. Streaming modules are not included.")
-                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                }
-                Spacer(minLength: 8)
-                Button(model.postRun.homebrewAttempted && model.homebrewTitle == "IZlauncher" ? homebrewActionTitle : "Launch IZlauncher") {
-                    model.launchIZlauncher()
-                }.font(.system(size: 11, weight: .medium)).disabled(!model.canLaunchIZlauncher)
-            }
-            Divider()
-            ounceCakeControls
-            Divider()
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "play.rectangle").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Stremio").font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text("Watch on your Switch using Stremio installed on this Mac.")
-                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
-                    if !model.postRun.homebrewAttempted || canConfigure {
-                        Picker("Quality", selection: $model.stremioQuality) {
-                            ForEach(StremioQuality.allCases) { quality in
-                                Text(quality.label).tag(quality)
-                            }
-                        }
-                        .pickerStyle(.menu).font(.system(size: 11))
-                        .disabled(!canConfigure && !model.canLaunchHomebrew)
-                        TextField("Optional Stremio add-on manifest URL", text: $model.stremioAddonURL)
-                            .textFieldStyle(.roundedBorder).font(.system(size: 11))
-                            .disabled(!canConfigure && !model.canLaunchHomebrew)
-                        Text("Use your account add-ons, or leave empty for the bundled sample. Library and progress sync when signed in. Audio and SRT/WebVTT subtitle options are in the player. Torrents aren’t supported.")
-                            .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer(minLength: 8)
-                Button(!canConfigure && model.postRun.homebrewAttempted && model.homebrewTitle.contains("Stremio") ? homebrewActionTitle : "Launch Stremio") {
-                    model.launchStremio(accountAddons: account.addonURLs,
-                                         libraryItems: account.libraryPayload())
-                }
-                .font(.system(size: 11, weight: .medium))
-                .disabled(!model.canLaunchHomebrew || !model.stremioToolsAvailable || account.signingIn)
-            }
-            stremioAccountControls
-            if !model.stremioToolsAvailable {
-                Text("Install Stremio on this Mac to enable the player.").font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-            }
-            if model.homebrewFolder != nil {
-                Button("Open homebrew logs") { model.revealHomebrewLogs() }.font(.system(size: 11))
             }
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private var homebrewCaption: String {
-        if canConfigure { return showHostOnlyHomebrew ? "Start the host above and complete its console commands first." : "Connect your Switch with Jailbreak first." }
-        if model.postRun.homebrewAttempted {
-            return model.homebrewTitle.contains("GPUBrewLauncher")
-                ? "Keep SmileBASIC open until you finish the session."
-                : "Restart the Switch and run a new session to choose another app."
-        }
-        if model.canLaunchHomebrew { return "Open homebrew apps on your Switch." }
-        return "Waiting for the Switch connection to be ready."
-    }
-
-    private var ounceCakeControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "externaldrive").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("OunceCake").font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                    Text("Browse and copy your game files over a read-only FTP connection.")
-                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
-                    if !model.postRun.homebrewAttempted || !model.hasLiveWorkers {
-                        TextField("Switch IP address", text: $model.ounceCakeConsoleAddress)
-                            .textFieldStyle(.roundedBorder).font(.system(size: 11)).frame(maxWidth: 240)
-                        Text("Use the address in your Switch’s network settings, not this Mac’s address.")
-                            .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer(minLength: 8)
-                Button(!canConfigure && model.ounceCakeSession.hasStarted ? homebrewActionTitle : "Open game list") { model.launchOunceCake() }
-                    .font(.system(size: 11, weight: .medium)).disabled(!model.canLaunchOunceCake)
+    private func homebrewRow<Details: View>(icon: String, title: String, description: String,
+                                            actionTitle: String, enabled: Bool,
+                                            action: @escaping () -> Void,
+                                            @ViewBuilder details: () -> Details) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: icon).font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
+                Text(description).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                details()
             }
-            if model.ounceCakeSession.stage == .choosing {
-                Text("Choose a game").font(.system(size: 12, weight: .semibold))
-                Picker("Game", selection: $model.selectedOunceCakeGame) {
-                    ForEach(model.ounceCakeSession.games) { game in Text(game.name).tag(game.titleId) }
-                }.font(.system(size: 12))
-                if let game = model.ounceCakeSession.games.first(where: { $0.titleId == model.selectedOunceCakeGame }) {
-                    Text(game.titleId.uppercased() + " · " + game.storageDescription)
-                        .font(.system(size: 10, design: .monospaced)).foregroundStyle(Mac2jbTheme.muted)
-                }
-                Button("Start FTP") { model.startOunceCakeFTP() }
-                    .font(.system(size: 11, weight: .medium)).disabled(!model.canSelectOunceCakeGame)
-            }
-            if let endpoint = model.ounceCakeSession.endpoint, model.postRun.stage == .held,
-               model.postRun.homebrewStage == .running {
-                Text("Game files are ready").font(.system(size: 12, weight: .semibold)).foregroundStyle(teal)
-                if let game = model.ounceCakeSession.selectedGame {
-                    Text(game.name).font(.system(size: 12))
-                }
-                HStack(spacing: 16) {
-                    Text("Address: " + endpoint.host).textSelection(.enabled)
-                    Text("Port " + String(endpoint.port))
-                    Button("Copy FTP address") { model.copyOunceCakeAddress() }
-                }.font(.system(size: 11, design: .monospaced))
-                Text("No username or password · Binary transfer mode")
-                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-            }
+            Spacer(minLength: 8)
+            Button(actionTitle, action: action)
+                .font(.system(size: 11, weight: .medium)).disabled(!enabled)
         }
     }
 
@@ -854,6 +801,31 @@ struct ContentView: View {
         .font(.system(size: 10))
     }
 
+    private var stremioSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Stremio").font(.system(size: 15, weight: .semibold))
+            Text("Set video output before launching Stremio through MintBrew.")
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+            Picker("Video output", selection: $model.stremioQuality) {
+                ForEach(StremioQuality.allCases) { quality in
+                    Text(quality.label).tag(quality)
+                }
+            }
+            .pickerStyle(.menu).font(.system(size: 11))
+            .disabled(model.postRun.homebrewAttempted)
+            TextField("Optional Stremio add-on manifest URL", text: $model.stremioAddonURL)
+                .textFieldStyle(.roundedBorder).font(.system(size: 11))
+                .disabled(model.postRun.homebrewAttempted)
+            Text("Use your account add-ons, or leave empty for the bundled sample. Library and progress sync when signed in. Audio and SRT/WebVTT subtitle options are in the player. Torrents aren’t supported.")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
+            stremioAccountControls
+            if !model.stremioToolsAvailable {
+                Text("Install Stremio on this Mac to enable the player.")
+                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+            }
+        }
+    }
+
     private var homebrewActionTitle: String {
         switch model.postRun.homebrewStage {
         case .idle: return "Launch GPUBrew"
@@ -865,7 +837,7 @@ struct ContentView: View {
     }
 
     private var keyboardPanelOpen: Bool {
-        model.keyboardIsLoading || model.phase == .keyboardForwarding
+        model.keyboardIsLoading || model.keyboardActive
     }
 
     private var expansionAnimation: Animation? {
@@ -926,7 +898,13 @@ struct ContentView: View {
     }
 
     private var selectedConsoleLog: String {
-        activityTab == 1 ? model.hostLog : activityTab == 2 ? model.usbLog : model.log
+        switch activityTab {
+        case 1: return model.hostLog
+        case 2: return model.usbLog
+        case 3: return model.pipelineLog
+        case 4: return model.acquisitionLog
+        default: return model.log
+        }
     }
 
     private var console: some View {
@@ -938,7 +916,9 @@ struct ContentView: View {
                         Text("All").tag(0)
                         Text("Host").tag(1)
                         Text("USB & typing").tag(2)
-                    }.pickerStyle(.segmented).labelsHidden().controlSize(.small).frame(width: 260)
+                        Text("Pipeline").tag(3)
+                        Text("Acquisition").tag(4)
+                    }.pickerStyle(.segmented).labelsHidden().controlSize(.small).frame(width: 420)
                     Spacer(minLength: 0)
                     Button {
                         followConsole.toggle()
@@ -968,6 +948,9 @@ struct ContentView: View {
                     proxy.scrollTo("console-end", anchor: .bottom)
                 }
                 .onAppear { proxy.scrollTo("console-end", anchor: .bottom) }
+                .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+                    model.refreshExploitLogs()
+                }
             }
         }
     }

@@ -1,0 +1,142 @@
+{
+  "format": "izlauncher.module",
+  "version": "1.4.1",
+  "id": "vacootube",
+  "name": "VacooTube",
+  "moduleVersion": "1.4.1",
+  "switch": {
+    "entry": "switch/app.json",
+    "files": [
+      "switch/app.json",
+      "switch/icon.png",
+      "switch/icon.svg",
+      "switch/modules/pc-screen-draw.glsl",
+      "switch/modules/pc-screen-input.glsl",
+      "switch/modules/pc-screen.glsl",
+      "switch/modules/tiny-calc.glsl",
+      "switch/modules/vacootube-menu.glsl"
+    ],
+    "abi": 1
+  },
+  "server": {
+    "entry": "server/entry.cjs",
+    "implementations": {
+      "create": "modules/vacootube/server/remote-youtube.cjs",
+      "localPackage": "modules/vacootube/server/local-package/index.cjs",
+      "stream": "modules/vacootube/server/streaming/stream.cjs",
+      "frameAvailability": "modules/vacootube/server/streaming/lib/frame-availability.cjs",
+      "sessionHook": "modules/vacootube/server/session-hook.cjs"
+    },
+    "localPackages": [
+      {
+        "id": "vacootube",
+        "path": "server/local-package",
+        "entry": "server/local-package/index.cjs",
+        "installer": "server/local-package/install.cjs",
+        "requiredFiles": {
+          "linux-x64": [
+            "runtime/VacooTube-x64/vacootube",
+            "runtime/VacooTube-x64/resources/app/main.cjs",
+            "runtime/source.json"
+          ],
+          "linux-arm64": [
+            "runtime/VacooTube-arm64/vacootube",
+            "runtime/VacooTube-arm64/resources/app/main.cjs",
+            "runtime/source.json"
+          ],
+          "darwin-arm64": [
+            "runtime/electron-v44.5.1-darwin-arm64.zip",
+            "runtime/source.json"
+          ]
+        }
+      }
+    ],
+    "runtime": "node",
+    "assets": [
+      "server/local-package/test-fixture.html",
+      "server/local-package/electron.json"
+    ],
+    "systemDependencies": [
+      {
+        "command": "parec",
+        "purpose": "Owned silent-sink audio capture",
+        "optional": false,
+        "platforms": [
+          "linux-x64",
+          "linux-arm64"
+        ]
+      },
+      {
+        "command": "pactl",
+        "purpose": "Owned silent audio sink",
+        "optional": false,
+        "platforms": [
+          "linux-x64",
+          "linux-arm64"
+        ]
+      },
+      {
+        "command": "python3",
+        "purpose": "Safe official Electron archive extraction",
+        "optional": false,
+        "platforms": [
+          "linux-x64",
+          "linux-arm64"
+        ]
+      },
+      {
+        "command": "npm",
+        "purpose": "Source-only VacooTube dependency preparation",
+        "optional": true,
+        "platforms": [
+          "linux-x64",
+          "linux-arm64"
+        ]
+      }
+    ],
+    "sessionHook": "sessionHook",
+    "activation": {
+      "offset": 968,
+      "sequenceOffset": 972,
+      "values": [
+        4
+      ],
+      "exclusiveGroup": "video-stream"
+    }
+  },
+  "package": "vacootube.izm",
+  "legacy": {
+    "appFolder": "vacootube",
+    "packageNames": [
+      "youtube.izs",
+      "youtube.izp",
+      "youtube.izm"
+    ],
+    "moduleIds": [
+      "youtube"
+    ]
+  },
+  "formatVersion": 1,
+  "apiVersion": 1,
+  "author": "IZMYSH and upstream contributors",
+  "platforms": [
+    "linux-x64",
+    "linux-arm64",
+    "darwin-arm64"
+  ],
+  "requires": {
+    "platformApi": 1,
+    "shell": "izlauncher",
+    "consoleAbi": 1,
+    "moduleDirectories": true,
+    "streamMenuExtensions": true
+  },
+  "capabilities": {
+    "streaming": true
+  },
+  "dependencies": [],
+  "settingsSchema": [],
+  "license": "GPL-2.0-or-later",
+  "description": "Independent video player for Switch 2 · touch and controller input",
+  "installationDirectory": "VacooTube"
+}

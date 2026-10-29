@@ -1,12 +1,16 @@
 function moduleCompatibility(
   descriptor,
   {
-    shell = process.env.IZ15_SHELL || 'izlauncher',
+    shell = process.env.IZ2S_SHELL || process.env.IZ15_SHELL || 'izlauncher',
+    shellDescriptor,
     platform = process.platform + '-' + process.arch,
     consoleAbi = 1,
   } = {},
 ) {
   const reasons = [];
+  const moduleShells=new Set([shell]);
+  if(shellDescriptor?.id===shell&&shellDescriptor.consoleAbi===consoleAbi)
+    for(const id of shellDescriptor.moduleShells||[])moduleShells.add(id);
   if (!descriptor.platforms.includes(platform)) reasons.push('Unsupported host: ' + platform);
   if (
     descriptor.switch &&
@@ -15,7 +19,7 @@ function moduleCompatibility(
       Array.isArray(descriptor.requires.shell)
         ? descriptor.requires.shell
         : [descriptor.requires.shell]
-    ).includes(shell)
+    ).some(id=>moduleShells.has(id))
   )
     reasons.push('Requires shell: ' + [].concat(descriptor.requires.shell).join(', '));
   if (

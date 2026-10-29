@@ -402,6 +402,11 @@ async function create({ root, settings: defaults, node, preview = false }) {
       if (!isIZ()) throw Error('Select IZlauncher to load IZM modules');
       return iz.loadPackages(ids);
     },
+    unloadPackages: (ids) => {
+      if(preview)throw Error('Preview cannot remove console modules');
+      if(!isIZ())throw Error('Select a console shell to remove modules');
+      return iz.unloadPackages(ids);
+    },
     async source(id) {
       await reconcileInstallation();
       if (loaders.select(id).manifest.installed === false)

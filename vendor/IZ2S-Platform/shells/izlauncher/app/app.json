@@ -3,7 +3,7 @@
   "abi": 1,
   "id": "izlauncher",
   "name": "IZlauncher",
-  "version": "0.16.0-rc.3",
+  "version": "0.16.0-rc.5",
   "description": "Modular console shell",
   "icon": "assets/icon.png",
   "initialState": "assets/state.bin",

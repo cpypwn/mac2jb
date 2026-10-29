@@ -1,0 +1,25 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "cpu-gpu-probe",
+  "name": "CPU to GPU Probe",
+  "version": "0.1.0",
+  "description": "Shows the verified console CPU clock in a live GPU display",
+  "transition": "none",
+  "icon": "assets/icon.png",
+  "initialState": "assets/state.bin",
+  "data": "assets/data.bin",
+  "memory": {
+    "bytes": 4096,
+    "initial": "assets/memory.bin"
+  },
+  "cpuBridge": {
+    "kind": "counter-v1",
+    "offset": 0
+  },
+  "shaders": {
+    "vertex": "app.vert.spv",
+    "fragment": "app.frag.spv",
+    "compute": "app.comp.spv"
+  }
+}

@@ -1,0 +1,163 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x=1) in;
+#include "abi.glsl"
+#include "hb.glsl"
+#include "layout.glsl"
+layout(set=0,binding=1,std430) buffer ChipStorage {uint words[];} chip;
+
+uint getByte(uint address){
+ return address<4096u?chip.words[C8_MEMORY+address]&255u:0u;
+}
+void putByte(uint address,uint value){
+ if(address<4096u)chip.words[C8_MEMORY+address]=value&255u;
+}
+uint reg(uint index){return chip.words[C8_REGISTERS+index]&255u;}
+void setReg(uint index,uint value){chip.words[C8_REGISTERS+index]=value&255u;}
+uint keypad(){
+ if(!hbConnected())return 0u;
+ uint buttons=hbButtons(),keys=0u;
+ if((buttons&HB_PLUS)!=0u)keys|=1u<<0u;
+ if((buttons&HB_X)!=0u)keys|=1u<<1u;
+ if((buttons&HB_UP)!=0u)keys|=1u<<2u;
+ if((buttons&HB_Y)!=0u)keys|=1u<<3u;
+ if((buttons&HB_LEFT)!=0u)keys|=1u<<4u;
+ if((buttons&HB_A)!=0u)keys|=1u<<5u;
+ if((buttons&HB_RIGHT)!=0u)keys|=1u<<6u;
+ if((buttons&HB_L)!=0u)keys|=1u<<7u;
+ if((buttons&HB_DOWN)!=0u)keys|=1u<<8u;
+ if((buttons&HB_R)!=0u)keys|=1u<<9u;
+ if((buttons&256u)!=0u)keys|=1u<<10u;
+ if((buttons&512u)!=0u)keys|=1u<<11u;
+ return keys;
+}
+void timers(){
+ uint ticks=1u,hz=chip.words[2],now=chip.words[0];
+ if(hz==31250000u){
+  ticks=0u;
+  if(chip.words[C8_STATE+C8_CLOCK_READY]!=0u){
+   uint delta=now-chip.words[C8_STATE+C8_LAST_CLOCK];
+   if(delta<hz/4u){
+    uint scaled=chip.words[C8_STATE+C8_CLOCK_PHASE]+delta*60u;
+    ticks=min(scaled/hz,15u);
+    chip.words[C8_STATE+C8_CLOCK_PHASE]=scaled%hz;
+   }else chip.words[C8_STATE+C8_CLOCK_PHASE]=0u;
+  }
+  chip.words[C8_STATE+C8_LAST_CLOCK]=now;
+  chip.words[C8_STATE+C8_CLOCK_READY]=1u;
+ }
+ for(uint i=0u;i<15u;i++){
+  if(i>=ticks)break;
+  chip.words[C8_STATE+C8_DELAY]=max(chip.words[C8_STATE+C8_DELAY],1u)-1u;
+  chip.words[C8_STATE+C8_SOUND]=max(chip.words[C8_STATE+C8_SOUND],1u)-1u;
+ }
+}
+void drawSprite(uint x,uint y,uint rows){
+ uint collision=0u,originX=reg(x),originY=reg(y),address=chip.words[C8_STATE+C8_I];
+ for(uint row=0u;row<15u;row++){
+  if(row>=rows)break;
+  uint bits=getByte(address+row);
+  for(uint bit=0u;bit<8u;bit++){
+   if((bits&(128u>>bit))==0u)continue;
+   uint px=(originX+bit)%64u,py=(originY+row)%32u;
+   uint location=C8_DISPLAY+py*2u+px/32u,mask=1u<<(31u-px%32u);
+   if((chip.words[location]&mask)!=0u)collision=1u;
+   chip.words[location]^=mask;
+  }
+ }
+ setReg(15u,collision);
+}
+void execute(uint keys){
+ for(uint cycle=0u;cycle<32u;cycle++){
+  if(chip.words[C8_STATE+C8_HALTED]!=0u)break;
+  uint pc=chip.words[C8_STATE+C8_PC];
+  if(pc<0x200u||pc>4094u||(pc&1u)!=0u){
+   chip.words[C8_STATE+C8_HALTED]=1u;break;
+  }
+  uint op=(getByte(pc)<<8u)|getByte(pc+1u);
+  uint family=op&0xf000u,x=(op>>8u)&15u,y=(op>>4u)&15u;
+  uint value=op&255u,address=op&0xfffu;
+  chip.words[C8_STATE+C8_PC]=pc+2u;
+  if(op==0x00e0u){
+   for(uint row=0u;row<64u;row++)chip.words[C8_DISPLAY+row]=0u;
+  }else if(op==0x00eeu){
+   uint sp=chip.words[C8_STATE+C8_SP];
+   if(sp==0u)chip.words[C8_STATE+C8_HALTED]=1u;
+   else{sp--;chip.words[C8_STATE+C8_SP]=sp;chip.words[C8_STATE+C8_PC]=chip.words[C8_STACK+sp];}
+  }else if(family==0x0000u){
+  }else if(family==0x1000u){
+   chip.words[C8_STATE+C8_PC]=address;
+  }else if(family==0x2000u){
+   uint sp=chip.words[C8_STATE+C8_SP];
+   if(sp>=16u)chip.words[C8_STATE+C8_HALTED]=1u;
+   else{chip.words[C8_STACK+sp]=pc+2u;chip.words[C8_STATE+C8_SP]=sp+1u;chip.words[C8_STATE+C8_PC]=address;}
+  }else if(family==0x3000u){
+   if(reg(x)==value)chip.words[C8_STATE+C8_PC]+=2u;
+  }else if(family==0x4000u){
+   if(reg(x)!=value)chip.words[C8_STATE+C8_PC]+=2u;
+  }else if(family==0x5000u&&(op&15u)==0u){
+   if(reg(x)==reg(y))chip.words[C8_STATE+C8_PC]+=2u;
+  }else if(family==0x6000u){
+   setReg(x,value);
+  }else if(family==0x7000u){
+   setReg(x,reg(x)+value);
+  }else if(family==0x8000u){
+   uint a=reg(x),b=reg(y),mode=op&15u;
+   if(mode==0u)setReg(x,b);
+   else if(mode==1u)setReg(x,a|b);
+   else if(mode==2u)setReg(x,a&b);
+   else if(mode==3u)setReg(x,a^b);
+   else if(mode==4u){setReg(x,a+b);setReg(15u,a+b>255u?1u:0u);}
+   else if(mode==5u){setReg(x,a-b);setReg(15u,a>=b?1u:0u);}
+   else if(mode==6u){setReg(x,a>>1u);setReg(15u,a&1u);}
+   else if(mode==7u){setReg(x,b-a);setReg(15u,b>=a?1u:0u);}
+   else if(mode==14u){setReg(x,a<<1u);setReg(15u,(a>>7u)&1u);}
+   else chip.words[C8_STATE+C8_HALTED]=1u;
+  }else if(family==0x9000u&&(op&15u)==0u){
+   if(reg(x)!=reg(y))chip.words[C8_STATE+C8_PC]+=2u;
+  }else if(family==0xa000u){
+   chip.words[C8_STATE+C8_I]=address;
+  }else if(family==0xb000u){
+   chip.words[C8_STATE+C8_PC]=address+reg(0u);
+  }else if(family==0xc000u){
+   uint random=chip.words[C8_STATE+C8_RANDOM];
+   random^=random<<13u;random^=random>>17u;random^=random<<5u;
+   chip.words[C8_STATE+C8_RANDOM]=random;
+   setReg(x,random&value);
+  }else if(family==0xd000u){
+   drawSprite(x,y,op&15u);
+  }else if(family==0xe000u){
+   bool down=(keys&(1u<<(reg(x)&15u)))!=0u;
+   if((value==0x9eu&&down)||(value==0xa1u&&!down))chip.words[C8_STATE+C8_PC]+=2u;
+   else if(value!=0x9eu&&value!=0xa1u)chip.words[C8_STATE+C8_HALTED]=1u;
+  }else if(family==0xf000u){
+   uint a=reg(x),i=chip.words[C8_STATE+C8_I];
+   if(value==0x07u)setReg(x,chip.words[C8_STATE+C8_DELAY]);
+   else if(value==0x0au){
+    int found=-1;
+    for(uint key=0u;key<16u;key++)if((keys&(1u<<key))!=0u){found=int(key);break;}
+    if(found<0){chip.words[C8_STATE+C8_PC]=pc;break;}
+    setReg(x,uint(found));
+   }else if(value==0x15u)chip.words[C8_STATE+C8_DELAY]=a;
+   else if(value==0x18u)chip.words[C8_STATE+C8_SOUND]=a;
+   else if(value==0x1eu)chip.words[C8_STATE+C8_I]=(i+a)&0xfffu;
+   else if(value==0x29u)chip.words[C8_STATE+C8_I]=0x50u+(a&15u)*5u;
+   else if(value==0x33u){
+    putByte(i,a/100u);putByte(i+1u,(a/10u)%10u);putByte(i+2u,a%10u);
+   }else if(value==0x55u){
+    for(uint r=0u;r<16u;r++){if(r>x)break;putByte(i+r,reg(r));}
+   }else if(value==0x65u){
+    for(uint r=0u;r<16u;r++){if(r>x)break;setReg(r,getByte(i+r));}
+   }else chip.words[C8_STATE+C8_HALTED]=1u;
+  }else chip.words[C8_STATE+C8_HALTED]=1u;
+  chip.words[C8_STATE+C8_INSTRUCTIONS]++;
+ }
+}
+void main(){
+ c.motion.x+=1.0/60.0;c.state.z++;
+ c.transition.x=max(0.0,c.transition.x-1.0/15.0);
+ chip.words[C8_STATE+C8_FRAME]++;
+ if(hbConnected()&&(hbPressed()&(HB_B|HB_MINUS))!=0u)hbExit();
+ else{timers();execute(keypad());}
+ hbEndFrame();
+}

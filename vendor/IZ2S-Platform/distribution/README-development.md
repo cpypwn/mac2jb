@@ -4,7 +4,7 @@ Start with the [plain-English FAQ](../FAQ.md#git-and-release-work) if Git is new
 
 ## Two independent projects
 
-The experimental project is the lab. The release project contains only the public distribution profile: File Exchange, IZMYSH and three optional original-engine adapters. Their Git histories are separate. No GitHub remote is configured automatically.
+The experimental project is the lab. The release project contains only the public distribution profile: File Exchange, both console shells, IZMYSH and two optional original-engine adapters. Their Git histories are separate. No GitHub remote is configured automatically.
 
 - A **commit** is a named checkpoint of source files. Running processes and private `data/` are outside it.
 - **main** is the accepted release source.
@@ -75,3 +75,7 @@ A container/VM preview cannot prove actual Switch, GPU, ARM USB gadget or dock/W
 Create an empty repository on GitHub when ready. Review the complete tracked tree, license notices and the first commit, then add the remote and push main. Do not put a token in a remote URL. Use a Git credential manager or SSH. Add a tag only after checking the release artifact. This preparation deliberately creates no remote, tag publication or public release.
 
 Official references: [Git commits](https://git-scm.com/docs/git-commit), [Git branches](https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell), [Docker rootless](https://docs.docker.com/engine/security/rootless/), [Podman rootless](https://github.com/containers/podman/blob/main/docs/tutorials/rootless_tutorial.md).
+
+## Every release needs a complete guide
+
+Follow the [release description template](RELEASE-TEMPLATE.md). Each new release must include What’s new, download/install, exact-tag source build commands, validation and support details. Keep the practical installation instructions from the previous release and update them for the new version.

@@ -3,11 +3,48 @@ import Combine
 import Darwin
 import Foundation
 
+struct IZlauncherModule: Decodable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let version: String
+    let description: String
+}
+
+enum HomebrewAppID: Equatable {
+    case mintBrew, izlauncher, custom
+
+    var title: String {
+        switch self {
+        case .mintBrew: return "MintBrew"
+        case .izlauncher: return "IZlauncher"
+        case .custom: return "Custom homebrew"
+        }
+    }
+}
+
+struct IZlauncherPanelAddress {
+    static func parse(_ raw: String) -> URL? {
+        guard raw.utf8.count < 200, let parts = URLComponents(string: raw),
+              parts.scheme == "http", parts.host == "127.0.0.1",
+              parts.user == nil, parts.password == nil,
+              let port = parts.port, (1024...65535).contains(port),
+              parts.path == "/", parts.query == nil,
+              let fragment = parts.fragment, fragment.utf8.count == 48,
+              fragment.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }),
+              let url = parts.url, url.absoluteString == raw else { return nil }
+        return url
+    }
+}
+
 private struct GUIEvent: Decodable {
     let type: String
+    let action: String?
+    let customHomebrewKind: String?
+    let adapter: String?
     let message: String?
     let kind: String?
     let path: String?
+    let url: String?
     let rpcCommand: String?
     let startCommand: String?
     let completed: Double?
@@ -21,6 +58,7 @@ private struct GUIEvent: Decodable {
     let durationMs: Double?
     let watchProgress: StremioWatchProgress?
     let games: [OunceCakeGame]?
+    let modules: [IZlauncherModule]?
     let host: String?
     let port: Int?
     let ftpURL: String?
@@ -41,6 +79,8 @@ private struct GUIEvent: Decodable {
     @Published var log = ""
     @Published private(set) var hostLog = ""
     @Published private(set) var usbLog = ""
+    @Published private(set) var pipelineLog = "Waiting for pipeline.json"
+    @Published private(set) var acquisitionLog = "Waiting for acquisition.log"
     @Published var progress: Double?
     @Published var progressLabel = ""
     @Published private(set) var bootstrapElapsedSeconds: Double = 0
@@ -55,8 +95,8 @@ private struct GUIEvent: Decodable {
     @Published private(set) var lastSuccessfulController: String?
     @Published private(set) var runMode: SessionRunMode = .heldRPC
     @Published private(set) var activeRunMode: SessionRunMode = .heldRPC
-    @Published private(set) var selectedHost: HostProfile = .bermTheSequel
-    @Published private(set) var activeHost: HostProfile = .bermTheSequel
+    @Published private(set) var selectedHost: HostProfile = .kurumuz
+    @Published private(set) var activeHost: HostProfile = .kurumuz
     @Published var existingRPCRunPath = ""
     private var attachedRunDirectory: URL?
     @Published private(set) var activeEdition: SmileBASICEdition = .full
@@ -65,9 +105,9 @@ private struct GUIEvent: Decodable {
     @Published var keyDelayMs = 10
     @Published var enumerationTimeoutSeconds = 4
     @Published var loadWaitMs = 1000
-    @Published var runWaitMs = 1000
-    @Published var removeWaitMs = 1000
-    @Published var loadConfirmWaitMs = 1000
+    @Published var runWaitMs = 0
+    @Published var removeWaitMs = 0
+    @Published var loadConfirmWaitMs = 0
     var effectiveLoadConfirmWaitMs: Int { activeEdition.requiresLoadConfirmation ? loadConfirmWaitMs : 0 }
     @Published var driverStatus = "Checking the USB gadget driver…"
     @Published var driverInstalled = false
@@ -85,7 +125,17 @@ private struct GUIEvent: Decodable {
     @Published private(set) var dumpFolder: URL?
     @Published private(set) var homebrewMessage = ""
     @Published private(set) var homebrewFolder: URL?
-    @Published private(set) var homebrewTitle = "GPUBrewLauncher"
+    @Published private(set) var homebrewApp: HomebrewAppID = .mintBrew
+    var homebrewTitle: String { homebrewApp.title }
+    @Published private(set) var izlauncherPanelURL: URL?
+    @Published private(set) var izlauncherPanelMessage = ""
+    @Published private(set) var izlauncherPanelChecking = false
+    @Published private(set) var pendingHomebrewAction: String?
+    private var pendingCustomConsoleAddress: String?
+    @Published private(set) var izlauncherModules: [IZlauncherModule] = []
+    @Published private(set) var izlauncherCatalogLoaded = false
+    @Published private(set) var selectedIZlauncherModuleIDs = Set<String>()
+    @Published private(set) var izlauncherModuleMessage = "Hold RPC to list compatible modules."
     @Published var stremioAddonURL = ""
     @Published var stremioQuality: StremioQuality = .saved() {
         didSet { UserDefaults.standard.set(stremioQuality.rawValue, forKey: StremioQuality.preferenceKey) }
@@ -100,6 +150,7 @@ private struct GUIEvent: Decodable {
     @Published var selectedOunceCakeGame = ""
     @Published private(set) var ounceCakeSession = OunceCakeSession()
     var accountProgressHandler: ((StremioWatchProgress) -> Void)?
+    var mintBrewAccountProvider: (() -> (addonURLs: [String], libraryItems: [[String: Any]]))?
     var stremioToolsAvailable: Bool {
         FileManager.default.isExecutableFile(atPath: "/Applications/Stremio.app/Contents/MacOS/ffmpeg") &&
         FileManager.default.isExecutableFile(atPath: "/Applications/Stremio.app/Contents/MacOS/ffprobe")
@@ -119,6 +170,9 @@ private struct GUIEvent: Decodable {
     private var startPrefixCompleted = false
     private var keyboardHandoffPending = false
     private var completingStartWithKeyboard = false
+    private var hostOnlyKeyboardRunning = false
+    private var hostOnlyKeyboardReady = false
+    private var hostOnlyKeyboardUsed = false
     private var currentUSBStepHasProof = false
     @Published private var safeBootstrapRetryAfterUSBFailure = false
     @Published private var hidProcess: Process?
@@ -138,6 +192,7 @@ private struct GUIEvent: Decodable {
     private var hasEnumeratedSuccessfully = false
     private let addressProvider: () -> [NetworkAddress]
     private var networkRefreshTimer: Timer?
+    private var exploitLogRefreshDate = Date.distantPast
     private var hostReadyReceived = false
     private var hasHIDEvidence = false
     private var preflightNetworkFailureHandled = false
@@ -160,7 +215,10 @@ private struct GUIEvent: Decodable {
          .keyboardConnecting, .keyboardForwarding].contains(phase)
     }
 
-    var keyboardActive: Bool { phase == .keyboardForwarding && !keyboardStopRequested }
+    var keyboardActive: Bool {
+        (phase == .keyboardForwarding || hostOnlyKeyboardRunning && hostOnlyKeyboardReady && phase == .waitingForConsole) &&
+        !keyboardStopRequested
+    }
     var keyboardAcceptsPhysicalInput: Bool { keyboardActive && !keyboardTextSending }
     var keyboardTextValidationMessage: String? {
         if keyboardText.utf8.count > 16 * 1024 { return "Use at most 16 KiB of text." }
@@ -175,10 +233,23 @@ private struct GUIEvent: Decodable {
     var canSendKeyboardText: Bool {
         keyboardAcceptsPhysicalInput && keyboardInput != nil && hidProcess?.isRunning == true && keyboardTextValidationMessage == nil
     }
-    var keyboardIsLoading: Bool { phase == .keyboardConnecting || phase == .commandsSent && keyboardHandoffPending }
+    var keyboardIsLoading: Bool {
+        phase == .keyboardConnecting || phase == .commandsSent && keyboardHandoffPending ||
+        hostOnlyKeyboardRunning && !hostOnlyKeyboardReady && !keyboardStopRequested && phase == .waitingForConsole
+    }
     var canStartKeyboard: Bool {
-        runtime != nil && driverLoaded && ([.ready,.failed,.cancelled].contains(phase) ||
-            phase == .commandsSent && hidCompletionReceived) && !hasLiveWorkers && !driverSetupRunning
+        let hostOnlyWaiting = activeRunMode.isHostOnly && phase == .waitingForConsole && hostReadyReceived &&
+            hostProcess?.isRunning == true && !hostIsExploiting && !postRun.isActive && !hasHIDEvidence
+        return runtime != nil && driverLoaded && !driverSetupRunning && hidProcess == nil &&
+            (hostOnlyWaiting || ([.ready,.failed,.cancelled].contains(phase) ||
+                phase == .commandsSent && hidCompletionReceived) && hostProcess == nil)
+    }
+    var canSendHostOnlyCommands: Bool {
+        activeRunMode.isHostOnly && phase == .waitingForConsole && hostReadyReceived &&
+        hostProcess?.isRunning == true && hidProcess == nil && !hostIsExploiting &&
+        !postRun.isActive && !hostOnlyKeyboardUsed && !hasHIDEvidence &&
+        !hostStartCommand.isEmpty && driverLoaded && typingSettingsValid &&
+        !driverSetupRunning && runtime != nil
     }
     private var typingSettingsValid: Bool {
         (1...2000).contains(keyDelayMs) && (1...120).contains(enumerationTimeoutSeconds) &&
@@ -212,11 +283,31 @@ private struct GUIEvent: Decodable {
 
     var hasLiveWorkers: Bool { hostProcess != nil || hidProcess != nil }
     var canLaunchHomebrew: Bool {
-        phase == .rpcHeld && activeSessionSupportsHomebrew && postRun.canLaunchHomebrew &&
+        phase == .rpcHeld && activeSessionSupportsHomebrew && postRun.canLaunchHomebrew && pendingHomebrewAction == nil &&
         hostProcess?.isRunning == true && hostInput != nil && runFolder != nil
     }
-    var canLaunchOunceCake: Bool { canLaunchHomebrew && OunceCakeSession.validConsoleAddress(ounceCakeConsoleAddress) != nil }
-    var canLaunchIZlauncher: Bool { canLaunchHomebrew }
+    var canDumpSystemCode: Bool {
+        activeSessionSupportsHomebrew && postRun.canDumpSystemCode &&
+        hostProcess?.isRunning == true && hostInput != nil && runFolder != nil
+    }
+    private var izlauncherRuntimeAvailable: Bool {
+        guard let root = runtime?.root else { return false }
+        let marker = root.appendingPathComponent("packaging/runtime-homebrew.json")
+        guard FileManager.default.fileExists(atPath: marker.path) else { return true }
+        guard let data = try? Data(contentsOf: marker),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let allowed = value["allowed"] as? [String] else { return false }
+        return allowed.contains("izlauncher")
+    }
+    var canLaunchIZlauncher: Bool { canLaunchHomebrew && izlauncherRuntimeAvailable }
+    var canLoadIZlauncherModules: Bool {
+        phase == .homebrewRunning && homebrewApp == .izlauncher &&
+        hostProcess?.isRunning == true && hostInput != nil && !selectedIZlauncherModuleIDs.isEmpty
+    }
+    var canOpenIZlauncherPanel: Bool {
+        phase == .homebrewRunning && homebrewApp == .izlauncher && izlauncherPanelURL != nil &&
+        hostProcess?.isRunning == true && !izlauncherPanelChecking
+    }
     var canSelectOunceCakeGame: Bool {
         postRun.canSelectHomebrew && ounceCakeSession.stage == .choosing &&
         ounceCakeSession.games.contains { $0.titleId == selectedOunceCakeGame } && hostProcess?.isRunning == true
@@ -229,6 +320,7 @@ private struct GUIEvent: Decodable {
         phase = .ready; status = "Ready for a fresh session"
         detail = isAttachedRPCSession ? "The original host still owns the RPC session. Choose your next action." : "Restart the console before another exploit attempt, then choose your next run mode."
         progress = nil; progressLabel = ""; error = nil
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
     }
 
     func selectRunMode(_ mode: SessionRunMode) {
@@ -249,7 +341,7 @@ private struct GUIEvent: Decodable {
         endSessionActivity()
         runtime = nil; phase = .preparing; error = nil; progress = nil
         status = "Preparing \(host.label)"
-        detail = "Each host uses its own bootstrap. Type and save this host’s bootstrap before running it."
+        detail = "Each host uses its own bootstrap and saved program name. Type and save this host’s bootstrap before running it."
         prepare()
     }
 
@@ -403,10 +495,18 @@ private struct GUIEvent: Decodable {
             reason: "Completing the mac2jb USB and console session")
         generation = UUID()
         error = nil; progress = nil; progressLabel = ""; isEnumerating = false; hostCompleted = false; runFolder = nil
+        pipelineLog = "Waiting for pipeline.json"
+        acquisitionLog = "Waiting for acquisition.log"
+        exploitLogRefreshDate = .distantPast
         postRun = PostRunSessionState(); rpcCommand = ""; hostStartCommand = ""; rpcStatus = ""; dumpFolder = nil
-        homebrewMessage = ""; homebrewFolder = nil; homebrewTitle = "GPUBrewLauncher"
+        homebrewMessage = ""; homebrewFolder = nil; homebrewApp = .mintBrew; pendingHomebrewAction = nil
+        pendingCustomConsoleAddress = nil
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
+        izlauncherModules = []; izlauncherCatalogLoaded = false; selectedIZlauncherModuleIDs = []
+        izlauncherModuleMessage = "Hold RPC to list compatible modules."
         ounceCakeSession = OunceCakeSession(); selectedOunceCakeGame = ""
         startPrefixCompleted = false; keyboardHandoffPending = false; completingStartWithKeyboard = false
+        hostOnlyKeyboardRunning = false; hostOnlyKeyboardReady = false; hostOnlyKeyboardUsed = false
         resetKeyboardTextTransfer()
         currentUSBStepHasProof = false; safeBootstrapRetryAfterUSBFailure = false
         bootstrapSaveCommandSent = false; saveTypingStarted = false; saveCommandStarted = false; saveCommandCompleted = false
@@ -428,6 +528,11 @@ private struct GUIEvent: Decodable {
         guard canStartHostOnly, !keepRPC || selectedHost.supportsHeldRPC else { return }
         selectRunMode(keepRPC ? .hostOnlyHeld : .hostOnly)
         start()
+    }
+
+    func sendHostOnlyCommands() {
+        guard canSendHostOnlyCommands, let runtime else { return }
+        startHID("commands", root: runtime.root)
     }
 
     func attachExistingRPC() {
@@ -459,7 +564,7 @@ private struct GUIEvent: Decodable {
         workflowProgress.bootstrapOnlySaved()
         endSessionActivity()
         phase = .ready; status = "Bootstrap saved"
-        detail = "NS2 is saved in slot 0. Choose an exploit mode when you are ready to start a fresh console session."
+        detail = "\(activeHost.saveName) is saved in slot 0. Choose an exploit mode when you are ready to start a fresh console session."
         progress = nil; progressLabel = ""
         append("Bootstrap-only workflow finished after the save checkpoint. No host was started.")
     }
@@ -476,16 +581,24 @@ private struct GUIEvent: Decodable {
     }
 
     private func beginKeyboardForwarding(completingStart: Bool) {
-        guard let runtime, !hasLiveWorkers, driverLoaded, !driverSetupRunning else { return }
-        generation = UUID(); keyboardStopRequested = false
+        let alongsideHost = activeRunMode.isHostOnly && phase == .waitingForConsole &&
+            hostReadyReceived && hostProcess?.isRunning == true && !hostIsExploiting &&
+            !postRun.isActive && !hasHIDEvidence
+        guard let runtime, hidProcess == nil, (alongsideHost || hostProcess == nil),
+              driverLoaded, !driverSetupRunning else { return }
+        if !alongsideHost { generation = UUID(); postRun = PostRunSessionState() }
+        keyboardStopRequested = false
         resetKeyboardTextTransfer()
         completingStartWithKeyboard = completingStart
-        postRun = PostRunSessionState()
-        phase = .keyboardConnecting; status = "Loading…"; keyboardStatus = "Loading…"
-        detail = completingStart
-            ? "Connecting the live keyboard. Wait before finishing the START command."
-            : "Connecting the live keyboard. Wait for the ready message before typing."
-        error = nil; progress = nil; progressLabel = ""
+        hostOnlyKeyboardRunning = alongsideHost; hostOnlyKeyboardReady = false
+        if !alongsideHost {
+            phase = .keyboardConnecting; status = "Loading…"
+            detail = completingStart
+                ? "Connecting the live keyboard. Wait before finishing the START command."
+                : "Connecting the live keyboard. Wait for the ready message before typing."
+            error = nil; progress = nil; progressLabel = ""
+        }
+        keyboardStatus = "Loading…"
         launch(arguments: ["keyboard", "live", controller, String(enumerationTimeoutSeconds)] + preferredControllerArguments, role: "hid", root: runtime.root)
     }
 
@@ -495,6 +608,7 @@ private struct GUIEvent: Decodable {
         do {
             var data = try JSONSerialization.data(withJSONObject: ["report":report.map(Int.init)])
             data.append(10); try keyboardInput.fileHandleForWriting.write(contentsOf: data)
+            if hostOnlyKeyboardRunning && report.contains(where: { $0 != 0 }) { hostOnlyKeyboardUsed = true }
         } catch { stopKeyboardForwarding() }
     }
 
@@ -510,6 +624,7 @@ private struct GUIEvent: Decodable {
             keyboardTextSent = 0; keyboardTextTotal = normalized.utf8.count; keyboardTextSending = true
             keyboardTextStatus = "Waiting to send text…"
             try keyboardInput.fileHandleForWriting.write(contentsOf: data)
+            if hostOnlyKeyboardRunning { hostOnlyKeyboardUsed = true }
         } catch { stopKeyboardForwarding() }
     }
 
@@ -548,7 +663,8 @@ private struct GUIEvent: Decodable {
 
     func stopKeyboardForwarding() {
         if phase == .commandsSent && keyboardHandoffPending { cancel(); return }
-        guard [.keyboardConnecting,.keyboardForwarding].contains(phase), !keyboardStopRequested else { return }
+        guard [.keyboardConnecting,.keyboardForwarding].contains(phase) || hostOnlyKeyboardRunning,
+              !keyboardStopRequested else { return }
         sendKeyboardReport(Array(repeating: 0, count: 8))
         resetKeyboardTextTransfer(message: keyboardTextSending ? "Text sending stopped. Check the Switch before sending again." : "")
         keyboardStopRequested = true; keyboardStatus = "Disconnecting and releasing keys…"
@@ -574,6 +690,7 @@ private struct GUIEvent: Decodable {
         status = "Session stopped"
         error = nil
         postRun.stop()
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
         if ounceCakeSession.hasStarted { ounceCakeSession.stop() }
         append("Stop requested. Only this app’s worker processes are being stopped.")
         appendBootstrapDuration(outcome: "cancelled")
@@ -595,55 +712,160 @@ private struct GUIEvent: Decodable {
         if let folder = homebrewFolder ?? runFolder { NSWorkspace.shared.open(folder) }
     }
 
-    func launchStremio(accountAddons: [String] = [], libraryItems: [[String: Any]] = []) {
-        guard canLaunchHomebrew, stremioToolsAvailable,
-              accountAddons.count <= 32, libraryItems.count <= 500 else { return }
+    func openIZlauncherPanel() {
+        guard canOpenIZlauncherPanel, let url = izlauncherPanelURL,
+              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
+        parts.fragment = nil
+        guard let probeURL = parts.url else { return }
+        var request = URLRequest(url: probeURL)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.timeoutInterval = 2
+        let expected = generation
+        izlauncherPanelChecking = true
+        izlauncherPanelMessage = "Checking the local control panel…"
+        Task {
+            let reachable: Bool
+            do {
+                let (_, response) = try await URLSession.shared.data(for: request)
+                reachable = (response as? HTTPURLResponse)?.statusCode == 200 &&
+                    response.url?.scheme == "http" && response.url?.host == "127.0.0.1"
+            } catch { reachable = false }
+            guard generation == expected, izlauncherPanelURL == url else { return }
+            izlauncherPanelChecking = false
+            guard canOpenIZlauncherPanel else { return }
+            if !reachable {
+                izlauncherPanelMessage = "The local control panel is no longer responding. Restart its module in IZlauncher."
+            } else if NSWorkspace.shared.open(url) {
+                izlauncherPanelMessage = ""
+            } else {
+                izlauncherPanelMessage = "Could not open the local control panel in your default browser."
+            }
+        }
+    }
+
+    private func stremioLaunchOptions(accountAddons: [String], libraryItems: [[String: Any]]) -> [String: Any]? {
+        guard accountAddons.count <= 32, libraryItems.count <= 500 else { return nil }
         let value = stremioAddonURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let control: [String: Any] = ["action": "launch-stremio",
-                                    "addonUrls": value.isEmpty ? accountAddons : [value],
-                                    "libraryItems": libraryItems,
-                                    "quality": stremioQuality.rawValue]
+        return ["addonUrls": value.isEmpty ? accountAddons : [value],
+                "libraryItems": libraryItems,
+                "quality": stremioQuality.rawValue]
+    }
+
+    func launchMintBrew(accountAddons: [String] = [], libraryItems: [[String: Any]] = []) {
+        guard canLaunchHomebrew,
+              var control = stremioLaunchOptions(accountAddons: accountAddons, libraryItems: libraryItems) else { return }
+        control["action"] = "launch-mintbrew"
         guard sendHostControl(control) else { return }
-        homebrewTitle = "Stremio"
+        homebrewApp = .mintBrew
         postRun.launchHomebrew()
-        homebrewMessage = "Starting \(homebrewTitle) in the current held session…"
-        presentPostRunState()
-    }
-
-    func launchOunceCake() {
-        guard canLaunchOunceCake else { return }
-        var session = OunceCakeSession()
-        guard session.begin(consoleAddress: ounceCakeConsoleAddress),
-              sendHostControl(["action": "launch-ouncecake", "consoleAddress": session.consoleAddress]) else { return }
-        ounceCakeSession = session; selectedOunceCakeGame = ""
-        homebrewTitle = "OunceCake"
-        postRun.launchHomebrew()
-        homebrewMessage = "Reading the game list from the current held session…"
-        presentPostRunState()
-    }
-
-    func launchGPUBrewLauncher() {
-        guard canLaunchHomebrew, sendHostControl(["action": "launch-gpubrewlauncher"]) else { return }
-        homebrewTitle = "GPUBrewLauncher"
-        postRun.launchHomebrew()
-        homebrewMessage = "Starting GPUBrewLauncher in the current held session…"
-        presentPostRunState()
-    }
-
-    func launchHBLauncher() {
-        guard canLaunchHomebrew, sendHostControl(["action": "launch-hblauncher"]) else { return }
-        homebrewTitle = "HBLauncher"
-        postRun.launchHomebrew()
-        homebrewMessage = "Starting HBLauncher in the current held session…"
+        homebrewMessage = "Starting MintBrew in the current held session…"
         presentPostRunState()
     }
 
     func launchIZlauncher() {
-        guard canLaunchIZlauncher, sendHostControl(["action": "launch-izlauncher"]) else { return }
-        homebrewTitle = "IZlauncher"
+        guard canLaunchIZlauncher else { return }
+        var control: [String: Any] = ["action": "launch-izlauncher"]
+        if !selectedIZlauncherModuleIDs.isEmpty { control["moduleIds"] = selectedIZlauncherModuleIDs.sorted() }
+        guard sendHostControl(control) else { return }
+        homebrewApp = .izlauncher
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
         postRun.launchHomebrew()
         homebrewMessage = "Starting IZlauncher in the current held session…"
         presentPostRunState()
+    }
+
+    func launchIZlauncher(moduleFolder: URL) {
+        guard canLaunchIZlauncher else { return }
+        var control: [String: Any] = ["action": "launch-izlauncher", "moduleFolderPath": moduleFolder.standardizedFileURL.path]
+        if !selectedIZlauncherModuleIDs.isEmpty { control["moduleIds"] = selectedIZlauncherModuleIDs.sorted() }
+        guard sendHostControl(control) else { return }
+        pendingHomebrewAction = "launch-izlauncher"
+        homebrewApp = .izlauncher
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
+        homebrewMessage = "Checking the selected module folder…"
+        status = "Checking IZlauncher module"
+        detail = "Validating the module for this Mac and the console before opening IZlauncher."
+    }
+
+    func selectIZlauncherModule(_ id: String, selected: Bool) {
+        guard izlauncherCatalogLoaded, izlauncherModules.contains(where: { $0.id == id }),
+              canLaunchIZlauncher || phase == .homebrewRunning && homebrewApp == .izlauncher else { return }
+        if selected {
+            guard selectedIZlauncherModuleIDs.count < 15 || selectedIZlauncherModuleIDs.contains(id) else {
+                izlauncherModuleMessage = "Choose no more than 15 modules in one session."
+                return
+            }
+            selectedIZlauncherModuleIDs.insert(id)
+        }
+        else { selectedIZlauncherModuleIDs.remove(id) }
+    }
+
+    func loadIZlauncherModules() {
+        guard canLoadIZlauncherModules,
+              sendHostControl(["action": "load-izlauncher-modules", "ids": selectedIZlauncherModuleIDs.sorted()]) else { return }
+        izlauncherModuleMessage = "Sending selected modules to IZlauncher…"
+    }
+
+    private func requestIZlauncherModules() {
+        guard izlauncherRuntimeAvailable, phase == .rpcHeld, !izlauncherCatalogLoaded,
+              sendHostControl(["action": "list-izlauncher-modules"]) else { return }
+        izlauncherModuleMessage = "Reading compatible IZlauncher modules…"
+    }
+
+    func launchCustomHomebrew(folder: URL) {
+        guard canLaunchHomebrew else { return }
+        var control: [String: Any] = ["action": "launch-custom-homebrew",
+                                      "customHomebrewPath": folder.standardizedFileURL.path]
+        let address = OunceCakeSession.validConsoleAddress(ounceCakeConsoleAddress)
+        if let address {
+            control["consoleAddress"] = address
+        }
+        guard sendHostControl(control) else { return }
+        pendingCustomConsoleAddress = address
+        pendingHomebrewAction = "launch-custom-homebrew"
+        homebrewApp = .custom
+        homebrewMessage = "Checking the selected homebrew folder…"
+        status = "Checking custom homebrew"
+        detail = "Validating the selected package before starting it through the held RPC session."
+    }
+
+    func openMintBrewAppsFolder() {
+        guard let runtime else { return }
+        let folder = runtime.root.appendingPathComponent("vendor/MintBrew/apps", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: folder.path) else {
+            detail = "The MintBrew app folder is unavailable in this session."
+            return
+        }
+        if !NSWorkspace.shared.open(folder) { detail = "Could not open the MintBrew app folder in Finder." }
+    }
+
+    func refreshExploitLogs() {
+        guard Date().timeIntervalSince(exploitLogRefreshDate) >= 0.4 else { return }
+        exploitLogRefreshDate = Date()
+        if activeHost == .izmysh {
+            pipelineLog = "The IZMYSH host does not produce pipeline.json. See the Host log for its progress."
+            acquisitionLog = "The IZMYSH host does not produce acquisition.log. See the Host log for its progress."
+            return
+        }
+        guard let run = runFolder ?? attachedRunDirectory else { return }
+        let directory = run.appendingPathComponent("switch2", isDirectory: true)
+        pipelineLog = readExploitLog(directory.appendingPathComponent("pipeline.json"), limit: 1024 * 1024,
+                                     placeholder: "Waiting for pipeline.json")
+        acquisitionLog = readExploitLog(directory.appendingPathComponent("acquisition.log"), limit: 1024 * 1024,
+                                        placeholder: "Waiting for acquisition.log")
+    }
+
+    private func readExploitLog(_ url: URL, limit: Int, placeholder: String) -> String {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return placeholder }
+        defer { try? handle.close() }
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            guard ((attributes[.size] as? NSNumber)?.intValue ?? 0) <= limit * 8 else {
+                return "Log exceeds the 8 MiB display limit."
+            }
+            let data = try handle.readToEnd() ?? Data()
+            return String(data: data.suffix(limit), encoding: .utf8) ?? "Log is not valid UTF-8."
+        } catch { return "Could not read log: \(error.localizedDescription)" }
     }
 
     func startOunceCakeFTP() {
@@ -673,12 +895,21 @@ private struct GUIEvent: Decodable {
     func finishPostRun() {
         guard postRun.canFinish, sendHostControl(["action": "finish"]) else { return }
         postRun.finish()
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
         presentPostRunState()
     }
 
     func checkRPCStatus() {
         guard postRun.canCheckStatus, sendHostControl(["action": "rpc-status"]) else { return }
         postRun.checkStatus(); rpcStatus = "Checking RPC…"
+    }
+
+    func dumpSystemCode() {
+        guard canDumpSystemCode, sendHostControl(["action": "dump-system-code"]),
+              postRun.requestDump() else { return }
+        status = postRun.homebrewStage == .running ? "Stopping \(homebrewTitle) for the system-code dump" : "Preparing system-code dump"
+        detail = "Keep SmileBASIC and the held RPC session open. The dump will start after the current app stops safely."
+        progress = nil; progressLabel = "Preparing the system-code dump"
     }
 
     private func sendHostControl(_ value: [String: Any]) -> Bool {
@@ -703,26 +934,29 @@ private struct GUIEvent: Decodable {
 
     private func presentPostRunState() {
         isEnumerating = false
+        let sessionReminder = "Keep SmileBASIC and mac2jb open, with both devices on the same network and the Switch on Ethernet."
         switch postRun.stage {
         case .held:
             switch postRun.homebrewStage {
             case .idle:
                 phase = .rpcHeld; status = "Ready for homebrew"
-                detail = "Keep SmileBASIC open and your Mac awake. Choose an app below, then finish the session when you’re done."
+                detail = "\(sessionReminder) Choose an app below, then finish the session when you’re done."
                 progress = 1; progressLabel = isAttachedRPCSession ? "Existing RPC connected" : "4/4 complete · Switch connected"
             case .launching:
                 phase = .launchingHomebrew; status = "Starting \(homebrewTitle)"
-                detail = "Keep SmileBASIC open while the app starts."
+                detail = homebrewApp == .mintBrew
+                    ? "You can safely disconnect the Switch from this Mac’s USB port. \(sessionReminder)"
+                    : "\(sessionReminder) The app is starting."
                 progress = nil; progressLabel = homebrewMessage
             case .selecting:
                 phase = .launchingHomebrew; status = "Choose a game"
-                detail = "Choose a game below, then start its read-only FTP server. Keep SmileBASIC open."
+                detail = "Choose a game below, then start its read-only FTP server. \(sessionReminder)"
                 progress = nil; progressLabel = "Game list ready"
             case .running:
                 phase = .homebrewRunning; status = "\(homebrewTitle) is running"
                 detail = isAttachedRPCSession
-                    ? "Keep SmileBASIC, the original host and mac2jb open. Choose Disconnect when you’re done."
-                    : "Keep SmileBASIC and mac2jb open. Choose Finish session when you’re done."
+                    ? "\(sessionReminder) Keep the original host open. Choose Disconnect when you’re done."
+                    : "\(sessionReminder) Choose Finish session when you’re done."
                 progress = nil; progressLabel = homebrewMessage
             case .stopped, .failed:
                 phase = .homebrewStopped; status = postRun.homebrewStage == .failed ? "\(homebrewTitle) needs attention" : "\(homebrewTitle) stopped"
@@ -731,7 +965,7 @@ private struct GUIEvent: Decodable {
             }
         case .dumping:
             phase = .dumpingFirmware; status = "Dumping system code"
-            detail = "Keep SmileBASIC open. The live session is reading installed system code; stopping may leave a partial dump."
+            detail = "\(sessionReminder) The live session is reading installed system code; stopping may leave a partial dump."
             progress = nil; progressLabel = "System-code dump in progress"
         case .finishing:
             phase = .rpcFinishing; status = isAttachedRPCSession ? "Disconnecting from RPC" : "Finishing the session"
@@ -782,7 +1016,7 @@ private struct GUIEvent: Decodable {
             return
         }
         phase = .hostStarting; status = "Starting ns2jb host…"
-        detail = "The Mac and Switch must be on the same local network. Allow incoming connections if macOS asks."
+        detail = "The Mac and Switch must be on the same local network, and the Switch must use Ethernet. Allow incoming connections if macOS asks."
         progress = nil
         progressLabel = "Starting the host on \(activeAddress)"; isEnumerating = false
         launch(arguments: arguments, role: "host", root: root)
@@ -806,7 +1040,9 @@ private struct GUIEvent: Decodable {
         if kind == "save-bootstrap" {
             detail = "Keep the empty Direct-mode command prompt focused. The app will type the save command and press Enter once."
         }
-        if kind == "commands" || kind == "commands-only" || kind == "save-bootstrap" { arguments += activeEdition.commandArguments }
+        if kind == "commands" || kind == "commands-only" || kind == "save-bootstrap" {
+            arguments += activeEdition.commandArguments
+        }
         arguments += preferredControllerArguments
         launch(arguments: arguments, role: "hid", root: root)
     }
@@ -915,7 +1151,8 @@ private struct GUIEvent: Decodable {
             return
         }
         if event.type == "account-progress" {
-            guard role == "host", postRun.homebrewAttempted, homebrewTitle.contains("Stremio"),
+            guard role == "host", postRun.homebrewAttempted,
+                  homebrewApp == .mintBrew,
                   let update = event.watchProgress else { return }
             accountProgressHandler?(update)
             return
@@ -925,7 +1162,9 @@ private struct GUIEvent: Decodable {
             currentUSBStepHasProof = true
             safeBootstrapRetryAfterUSBFailure = false
         }
-        if event.type != "host-stage", let message = event.message { append(message, channel: role == "host" ? .host : .usb) }
+        if event.type != "host-stage" && event.type != "izlauncher-panel", let message = event.message {
+            append(message, channel: role == "host" ? .host : .usb)
+        }
         if phase == .cancelled || phase == .failed || phase == .verified || phase == .rpcDetached { return }
         if role == "hid", hidPurpose == "save-bootstrap",
            ["typing", "command-start", "command-complete", "transfer-complete"].contains(event.type) {
@@ -941,6 +1180,7 @@ private struct GUIEvent: Decodable {
             runFolder = directory
             hostReadyReceived = true
             presentPostRunState()
+            requestIZlauncherModules()
         case "rpc-detached":
             guard role == "host", isAttachedRPCSession,
                   phase == .rpcFinishing, !postRun.cleanupBlocked, event.cleanupBlocked != true,
@@ -952,7 +1192,12 @@ private struct GUIEvent: Decodable {
             progress = nil; progressLabel = ""
         case "keyboard-ready":
             guard role == "hid", event.mode == nil || event.mode == hidPurpose else { return }
-            if hidPurpose == "live", phase == .keyboardConnecting, !keyboardStopRequested {
+            if hidPurpose == "live", hostOnlyKeyboardRunning, phase == .waitingForConsole,
+               !keyboardStopRequested {
+                rememberSuccessfulController(event.controller)
+                hostOnlyKeyboardReady = true
+                keyboardStatus = event.message ?? "Keyboard connected. Click the typing area to begin."
+            } else if hidPurpose == "live", phase == .keyboardConnecting, !keyboardStopRequested {
                 rememberSuccessfulController(event.controller)
                 phase = .keyboardForwarding
                 keyboardStatus = completingStartWithKeyboard
@@ -968,7 +1213,15 @@ private struct GUIEvent: Decodable {
             resetKeyboardTextTransfer(message: keyboardTextSending ? "Text sending stopped. Check the Switch before sending again." : keyboardTextStatus)
             hidCompletionReceived = true
             keyboardStatus = event.message ?? "Keyboard disconnected."
-            if phase != .cancelled && phase != .failed { phase = .ready; status = "Keyboard disconnected"; progress = nil; isEnumerating = false }
+            if hostOnlyKeyboardRunning {
+                hostOnlyKeyboardRunning = false; hostOnlyKeyboardReady = false
+                if phase == .waitingForConsole {
+                    status = hostStageLabel
+                    detail = "The host is still waiting. Enter the console commands manually, then keep SmileBASIC open."
+                }
+            } else if phase != .cancelled && phase != .failed {
+                phase = .ready; status = "Keyboard disconnected"; progress = nil; isEnumerating = false
+            }
         case "host-ready":
             guard role == "host", !isAttachedRPCSession, phase == .hostStarting, let runtime else { return }
             hostReadyReceived = true
@@ -978,7 +1231,7 @@ private struct GUIEvent: Decodable {
             }
             if activeRunMode.isHostOnly {
                 phase = .waitingForConsole; status = "Host ready — enter the commands on your Switch"
-                detail = "The host is waiting. Enter LOAD, RUN, REMOVE and the generated START command yourself. No keyboard input will be sent by this app."
+                detail = "The host is waiting. Enter LOAD, RUN, REMOVE and START yourself, or send them over USB below."
                 progress = nil; progressLabel = "Waiting for your console commands"
             } else {
                 startHID("commands", root: runtime.root)
@@ -992,6 +1245,7 @@ private struct GUIEvent: Decodable {
             if let path = event.path { runFolder = URL(fileURLWithPath: path) }
         case "post-run-ready":
             guard role == "host", !isAttachedRPCSession else { return }
+            if hostOnlyKeyboardRunning { stopKeyboardForwarding() }
             guard let action = activeRunMode.postRunAction,
                   let command = event.rpcCommand, !command.isEmpty else {
                 fail("The host offered a live endpoint that does not match the selected run mode.")
@@ -1010,6 +1264,57 @@ private struct GUIEvent: Decodable {
             if let command = event.rpcCommand { rpcCommand = command }
             runFolder = folder
             presentPostRunState()
+            if activeRunMode == .heldRPC {
+                let account = mintBrewAccountProvider?()
+                launchMintBrew(accountAddons: account?.addonURLs ?? [],
+                               libraryItems: account?.libraryItems ?? [])
+                if !postRun.homebrewAttempted { requestIZlauncherModules() }
+            } else {
+                requestIZlauncherModules()
+            }
+        case "izlauncher-catalog":
+            guard role == "host", postRun.stage == .held,
+                  let modules = event.modules, modules.count <= 64,
+                  Set(modules.map(\.id)).count == modules.count else { return }
+            let previous = selectedIZlauncherModuleIDs
+            izlauncherModules = modules
+            selectedIZlauncherModuleIDs = izlauncherCatalogLoaded
+                ? previous.intersection(Set(modules.map(\.id))) : []
+            izlauncherCatalogLoaded = true
+            izlauncherModuleMessage = modules.isEmpty ? "No compatible IZlauncher modules are installed on this Mac." :
+                "Standard modules load automatically. Select up to 15 to load a specific set."
+        case "izlauncher-panel":
+            guard role == "host", postRun.stage == .held,
+                  [.launching, .running].contains(postRun.homebrewStage), homebrewApp == .izlauncher,
+                  let folder = sessionURL(event.path), folder == homebrewFolder,
+                  let rawURL = event.url, let url = IZlauncherPanelAddress.parse(rawURL) else { return }
+            izlauncherPanelURL = url
+            izlauncherPanelMessage = ""
+            izlauncherPanelChecking = false
+        case "homebrew-accepted":
+            guard role == "host", let action = event.action, action == pendingHomebrewAction else { return }
+            let customOunceCake = action == "launch-custom-homebrew" &&
+                event.customHomebrewKind == "rpc-app" && event.adapter == "ouncecake"
+            var compatibleSession: OunceCakeSession?
+            if customOunceCake {
+                var session = OunceCakeSession()
+                guard let address = pendingCustomConsoleAddress, session.begin(consoleAddress: address) else {
+                    pendingHomebrewAction = nil
+                    pendingCustomConsoleAddress = nil
+                    fail("Enter your Switch IP address before starting this OunceCake-compatible package.")
+                    return
+                }
+                compatibleSession = session
+            }
+            guard postRun.launchHomebrew() else { return }
+            pendingHomebrewAction = nil
+            pendingCustomConsoleAddress = nil
+            if let session = compatibleSession {
+                ounceCakeSession = session
+                selectedOunceCakeGame = ""
+            }
+            homebrewMessage = event.message ?? "Opening the selected app in the console launcher…"
+            presentPostRunState()
         case "homebrew-started", "homebrew-running", "homebrew-stopped", "homebrew-failed":
             let preserveFailure = postRun.homebrewStage == .failed && event.type == "homebrew-stopped"
             if role == "host", event.type == "homebrew-running", ounceCakeSession.hasStarted {
@@ -1022,13 +1327,19 @@ private struct GUIEvent: Decodable {
                     return
                 }
             }
-            guard role == "host", postRun.receive(event.type) else { return }
+            guard role == "host", postRun.receive(event.type, retrySafe: event.retrySafe == true) else { return }
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
+            if event.type == "homebrew-stopped" || event.type == "homebrew-failed" {
+                izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
+            }
             if !preserveFailure { homebrewMessage = event.message ?? "\(homebrewTitle) session changed." }
             if ounceCakeSession.hasStarted, !preserveFailure, ["homebrew-stopped", "homebrew-failed"].contains(event.type) {
                 ounceCakeSession.stop(failed: event.type == "homebrew-failed")
             }
             presentPostRunState()
+            if event.type == "homebrew-failed", event.retrySafe == true, postRun.canLaunchHomebrew {
+                detail = homebrewMessage
+            }
         case "homebrew-catalog":
             guard role == "host", postRun.stage == .held, postRun.homebrewStage == .launching,
                   ounceCakeSession.stage == .discovering else { return }
@@ -1048,7 +1359,34 @@ private struct GUIEvent: Decodable {
             guard role == "host", phase == .launchingHomebrew || phase == .homebrewRunning else { return }
             homebrewMessage = event.message ?? "\(homebrewTitle) is working…"
             progressLabel = homebrewMessage
+        case "izlauncher-module-progress":
+            guard role == "host", phase == .homebrewRunning, homebrewApp == .izlauncher,
+                  let message = event.message, !message.isEmpty, message.utf8.count <= 512 else { return }
+            izlauncherModuleMessage = message
         case "action-rejected":
+            if role == "host", event.action == "dump-system-code" {
+                postRun.cancelDumpRequest()
+                presentPostRunState()
+                detail = event.message ?? "The system-code dump could not start in this held session."
+                return
+            }
+            if role == "host", event.action == "list-izlauncher-modules" {
+                izlauncherModuleMessage = event.message ?? "Could not read IZlauncher modules."
+                return
+            }
+            if role == "host", event.action == "load-izlauncher-modules" {
+                izlauncherModuleMessage = event.message ?? "Could not load IZlauncher modules."
+                return
+            }
+            if role == "host", let action = event.action, action == pendingHomebrewAction {
+                pendingHomebrewAction = nil
+                pendingCustomConsoleAddress = nil
+                homebrewMessage = event.message ?? "The selected app folder is invalid. Choose another folder."
+                presentPostRunState()
+                status = "Choose another app folder"
+                detail = homebrewMessage
+                return
+            }
             if role == "host", postRun.homebrewStage == .launching {
                 postRun.receive("homebrew-failed")
                 homebrewMessage = event.message ?? "The host could not start \(homebrewTitle) in this session."
@@ -1064,6 +1402,9 @@ private struct GUIEvent: Decodable {
             progressLabel = event.message ?? "Reading system code…"
         case "rpc-finishing":
             guard role == "host", postRun.receive(event.type) else { return }
+            pendingHomebrewAction = nil
+            pendingCustomConsoleAddress = nil
+            izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
             hostIsExploiting = false
             presentPostRunState()
         case "rpc-status-started", "rpc-status":
@@ -1150,6 +1491,9 @@ private struct GUIEvent: Decodable {
             }
         case "host-stage":
             guard role == "host", hostProcess != nil else { return }
+            if hostOnlyKeyboardRunning, event.stage == "connected" || event.stage == "pipeline" {
+                stopKeyboardForwarding()
+            }
             if [.hostStarting, .commands, .waitingForConsole].contains(phase) {
                 if event.stage == "connected" || event.stage == "pipeline" && event.total == 4 &&
                     event.completed.map({ $0.isFinite && (0...3).contains($0) && $0.rounded(.towardZero) == $0 }) == true {
@@ -1177,7 +1521,7 @@ private struct GUIEvent: Decodable {
                 hidCompletionReceived = true; isEnumerating = false
                 workflowProgress.commandsOnlySent()
                 endSessionActivity()
-                phase = .commandsSent; status = "Commands sent. Check your Switch."
+                phase = .commandsSent; status = "Commands sent — check your Switch"
                 detail = "No ns2jb host was started. Execution, restoration and cleanup have not been verified by this app."
                 progress = 1; progressLabel = "\(activeCommandCount) command\(activeCommandCount == 1 ? "" : "s") sent · host not verified"
                 if keyboardHandoffPending {
@@ -1194,25 +1538,42 @@ private struct GUIEvent: Decodable {
                 appendBootstrapDuration(outcome: "completed")
                 workflowProgress.bootstrapTransferred()
                 phase = .awaitingSave
-                status = "Ready to save NS2"
+                status = "Ready to save \(activeHost.saveName)"
                 detail = "Press X on the Switch to enter Direct mode, then let mac2jb type the save command below."
                 progress = 1; progressLabel = "Bootstrap transfer complete"
             } else if !hostCompleted && !postRun.isActive {
                 phase = .waitingForConsole; status = hostStageLabel
-                detail = "Keyboard delivery is complete. The host must independently verify FS execution and cleanup."
+                detail = activeHost == .izmysh
+                    ? "Keyboard delivery is complete. IZMYSH must independently verify its native session and restore temporary memory."
+                    : "Keyboard delivery is complete. The host must independently verify FS execution and cleanup."
                 progress = hostStageProgress; progressLabel = hostStageLabel
             }
         case "verified":
             guard role == "host", activeRunMode != .commandsOnly, !isAttachedRPCSession, !postRun.cleanupBlocked else { return }
+            if hostOnlyKeyboardRunning { stopKeyboardForwarding() }
             hostIsExploiting = false
             postRun.receive(event.type)
             endSessionActivity()
             workflowProgress.complete()
             hostCompleted = true
-            phase = .verified; status = "FS execution verified"
-            detail = "The host verified execution, restored the original instructions, and cleaned up scratch space. Restart the console when finished."
-            progress = 1; progressLabel = "Execution, restoration and cleanup verified"; isEnumerating = false
+            phase = .verified
+            if activeHost == .izmysh {
+                status = "IZMYSH native session verified"
+                detail = "IZMYSH verified its native session and restored scratch memory and its import. The app closed RPC. Restart the console when finished."
+                progressLabel = "Native session, scratch and import verified"
+            } else {
+                status = "FS execution verified"
+                detail = "The host verified execution, restored the original instructions, and cleaned up scratch space. Restart the console when finished."
+                progressLabel = "Execution, restoration and cleanup verified"
+            }
+            progress = 1; isEnumerating = false
         case "failed":
+            if role == "hid", hostOnlyKeyboardRunning {
+                let message = event.message ?? "The live keyboard stopped. Inspect the Switch before trying again."
+                stopKeyboardForwarding()
+                keyboardStatus = message
+                return
+            }
             let safeBootstrapRetry = role == "hid" && event.retrySafe == true && !currentUSBStepHasProof &&
                 activeRunMode == .bootstrapOnly && hidPurpose == "bootstrap"
             fail(event.message ?? "The session did not finish. Inspect the Switch before retrying.", safeBootstrapRetry: safeBootstrapRetry)
@@ -1239,7 +1600,7 @@ private struct GUIEvent: Decodable {
             rememberSuccessfulController(event.controller)
             isEnumerating = false; progress = 0
             status = "Typing the save command"
-            progressLabel = "Saving NS2 · check your Switch when typing finishes"
+            progressLabel = "Saving \(activeHost.saveName) · check your Switch when typing finishes"
         case "command-start":
             guard event.step == 1, event.completed == 0, event.label == "SAVE", saveTypingStarted, !saveCommandStarted else { return }
             saveCommandStarted = true; isEnumerating = false; progress = 0
@@ -1277,6 +1638,14 @@ private struct GUIEvent: Decodable {
         if !diagnostic.isEmpty, let text = String(data: diagnostic, encoding: .utf8) { append(text, channel: role == "host" ? .host : .usb) }
         if role == "host", preflightNetworkFailureHandled { endSessionActivity(); return }
         guard phase != .cancelled, phase != .failed, phase != .verified else { return }
+        if role == "hid", hidPurpose == "live", hostOnlyKeyboardRunning {
+            hostOnlyKeyboardRunning = false; hostOnlyKeyboardReady = false
+            if !hidCompletionReceived {
+                keyboardStatus = "Live keyboard ended without confirming key release. Inspect the Switch before typing again."
+            }
+            if phase == .waitingForConsole { status = hostStageLabel }
+            return
+        }
         if role == "hid", keyboardStopRequested, hidPurpose == "live", hidCompletionReceived { return }
         if process.terminationStatus != 0 {
             fail("The \(role == "host" ? "host" : "USB transfer") stopped unexpectedly. Inspect the Switch before retrying.")
@@ -1289,7 +1658,7 @@ private struct GUIEvent: Decodable {
         } else if role == "hid", hidPurpose == "save-bootstrap", phase == .savingBootstrap {
             bootstrapSaveCommandSent = true
             phase = .awaitingSave; status = "Save command typed — check your Switch"
-            detail = "Confirm saving on the Switch. Overwrite the existing NS2 file if prompted, then wait for saving to finish and confirm below."
+            detail = "Confirm saving on the Switch. Overwrite the existing \(activeHost.saveName) file if prompted, then wait for saving to finish and confirm below."
             progress = nil; progressLabel = "Save command sent · save confirmation required"
         } else if role == "hid", hidPurpose == "commands-only", keyboardHandoffPending,
                   phase == .commandsSent, hidCompletionReceived, startPrefixCompleted {
@@ -1338,6 +1707,7 @@ private struct GUIEvent: Decodable {
         if hostProcess == nil { endSessionActivity() }
         ensureFallbackLog()
         postRun.stop()
+        izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
         if ounceCakeSession.hasStarted { ounceCakeSession.stop(failed: true) }
         error = recovery; detail = recovery
         phase = .failed; status = "The session needs attention"

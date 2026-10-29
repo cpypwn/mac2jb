@@ -36,9 +36,9 @@ function buildNavigation(model = {}, {focusArea = 'content', sidebarIndex = 0, t
       disabled: tabOffset + navigation.tabs.length >= tabCount, ...rect(1206, 92, 34, 44)}];
     navigation.cards = (model.cards || []).slice(0, CATALOG_PAGE_SIZE).map((card, localIndex) => ({index: card.index,
       selected: card.index === selected, focused: focusArea === 'content' && card.index === selected, disabled: false,
-      ...rect(136 + localIndex * 280, 366, 256, 304),
+      ...rect(136 + localIndex * 280, 366, 256, 320),
       poster: rect(176 + localIndex * 280, 374, 176, 264),
-      title: rect(136 + localIndex * 280, 648, 256, 22)}));
+      title: rect(136 + localIndex * 280, 656, 256, 24)}));
   } else {
     navigation.rows = (model.rows || []).slice(0, LIST_PAGE_SIZE).map((row, localIndex) => ({index: row.index ?? (model.offset || 0) + localIndex,
       selected: (row.index ?? (model.offset || 0) + localIndex) === selected,

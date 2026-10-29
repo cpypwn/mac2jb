@@ -14,7 +14,7 @@ struct PostBootstrapCommandSelection: Equatable {
     static let standard = PostBootstrapCommandSelection(commands: [.load, .run, .remove])!
 
     init?(commands: [PostBootstrapCommand], startCommand: String? = nil, startPrefix: Bool = false,
-          host: HostProfile = .bermTheSequel) {
+          host: HostProfile = .kurumuz) {
         guard !commands.isEmpty, Set(commands).count == commands.count,
               commands == PostBootstrapCommand.allCases.filter({ commands.contains($0) }) else { return nil }
         self.commands = commands
@@ -39,10 +39,10 @@ struct PostBootstrapCommandSelection: Equatable {
         (startPrefix ? ["--start-prefix"] : startCommand.map { ["--start-command", $0] } ?? [])
     }
 
-    static func validStartCommand(_ command: String, host: HostProfile = .bermTheSequel) -> Bool {
+    static func validStartCommand(_ command: String, host: HostProfile = .kurumuz) -> Bool {
         guard command.hasPrefix("V=START("), command.hasSuffix(")") else { return false }
         let fields = command.dropFirst(8).dropLast().split(separator: ",", omittingEmptySubsequences: false)
-        guard fields.count == host.startArgumentCount, fields[0] == "39380" else { return false }
+        guard fields.count == host.startArgumentCount, fields[0] == String(host.startPort) else { return false }
         return fields.dropFirst().enumerated().allSatisfy { index, field in
             let maximum = index < 4 ? 255 : 281474976710655
             guard !field.isEmpty, field.count <= 15, field.utf8.allSatisfy({ (48...57).contains($0) }),

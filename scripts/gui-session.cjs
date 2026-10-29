@@ -1,12 +1,28 @@
 #!/usr/bin/env node
 'use strict';
-// mac2jb orchestration around the unchanged fork's opt-in held session.
 const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const {networkBindFailure, networkUnavailableMessage} = require('./gui-host.cjs');
+const {incompatibleLegacyStartHint} = require('./host-profiles.cjs');
 const heldMessage = '4/4 verified. SmileBASIC RPC and FS memory endpoint remain live while this process and the app stay open.';
+const homebrewScripts = Object.freeze({
+  ouncecake: 'scripts/gui-ouncecake.cjs',
+  mintbrew: 'scripts/gui-mintbrew.cjs',
+  izlauncher: 'scripts/gui-izlauncher.cjs',
+  'custom-homebrew': 'scripts/gui-custom-homebrew.cjs'
+});
+const nativeCleanupApps = new Set(['ouncecake', 'izlauncher', 'mintbrew', 'custom-homebrew']);
+
+function availableHomebrew(root, application) {
+  const marker = path.join(root, 'packaging/runtime-homebrew.json');
+  if (!fs.existsSync(marker)) return true;
+  try {
+    const allowed = JSON.parse(fs.readFileSync(marker, 'utf8')).allowed;
+    return Array.isArray(allowed) && allowed.includes(application);
+  } catch { return false; }
+}
 
 function heldResult(result) {
   return result?.verified === true && result.fs?.verified === true && result.fs?.restored === true &&
@@ -43,8 +59,8 @@ function finished(child) {
   });
 }
 function heldSignalGuard(message) {
-  // The fork prints its held status just before installing stop handlers.
-  // Buffer a signal in that short interval without altering the fork source.
+  // the fork prints its held status just before installing stop handlers.
+  // buffer a signal in that short interval without altering the fork source.
   let armed = false, tail = '';
   const queued = new Set(), handlers = new Map();
   const originalWrite = process.stdout.write;
@@ -75,7 +91,8 @@ function heldSignalGuard(message) {
   });
 }
 
-async function main({root, address, emit, lines, verifiedResult, input = process.stdin, graceMs = 300000}) {
+async function main({root, address, emit, lines, verifiedResult, input = process.stdin, graceMs = 300000,
+  preflightCustomApp, listIZlauncherModules}) {
   if (!net.isIPv4(address)) throw Error('Choose the Mac’s LAN IPv4 address.');
   const folder = path.join(root, 'vendor/ns2jb'), runs = path.join(folder, 'runs');
   fs.mkdirSync(runs, {recursive: true, mode: 0o700}); fs.chmodSync(runs, 0o700);
@@ -93,10 +110,11 @@ async function main({root, address, emit, lines, verifiedResult, input = process
     {mode: 0o600, flag: 'wx'});
   let runner, helper, directory, rpcCommand, published = false, ready = false, choiceMade = false;
   let finishing = false, closed = false, outputClosed = false, failure, cancelBeforeReady = false;
-  let finishTimer, helperTimer, dumpTask, statusBusy = false;
+  let finishTimer, helperTimer, dumpTask, dumpBusy = false, statusBusy = false;
   let rpcHeldConfirmed = false, homebrewAttempted = false, homebrewChild, homebrewTask;
+  let preflightBusy = false, preflightTask;
   let homebrewRunning = false, homebrewSettled = false, homebrewStopTimer, homebrewFailurePublished = false;
-  let homebrewApplication, awaitingGame = false, gameTitles = new Set(), cleanupBlocked = false;
+  let homebrewApplication, homebrewAdapter, awaitingGame = false, gameTitles = new Set(), cleanupBlocked = false;
   let networkFailure, progressed = false;
   const safeEmit = (type, fields = {}) => {
     if (outputClosed) return;
@@ -118,7 +136,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
     }
     homebrewStopTimer ||= setTimeout(() => {
       fail('The homebrew app did not confirm shutdown. Finish RPC and restart the console.');
-      if (['ouncecake','izlauncher','stremio'].includes(homebrewApplication)) cleanupBlocked = true;
+      if (nativeCleanupApps.has(homebrewApplication)) cleanupBlocked = true;
       signalGroup(homebrewChild, 'SIGKILL');
     }, 300000);
     homebrewStopTimer.unref();
@@ -138,12 +156,12 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       const releaseRunner = () => {
         if (closed) return;
         if (cleanupBlocked) {
-          // An uncertain native worker must keep its code and handles. End the
+          // an uncertain native worker must keep its code and handles. end the
           // local bridge without executing the fork's native cleanup underneath it.
           fail('The selected app shutdown was not confirmed. Restart the console; native resources were retained.');
           signalGroup(runner, 'SIGKILL'); return;
         }
-        // Homebrew owners stop while RPC is live, before fork IPC cleanup.
+        // homebrew owners stop while rpc is live, before fork ipc cleanup.
         try {runner.kill('SIGTERM');} catch (error) {if (error.code !== 'ESRCH') fail(error.message);}
         finishTimer = setTimeout(() => {
           fail('Held-session cleanup timed out. Restart the console before another attempt.');
@@ -153,6 +171,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         finishTimer.unref();
       };
       if (homebrewChild) {stopHomebrew(); homebrewTask.finally(releaseRunner);}
+      else if (preflightTask) preflightTask.finally(releaseRunner);
       else releaseRunner();
     } else {
       cancelBeforeReady = true;
@@ -215,7 +234,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
           safeEmit('post-run-ready', {path: directory, rpcCommand,
             message: 'FS execution and restoration verified. Preparing the selected session action.'});
         }
-        safeEmit('log', {message: line});
+        if (!incompatibleLegacyStartHint(clean, 5)) safeEmit('log', {message: line});
       } catch (error) {fail(error.message); finish('The session could not be verified.');}
     }
     lines(runner.stdout, output); lines(runner.stderr, output);
@@ -247,20 +266,44 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       if (keepRPC) held();
       else finish('Firmware dump completed.');
     }
-    async function homebrew(application, config = {}, quality = '720p') {
+    async function dumpFromHeldRPC() {
+      if (homebrewChild) {
+        safeEmit('dump-progress', {message: 'Stopping the current app before reading system code.'});
+        stopHomebrew();
+        await homebrewTask;
+        if (finishing || closed) return;
+        if (homebrewChild || !homebrewSettled || cleanupBlocked || failure)
+          throw Error('The current app did not confirm safe shutdown. The system-code dump was not started.');
+      }
+      if (finishing || closed) return;
+      const status = await require(path.join(folder, 'rpc.cjs')).request(directory, {command: 'status'});
+      if (status?.ready !== true) throw Error('The held RPC session is no longer ready for the system-code dump.');
+      if (finishing || closed) return;
+      await dump(true);
+    }
+    async function homebrew(application, config = {}) {
       homebrewApplication = application;
-      const script = {stremio:'scripts/gui-stremio.cjs', ouncecake:'scripts/gui-ouncecake.cjs',
-        gpubrewlauncher:'scripts/gui-gpubrewlauncher.cjs', hblauncher:'scripts/gui-hblauncher.cjs',
-        izlauncher:'scripts/gui-izlauncher.cjs'}[application];
-      const configurable = application === 'stremio' || application === 'ouncecake';
+      homebrewAdapter = config.adapter;
+      const ouncecakeMode = application === 'ouncecake' ||
+        application === 'custom-homebrew' && config.customHomebrewKind === 'rpc-app' && config.adapter === 'ouncecake';
+      let retrySafeFailure;
+      const script = homebrewScripts[application];
+      const configurable = application === 'mintbrew' || application === 'ouncecake' || application === 'izlauncher' ||
+        application === 'custom-homebrew' && config.customHomebrewKind === 'rpc-app';
+      const moduleIds = application === 'izlauncher' && Array.isArray(config.moduleIds) && config.moduleIds.length
+        ? require('./izlauncher-modules.cjs').withDefaults(config.moduleIds) : undefined;
       homebrewChild = spawn(process.execPath, [path.join(root, script), directory,
-        ...(application === 'stremio' ? ['--quality', quality] : [])], {
-        cwd: root, detached: true, stdio: [configurable ? 'pipe' : 'ignore', 'pipe', 'pipe'], env: {...process.env}
+        ...(moduleIds ? ['--modules',JSON.stringify(moduleIds)] : []),
+        ...(application === 'custom-homebrew' ? [
+          config.customHomebrewKind==='launcher'?'--launcher-folder':
+            config.customHomebrewKind==='rpc-app'?'--rpc-folder':'--app-folder', config.customHomebrewPath] : [])], {
+        cwd: root, detached: true, stdio: [configurable ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+        env: {...process.env, ...(application === 'izlauncher' ? {HB_STREAM_HOST: address} : {})}
       });
       if (configurable) {
         homebrewChild.stdin.on('error', error => {if (error.code !== 'EPIPE') fail('Could not configure the selected app.');});
-        homebrewChild.stdin.write(JSON.stringify(config) + '\n');
-        if (application === 'stremio') homebrewChild.stdin.end();
+        if (application !== 'izlauncher') homebrewChild.stdin.write(JSON.stringify(config) + '\n');
+        if (application === 'mintbrew') homebrewChild.stdin.end();
       }
       const child = homebrewChild, done = finished(child);
       const observe = line => {
@@ -268,13 +311,29 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         let event;
         try {event = JSON.parse(line.slice('MAC2JB_HOMEBREW '.length));}
         catch {safeEmit('log', {message: 'Invalid homebrew event.'}); return;}
+        if (!event || typeof event !== 'object' || Array.isArray(event)) {
+          safeEmit('log', {message: 'Invalid homebrew event.'}); return;
+        }
+        if (event.type === 'panel') {
+          if (application !== 'izlauncher') return;
+          try {safeEmit('izlauncher-panel', require('./izlauncher-panel.cjs').verifyPanelEvent(root, event));}
+          catch {fail('IZlauncher returned an invalid local panel address.'); stopHomebrew();}
+          return;
+        }
         if (event.type === 'account-progress') {
-          if (application === 'stremio' && event.watchProgress && typeof event.watchProgress === 'object' && !Array.isArray(event.watchProgress))
+          if (application === 'mintbrew' && event.watchProgress && typeof event.watchProgress === 'object' && !Array.isArray(event.watchProgress))
             safeEmit('account-progress', {watchProgress: event.watchProgress});
           return;
         }
+        if (event.type === 'module-progress') {
+          if (application === 'izlauncher' && !homebrewSettled && !finishing &&
+              typeof event.message === 'string' && Buffer.byteLength(event.message) <= 512 &&
+              !/[\x00-\x1f\x7f]/.test(event.message))
+            safeEmit('izlauncher-module-progress', {path: directory, message: event.message});
+          return;
+        }
         if (event.type === 'catalog') {
-          if (application !== 'ouncecake' || gameTitles.size !== 0 || awaitingGame || homebrewRunning || homebrewSettled ||
+          if (!ouncecakeMode || gameTitles.size !== 0 || awaitingGame || homebrewRunning || homebrewSettled ||
               !Array.isArray(event.games) || event.games.length > 1000 || event.games.length === 0 ||
               event.games.some(game => !game || !/^[a-f0-9]{16}$/.test(game.titleId) ||
                 typeof game.name !== 'string' || Buffer.byteLength(game.name) > 160 ||
@@ -288,28 +347,43 @@ async function main({root, address, emit, lines, verifiedResult, input = process
           safeEmit('homebrew-catalog', {games:event.games,path:directory,message:event.message}); return;
         }
         if (!['started','progress','running','stopped','failed'].includes(event.type)) return;
-        if (application === 'ouncecake' && event.type === 'running' &&
+        if (ouncecakeMode && event.type === 'running' &&
             (awaitingGame || gameTitles.size === 0 || event.host !== config.consoleAddress || event.port !== 2121 ||
              event.ftpURL !== `ftp://${config.consoleAddress}:2121`)) {
           fail('OunceCake did not confirm the selected FTP endpoint.'); stopHomebrew(); return;
         }
-        if (['ouncecake','izlauncher','stremio'].includes(application) && event.cleanupBlocked === true) {
+        if (nativeCleanupApps.has(application) && event.cleanupBlocked === true) {
           cleanupBlocked = true; fail('The selected app could not confirm native shutdown. Restart the console before stopping this session.');
         }
+        const wasRunning = homebrewRunning;
         if (event.type === 'running') homebrewRunning = true;
         if (event.type === 'stopped' || event.type === 'failed') {homebrewRunning = false; homebrewSettled = true;}
-        if (event.type === 'failed') {fail(event.message || 'The selected homebrew app failed. Restart the console.'); homebrewFailurePublished = true;}
+        if (event.type === 'failed') {
+          if (event.retrySafe === true && !wasRunning && !cleanupBlocked && !finishing) retrySafeFailure = event;
+          else {fail(event.message || 'The selected homebrew app failed. Restart the console.'); homebrewFailurePublished = true;}
+        }
+        if (retrySafeFailure) return;
         safeEmit('homebrew-' + event.type, {path: event.path || directory, message: event.message,
-          ...(['izlauncher','stremio'].includes(application) ? {cleanupBlocked} : {}),
-          ...(application === 'ouncecake' ? {host:event.host,port:event.port,ftpURL:event.ftpURL,cleanupBlocked} : {})});
+          ...(['izlauncher','mintbrew'].includes(application) ? {cleanupBlocked} : {}),
+          ...(ouncecakeMode ? {host:event.host,port:event.port,ftpURL:event.ftpURL,cleanupBlocked} : {})});
       };
       lines(child.stdout, observe, 1024 * 1024); lines(child.stderr, observe);
       const outcome = await done;
       clearTimeout(homebrewStopTimer); homebrewStopTimer = undefined;
       homebrewChild = undefined; homebrewRunning = false;
-      if (outcome.error || outcome.code !== 0 || outcome.signal ||
-          ['ouncecake','gpubrewlauncher','hblauncher','izlauncher','stremio'].includes(application) && !homebrewSettled) {
-        if (['ouncecake','izlauncher','stremio'].includes(application) && !homebrewSettled) cleanupBlocked = true;
+      if (retrySafeFailure && !outcome.error && outcome.code === 1 && !outcome.signal &&
+          homebrewSettled && !cleanupBlocked && !closed && !finishing) {
+        try {
+          const status = await require(path.join(folder, 'rpc.cjs')).request(directory, {command: 'status'});
+          if (status?.ready !== true) throw Error('The held RPC session is no longer ready.');
+          homebrewAttempted = false; homebrewSettled = false; homebrewApplication = undefined; homebrewAdapter = undefined;
+          safeEmit('homebrew-failed', {path: retrySafeFailure.path || directory, retrySafe: true,
+            message: retrySafeFailure.message || 'Preparation failed before transfer. RPC remains open; choose another app.'});
+          return;
+        } catch (error) {fail(error.message);}
+      }
+      if (outcome.error || outcome.code !== 0 || outcome.signal || !homebrewSettled) {
+        if (nativeCleanupApps.has(application) && !homebrewSettled) cleanupBlocked = true;
         fail('The selected app failed or did not confirm shutdown. Restart the console.');
         if (!homebrewFailurePublished) safeEmit('homebrew-failed', {path: directory,
           message: failure + ' This launch was not retried.',cleanupBlocked});
@@ -324,49 +398,164 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       if (!ready || closed || finishing) {safeEmit('action-rejected', {message: 'The session is not ready for this action.'}); return;}
       if (command.action === 'finish') {
         if (cleanupBlocked) {safeEmit('action-rejected', {message:'Restart the console, then stop this session. Native shutdown was not confirmed.'}); return;}
-        if (helper || statusBusy || homebrewChild && !homebrewRunning && !homebrewSettled && !awaitingGame) {
+        if (dumpBusy || helper || statusBusy || homebrewChild && !homebrewRunning && !homebrewSettled && !awaitingGame) {
           safeEmit('action-rejected', {message: 'Wait for the current operation to finish.'}); return;
         }
         choiceMade = true; finish(); return;
       }
       if (command.action === 'select-ouncecake-game') {
-        if (homebrewApplication !== 'ouncecake' || !awaitingGame || !homebrewChild || homebrewSettled || cleanupBlocked ||
+        if (!(homebrewApplication === 'ouncecake' || homebrewApplication === 'custom-homebrew' && homebrewAdapter === 'ouncecake') ||
+            !awaitingGame || !homebrewChild || homebrewSettled || cleanupBlocked ||
             typeof command.titleId !== 'string' || !gameTitles.has(command.titleId)) {
           safeEmit('action-rejected', {message:'Choose one game from this session’s OunceCake list.'}); return;
         }
         awaitingGame = false;
         homebrewChild.stdin.write(JSON.stringify({action:'select-game',titleId:command.titleId}) + '\n'); return;
       }
-      if (['launch-stremio','launch-ouncecake','launch-gpubrewlauncher','launch-hblauncher','launch-izlauncher'].includes(command.action)) {
+      if (command.action === 'dump-system-code') {
+        if (!rpcHeldConfirmed || dumpTask || dumpBusy || helper || statusBusy || preflightBusy || cleanupBlocked ||
+            failure || homebrewChild && (!homebrewRunning || homebrewSettled)) {
+          safeEmit('action-rejected', {action:'dump-system-code',
+            message:'Wait for a verified held RPC session and a safely running or stopped app before dumping system code.'});
+          return;
+        }
+        dumpBusy = true;
+        dumpTask = dumpFromHeldRPC().catch(error => {
+          fail(error.message); finish('The system-code dump did not finish.');
+        }).finally(() => {dumpBusy = false;});
+        return;
+      }
+      if (command.action === 'list-izlauncher-modules') {
+        if (!availableHomebrew(root, 'izlauncher')) {
+          safeEmit('action-rejected',{action:'list-izlauncher-modules',message:'IZlauncher is unavailable in this build.'}); return;
+        }
+        if (!rpcHeldConfirmed || homebrewAttempted || preflightBusy || dumpBusy) {
+          safeEmit('action-rejected',{action:'list-izlauncher-modules',message:'Hold RPC before listing IZlauncher modules.'}); return;
+        }
+        try {const modules=await (listIZlauncherModules||require('./izlauncher-modules.cjs').catalog)(root);
+          if (!finishing) safeEmit('izlauncher-catalog',{modules});}
+        catch(error){if (!finishing) safeEmit('action-rejected',{action:'list-izlauncher-modules',message:'IZlauncher module list failed: '+error.message});}
+        return;
+      }
+      if (command.action === 'load-izlauncher-modules') {
+        if (homebrewApplication!=='izlauncher'||!homebrewRunning||!homebrewChild?.stdin?.writable||
+            !require('./izlauncher-modules.cjs').validIds(command.ids)||!command.ids.length) {
+          safeEmit('action-rejected',{action:'load-izlauncher-modules',message:'Select compatible modules while IZlauncher is running.'}); return;
+        }
+        homebrewChild.stdin.write(JSON.stringify({action:'load-modules',ids:command.ids})+'\n');return;
+      }
+      if (['launch-ouncecake','launch-mintbrew','launch-izlauncher','launch-custom-homebrew'].includes(command.action)) {
+        if (!availableHomebrew(root, command.action.slice('launch-'.length))) {
+          safeEmit('action-rejected',{action:command.action,message:'This homebrew option is unavailable in this build.'}); return;
+        }
+        if (command.action === 'launch-izlauncher' && command.moduleIds !== undefined &&
+            !require('./izlauncher-modules.cjs').validIds(command.moduleIds)) {
+          safeEmit('action-rejected',{action:'launch-izlauncher',message:'Choose up to 15 distinct compatible IZlauncher modules.'}); return;
+        }
+        if (command.action === 'launch-izlauncher' && command.moduleFolderPath !== undefined &&
+            (typeof command.moduleFolderPath !== 'string' || !path.isAbsolute(command.moduleFolderPath) ||
+             command.moduleFolderPath.length > 4096 || /[\x00\r\n]/.test(command.moduleFolderPath))) {
+          safeEmit('action-rejected', {action:'launch-izlauncher',message:'Choose a valid local IZlauncher module folder.'}); return;
+        }
+        if (command.action === 'launch-custom-homebrew' &&
+            (typeof command.customHomebrewPath !== 'string' || !path.isAbsolute(command.customHomebrewPath) ||
+             command.customHomebrewPath.length > 4096 || /[\x00\r\n]/.test(command.customHomebrewPath))) {
+          safeEmit('action-rejected', {message:'Choose a valid local custom homebrew folder.'}); return;
+        }
         if (command.action === 'launch-ouncecake' && !net.isIPv4(command.consoleAddress)) {
           safeEmit('action-rejected', {message:'Enter the Switch’s IPv4 address for OunceCake FTP.'}); return;
         }
-        if (command.action === 'launch-stremio' && (command.addonUrls !== undefined &&
+        if (command.action === 'launch-mintbrew' && (command.addonUrls !== undefined &&
             (!Array.isArray(command.addonUrls) || command.addonUrls.length > 32 ||
              command.addonUrls.some(url => typeof url !== 'string' || url.length > 4096)) ||
             command.libraryItems !== undefined && (!Array.isArray(command.libraryItems) || command.libraryItems.length > 500 ||
              command.libraryItems.some(item => !item || typeof item !== 'object' || Array.isArray(item))))) {
           safeEmit('action-rejected', {message:'The add-on configuration is invalid.'}); return;
         }
-        if (command.action === 'launch-stremio' && command.quality !== undefined &&
+        if (command.action === 'launch-mintbrew' && command.quality !== undefined &&
             !['720p','540p','360p','180p'].includes(command.quality)) {
           safeEmit('action-rejected', {message:'Choose a supported Stremio quality.'}); return;
         }
-        if (!rpcHeldConfirmed || homebrewAttempted || helper || statusBusy) {
+        if (!rpcHeldConfirmed || homebrewAttempted || helper || statusBusy || preflightBusy || dumpBusy) {
           safeEmit('action-rejected', {message: 'Homebrew requires this session’s held RPC and can be launched only once.'}); return;
+        }
+        if (command.action === 'launch-custom-homebrew') {
+          preflightBusy = true;
+          preflightTask = (async () => {
+            let prepared;
+            try {
+              const homebrewModule=require('./gui-homebrew.cjs');
+              prepared = await (preflightCustomApp || homebrewModule.preflightCustomHomebrew ||
+                homebrewModule.preflightCustomApp)(root,command.customHomebrewPath);
+              if (finishing || closed) return;
+              if (prepared.kind === 'rpc-app' && prepared.adapter === 'ouncecake' && !net.isIPv4(command.consoleAddress))
+                throw Error('Enter the Switch’s IPv4 address for OunceCake-compatible FTP.');
+              homebrewAttempted = true;
+              safeEmit('homebrew-accepted', {action:'launch-custom-homebrew',
+                customHomebrewKind:prepared.kind||'gpu-app',adapter:prepared.adapter,
+                message:'Validated '+prepared.app.name+'. Opening the selected app.'});
+              const staged = prepared;
+              prepared = null;
+              homebrewTask = homebrew('custom-homebrew',{
+                customHomebrewPath:staged.kind==='launcher'?staged.launcherFolder:
+                  staged.kind==='rpc-app'?staged.packageFolder:staged.appFolder,
+                customHomebrewKind:staged.kind||'gpu-app',adapter:staged.adapter,
+                ...(staged.adapter==='ouncecake'?{consoleAddress:command.consoleAddress,port:2121}:{})}).catch(error => {
+                fail(error.message);safeEmit('homebrew-failed', {path:directory,
+                  message:error.message+' Finish RPC and restart the console. This launch was not retried.',cleanupBlocked});
+              }).finally(async () => {await staged.cleanup();});
+            } catch(error) {
+              if (!finishing && !closed) safeEmit('action-rejected', {action:'launch-custom-homebrew',
+                message:'Custom homebrew validation failed: '+error.message});
+            } finally {
+              if (prepared) await prepared.cleanup().catch(()=>{});
+              preflightBusy = false;preflightTask = undefined;
+            }
+          })();
+          return;
+        }
+        if (command.action === 'launch-izlauncher' && command.moduleFolderPath) {
+          preflightBusy = true;
+          preflightTask = (async () => {
+            let prepared;
+            try {
+              prepared = await require('./stage-custom-izmodule.cjs').stage(root,command.moduleFolderPath);
+              if (finishing || closed) return;
+              homebrewAttempted = true;
+              safeEmit('homebrew-accepted', {action:'launch-izlauncher',
+                message:'Added '+prepared.name+' '+prepared.version+' to this session. Opening IZlauncher.'});
+              const moduleIds=[...new Set([...(command.moduleIds||[]),prepared.id])];
+              if(moduleIds?.length>15)throw Error('Choose no more than 15 IZlauncher modules, including the custom module.');
+              prepared = null;
+              homebrewTask = homebrew('izlauncher',{moduleIds}).catch(error => {
+                cleanupBlocked = true;fail(error.message);safeEmit('homebrew-failed', {path:directory,
+                  message:error.message+' Finish RPC and restart the console. This launch was not retried.',cleanupBlocked});
+              });
+            } catch(error) {
+              if (!finishing && !closed) safeEmit('action-rejected', {action:'launch-izlauncher',
+                message:'IZlauncher module validation failed: '+error.message});
+            } finally {
+              if (prepared) await prepared.cleanup().catch(()=>{});
+              preflightBusy = false;preflightTask = undefined;
+            }
+          })();
+          return;
         }
         homebrewAttempted = true;
         const application = command.action.slice('launch-'.length);
         homebrewTask = homebrew(application, application === 'ouncecake' ? {consoleAddress:command.consoleAddress,port:2121} :
-          {addonUrls: command.addonUrls || [], libraryItems: command.libraryItems || []}, command.quality ?? '720p').catch(error => {
-          if (['ouncecake','izlauncher','stremio'].includes(application)) cleanupBlocked = true;
+          {addonUrls: command.addonUrls || [], libraryItems: command.libraryItems || [],
+            ...(application === 'mintbrew' ? {quality:command.quality ?? '720p'} : {}),
+            ...(command.action === 'launch-izlauncher' && Array.isArray(command.moduleIds) ? {moduleIds:command.moduleIds} : {}),
+            ...(command.action === 'launch-custom-homebrew' ? {customHomebrewPath:command.customHomebrewPath} : {})}).catch(error => {
+          if (nativeCleanupApps.has(application)) cleanupBlocked = true;
           fail(error.message); safeEmit('homebrew-failed', {path: directory,
             message: error.message + ' Finish RPC and restart the console. This launch was not retried.',cleanupBlocked});
         });
         return;
       }
       if (command.action === 'rpc-status') {
-        if (statusBusy || helper || homebrewAttempted) {safeEmit('action-rejected', {message: 'Wait for the current operation to finish.'}); return;}
+        if (statusBusy || helper || homebrewAttempted || preflightBusy || dumpBusy) {safeEmit('action-rejected', {message: 'Wait for the current operation to finish.'}); return;}
         statusBusy = true; safeEmit('rpc-status-started', {message: 'Checking the held RPC connection.'});
         try {
           const result = await require(path.join(folder, 'rpc.cjs')).request(directory, {command: 'status'});
@@ -390,11 +579,12 @@ async function main({root, address, emit, lines, verifiedResult, input = process
     input.once('end', inputEnd); input.resume();
     const outcome = await runnerDone;
     closed = true; clearTimeout(finishTimer);
+    await preflightTask?.catch(()=>{});
     if (homebrewChild) {
       fail('The original RPC session ended while homebrew was active. Restart the console.');
-      // When the original connection disappears, no further native cleanup is
+      // when the original connection disappears, no further native cleanup is
       // trustworthy. Only end the local helper; the console must be restarted.
-      if (['ouncecake','izlauncher','stremio'].includes(homebrewApplication)) cleanupBlocked = true;
+      if (nativeCleanupApps.has(homebrewApplication)) cleanupBlocked = true;
       stopHomebrew(); await homebrewTask;
     }
     if (helper) {
@@ -431,7 +621,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
   } finally {
     clearTimeout(finishTimer); clearTimeout(helperTimer); clearTimeout(homebrewStopTimer);
     process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
-    // Keep the stdout error listener through process exit so a late EPIPE cannot
+    // keep the stdout error listener through process exit so a late epipe cannot
     // interrupt cleanup or turn a clean shutdown into an uncaught exception.
     if (published) {
       try {if (fs.readFileSync(active, 'utf8').startsWith(`${runner.pid}\n`)) fs.unlinkSync(active);} catch {}

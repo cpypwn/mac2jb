@@ -1,0 +1,23 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "mintftp",
+  "name": "MintFTP",
+  "version": "0.1.0",
+  "description": "Browse Switch files by FTP or open OunceCake game files",
+  "icon": "assets/icon.png",
+  "transition": "none",
+  "initialState": "assets/state.bin",
+  "data": "assets/text.bin",
+  "shaders": {
+    "vertex": "app.vert.spv",
+    "fragment": "app.frag.spv",
+    "compute": "app.comp.spv"
+  },
+  "sdk": {
+    "version": 1,
+    "capabilities": [],
+    "services": ["ftp"],
+    "ftpPort": 2121
+  }
+}

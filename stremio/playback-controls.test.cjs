@@ -30,9 +30,9 @@ test('seekbar maps taps to absolute positions and rejects unknown durations and 
 });
 
 test('overlay models bound progress and provide accessible focus and disabled states', () => {
-  let model = playbackOverlayModel({paused: true, position: -10, duration: 300, volume: 5, focused: 'unknown', canNextEpisode: true});
+  let model = playbackOverlayModel({paused: true, position: -10, duration: 300, focused: 'unknown', canNextEpisode: true});
   assert.equal(model.focused, 'playPause'); assert.equal(model.controls.find(control => control.focused).id, 'playPause');
-  assert.equal(model.position, 0); assert.equal(model.volume, 1);
+  assert.equal(model.position, 0); assert.equal(Object.hasOwn(model, 'volume'), false);
   assert.equal(model.controls[0].disabled, true); assert.equal(model.controls[1].label, 'Play');
   assert.equal(model.controls[2].disabled, false); assert.equal(model.canNextEpisode, true);
   assert.equal(model.seekbar.enabled, true);

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>org.mac2jb.vacootube.audio</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>VacooTube captures only its own YouTube playback audio to send it to the Switch.</string>
+</dict>
+</plist>

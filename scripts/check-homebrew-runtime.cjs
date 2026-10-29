@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// No console commands: verify the packaged tools against both launcher catalogs.
+// no console commands: verify the packaged launcher catalogs.
 const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:os');
 const crypto=require('node:crypto'),{execFile}=require('node:child_process'),{promisify}=require('node:util');
 const run=promisify(execFile);
@@ -21,15 +21,19 @@ async function main(root=path.resolve(__dirname,'..')) {
   if(version.stdout.trim()!=='3.13.17 13.0.0')throw Error('Unexpected Python/Pillow versions');
   const scratch=await fs.mkdtemp(path.join(os.tmpdir(),'mac2jb-launcher-check-'));
   try {
-    for(const application of ['hblauncher','gpubrewlauncher']) {
+    for(const application of ['hblauncher','gpubrewlauncher','mintbrew']) {
       const selected=applicationConfig(application),vendor=path.join(root,'vendor',selected.vendor);
       const launcherEnv=runtimeEnvironment(root,inherited,application);Object.assign(process.env,launcherEnv);
       const catalog=require(path.join(vendor,'homebrew-launcher/app-catalog.cjs'));
       const data=await catalog.scan(launcherEnv.HB_APPS_DIR);
       if(data.rejected.length||!data.apps.length)throw Error(selected.name+' bundled app validation failed: '+JSON.stringify(data.rejected));
-      const required=application==='hblauncher'?['hello-world','ftpd-sb']:['hello-world','froggy-road','ftpd-sb'];
+      const required=application==='hblauncher'?['hello-world','ftpd-sb']:
+        application==='mintbrew'?['hello-world','froggy-road','ftpd-sb','chip8-test','izdoom','ouncecake','stremio-experimental']:
+          ['hello-world','froggy-road','ftpd-sb'];
       for(const id of required)
         if(!data.apps.some(app=>app.id===id))throw Error('Missing bundled '+selected.name+' app: '+id);
+      if(application==='mintbrew'&&data.apps.some(app=>app.id==='mintnes'||app.id==='mintftp'))
+        throw Error('Unreleased MintBrew app is still bundled');
       for(const stage of ['vert','frag','comp'])
         await run(launcherEnv.SPIRV_VAL,['--target-env','vulkan1.0',path.join(vendor,'homebrew-launcher/shaders/launcher.'+stage+'.spv')],{env:launcherEnv});
       const target=path.join(scratch,selected.id);await fs.mkdir(target);

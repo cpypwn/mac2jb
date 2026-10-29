@@ -1,0 +1,14 @@
+const ivec4 TEXT_TITLE = ivec4(4, 4, 400, 54);
+const ivec4 TEXT_SUBTITLE = ivec4(4, 66, 454, 29);
+const ivec4 TEXT_DISCOVER = ivec4(4, 103, 416, 30);
+const ivec4 TEXT_CHOOSE = ivec4(4, 141, 242, 30);
+const ivec4 TEXT_PREPARING = ivec4(4, 179, 354, 30);
+const ivec4 TEXT_CLOSING = ivec4(4, 217, 393, 30);
+const ivec4 TEXT_READY = ivec4(4, 255, 155, 30);
+const ivec4 TEXT_ERROR = ivec4(4, 293, 416, 24);
+const ivec4 TEXT_RETURN = ivec4(4, 325, 473, 19);
+const ivec4 TEXT_SELECT = ivec4(4, 352, 188, 24);
+const ivec4 TEXT_BACK = ivec4(4, 384, 365, 24);
+const uint ASCII_ATLAS_Y = 512u;
+const uint ASCII_CELL_WIDTH = 20u;
+const uint ASCII_CELL_HEIGHT = 32u;

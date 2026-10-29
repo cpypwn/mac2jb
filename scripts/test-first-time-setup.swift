@@ -101,10 +101,18 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                 : > held-choice-received
                 gate release-rpc-held
                 printf '{"type":"rpc-held","path":"%s/held-fixture","rpcCommand":"inert-fixture-rpc"}\n' "$PWD" ;;
-              *'"action":"launch-gpubrewlauncher"'*|*'"action":"launch-hblauncher"'*|*'"action":"launch-izlauncher"'*)
+              *'"action":"list-izlauncher-modules"'*)
+                emit '{"type":"izlauncher-catalog","modules":[]}' ;;
+              *'"action":"launch-mintbrew"'*|*'"action":"launch-izlauncher"'*)
                 emit '{"type":"homebrew-started"}'
                 gate release-gpu-running
                 emit '{"type":"homebrew-running","message":"Inert GPU launcher ready."}' ;;
+              *'"action":"dump-system-code"'*)
+                emit '{"type":"homebrew-stopped"}'
+                mkdir -p dump-fixture
+                printf '{"type":"dump-started","path":"%s/dump-fixture"}\n' "$PWD"
+                printf '{"type":"dump-complete","path":"%s/dump-fixture"}\n' "$PWD"
+                printf '{"type":"rpc-held","path":"%s/held-fixture","rpcCommand":"inert-fixture-rpc"}\n' "$PWD" ;;
               *'"action":"finish"'*)
                 emit '{"type":"homebrew-stopped"}'
                 emit '{"type":"rpc-finishing"}'
@@ -168,11 +176,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               printf '{"type":"command-complete","kind":"commands","step":%s,"completed":%s,"total":4,"label":"%s"}\n' "$step" "$step" "$label"
               if [ "$step" = 1 ]; then
                 gate release-load-confirmation
-                emit '{"type":"wait","kind":"commands","completed":1,"total":4,"label":"LOAD confirmation","remainingMs":1000}'
-              fi
-              if [ "$step" -lt 4 ]; then
-                gate "release-command-wait-$step"
-                printf '{"type":"wait","kind":"commands","completed":%s,"total":4,"label":"%s","remainingMs":1000}\n' "$step" "$label"
+                emit '{"type":"wait","kind":"commands","completed":1,"total":4,"label":"LOAD","remainingMs":1000}'
+                gate release-command-wait-1
               fi
             done
             gate release-command-transfer
@@ -326,10 +331,12 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             let args = try String(contentsOf: save.root.appendingPathComponent("arguments"), encoding: .utf8)
                 .split(separator: "\n").last.map(String.init) ?? ""
             check(args.contains("hid save-bootstrap auto 10") && args.contains("--preferred-controller usb-drd3") &&
-                  args.contains("--load-wait-ms 1000") && args.contains("--run-wait-ms 1000") &&
-                  args.contains("--remove-wait-ms 1000") && args.contains("--demo") == (edition == .demo) &&
-                  !args.contains("--commands") && !args.contains("--start-command"),
-                  "\(edition) SAVE uses the frozen edition, 10 ms timing and proven USB controller only")
+                  args.contains("--load-wait-ms 1000") && args.contains("--run-wait-ms 0") &&
+                  args.contains("--remove-wait-ms 0") && args.contains("--load-confirm-wait-ms 0") &&
+                  args.contains("--demo") == (edition == .demo) &&
+                  !args.contains("--commands") && !args.contains("--start-command") &&
+                  !args.contains("--save-name") && !args.contains("--load-name") && !args.contains("--start-port"),
+                  "\(edition) SAVE uses the frozen edition, 10 ms timing and proven USB controller; host flags come from the adapter")
             save.model.typeBootstrapSave(directModeConfirmed: true)
             check(save.invocations == ["bootstrap", "save-bootstrap"] && addressReads == 0 && save.model.activeAddress.isEmpty,
                   "SAVE sends once and never discovers a host address or launches an ns2jb host")
@@ -355,7 +362,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         guarded.model.driverSetupRunning = true; rejectsSave("driver installation"); guarded.model.driverSetupRunning = false
         guarded.model.keyDelayMs = 0; rejectsSave("invalid key timing"); guarded.model.keyDelayMs = 10
         guarded.model.enumerationTimeoutSeconds = 0; rejectsSave("invalid enumeration timeout"); guarded.model.enumerationTimeoutSeconds = 4
-        guarded.model.loadConfirmWaitMs = -1; rejectsSave("invalid command timing"); guarded.model.loadConfirmWaitMs = 1000
+        guarded.model.loadWaitMs = -1; rejectsSave("invalid command timing"); guarded.model.loadWaitMs = 1000
         for phase in [SessionPhase.ready, .bootstrap, .savingBootstrap, .commands, .failed, .cancelled, .verified] {
             guarded.model.phase = phase; guarded.model.typeBootstrapSave(directModeConfirmed: true)
             check(!guarded.model.canTypeBootstrapSave && guarded.model.phase == phase && guarded.invocations.isEmpty,
@@ -435,7 +442,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         }
         let persisted = SessionModel(addressProvider: { [] })
         check(persisted.selectedEdition == .full && persisted.activeEdition == .full, "an old saved preference does not silently select the demo")
-        check(persisted.loadWaitMs == 1000 && persisted.runWaitMs == 1000 && persisted.removeWaitMs == 1000, "default inter-command waits are one second")
+        check(persisted.loadWaitMs == 1000 && persisted.runWaitMs == 0 && persisted.removeWaitMs == 0 && persisted.loadConfirmWaitMs == 0,
+              "only the post-confirmation LOAD wait defaults to one second")
         check(persisted.keyDelayMs == 10, "default keystroke delay is 10 ms")
         check(persisted.stremioQuality == .p720, "a new installation starts at 720p")
         for quality in StremioQuality.allCases {
@@ -588,7 +596,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try await until("commands-only sender exit") { !commands.model.hasLiveWorkers }
         check(commands.model.phase == .commandsSent && commands.model.canReturnToStart && !commands.model.isBusy && commands.model.canStartKeyboard,
               "ordinary subset completion permits an explicit manual keyboard continuation but never auto-connects")
-        check(commands.model.status == "Commands sent. Check your Switch." &&
+        check(commands.model.status == "Commands sent — check your Switch" &&
               commands.model.detail.contains("No ns2jb host was started") && commands.model.detail.contains("not been verified"),
               "the terminal result explicitly distinguishes delivery from host verification")
         check(commands.model.workflowProgress.state(for: 2) == .pending && commands.invocations == ["commands-only"],
@@ -600,8 +608,10 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         withExtendedLifetime(subsetStatusObservation) {}
         let arguments = try String(contentsOf: commands.root.appendingPathComponent("arguments"), encoding: .utf8)
         check(arguments.contains("hid commands-only auto 10") && arguments.contains("--commands load,remove") &&
-              arguments.contains("--load-confirm-wait-ms 1000") && !arguments.contains("--start-command") && !arguments.contains("192.0.2"),
-              "only the frozen CSV and timings reach the adapter; no START or local IP is synthesized")
+              arguments.contains("--load-confirm-wait-ms 0") && arguments.contains("--load-wait-ms 1000") &&
+              !arguments.contains("--start-command") && !arguments.contains("192.0.2") &&
+              !arguments.contains("--save-name") && !arguments.contains("--load-name") && !arguments.contains("--start-port"),
+              "only the frozen CSV, edition and timings reach the adapter; host names and port come from its selected profile")
         commands.model.returnToStart()
         check(commands.model.phase == .ready, "commands-only can return to the normal start screen after drain")
 
@@ -704,45 +714,55 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                   "\(failure) cannot trigger a keyboard handoff or retry")
         }
 
-        for (launcher, action) in [("GPUBrewLauncher", "launch-gpubrewlauncher"), ("HBLauncher", "launch-hblauncher"), ("IZlauncher", "launch-izlauncher")] {
         let gpu = try SetupFixture(edition: .full, addressProvider: { [address] })
         defer { gpu.dispose() }
-        let launch = { if action == "launch-hblauncher" { gpu.model.launchHBLauncher() } else if action == "launch-izlauncher" { gpu.model.launchIZlauncher() } else { gpu.model.launchGPUBrewLauncher() } }
+        let addonURLs = ["https://example.invalid/manifest.json"]
+        let libraryItems: [[String: Any]] = [["id": "fixture-library"]]
+        gpu.model.mintBrewAccountProvider = { (addonURLs, libraryItems) }
         gpu.model.addresses = [address]; gpu.model.selectedAddress = address.address
         try gpu.put("pre-events-host", "{\"type\":\"typing\",\"kind\":\"bootstrap\",\"controller\":\"usb-drd3\"}\n{\"type\":\"typing\",\"kind\":\"bootstrap\",\"controller\":\"usb-drd3\"}\n")
-        launch()
+        gpu.model.launchMintBrew()
         check(!gpu.model.postRun.homebrewAttempted && !gpu.model.hasLiveWorkers,
-              "the GPU launcher cannot create a host or consume an attempt from the start screen")
+              "MintBrew cannot create a host or consume an attempt from the start screen")
         gpu.model.start()
         try await until("held choice received by inert host") { FileManager.default.fileExists(atPath: gpu.root.appendingPathComponent("held-choice-received").path) }
-        launch()
         check(!gpu.model.postRun.homebrewAttempted && !gpu.model.postRun.heldConfirmed,
-              "optimistic held choice without positive rpc-held proof cannot launch GPU homebrew")
+              "the held choice cannot launch MintBrew without positive rpc-held proof")
         check(gpu.model.lastSuccessfulController == nil, "host events never teach the USB controller preference")
         try gpu.put("release-rpc-held")
-        try await until("actual model positive held proof") { gpu.model.canLaunchHomebrew }
-        launch()
-        check(gpu.model.homebrewTitle == launcher && gpu.model.postRun.homebrewAttempted && gpu.model.phase == .launchingHomebrew,
-              "GPU launcher gets its own test identity and consumes the shared single app attempt")
-        gpu.model.launchGPUBrewLauncher(); gpu.model.launchHBLauncher(); gpu.model.launchIZlauncher(); gpu.model.launchStremio(); gpu.model.checkRPCStatus(); gpu.model.startKeyboardForwarding()
+        try await until("automatic MintBrew launch") {
+            gpu.model.postRun.homebrewAttempted && gpu.model.phase == .launchingHomebrew
+        }
+        check(gpu.model.homebrewTitle == "MintBrew" && !gpu.model.canLaunchHomebrew &&
+              gpu.model.detail.contains("safely disconnect") && gpu.model.detail.contains("same network") &&
+              gpu.model.detail.contains("SmileBASIC and mac2jb open"),
+              "the verified GUI jailbreak starts MintBrew with post-RPC USB guidance")
+        gpu.model.launchMintBrew(); gpu.model.launchIZlauncher(); gpu.model.checkRPCStatus(); gpu.model.startKeyboardForwarding()
         check(!gpu.model.postRun.canFinish && !gpu.model.canLaunchHomebrew && !gpu.model.canStartKeyboard,
-              "GPU startup blocks other apps, status, keyboard and premature Finish")
+              "MintBrew startup blocks other apps, status, keyboard and premature Finish")
         try gpu.put("release-gpu-running")
-        try await until("GPU launcher running") { gpu.model.phase == .homebrewRunning }
-        check(gpu.model.postRun.canFinish && gpu.model.postRun.homebrewStage == .running,
-              "a running GPU launcher keeps the existing Finish control")
+        try await until("MintBrew running", diagnostic: { " phase=\(gpu.model.phase) status=\(gpu.model.status) detail=\(gpu.model.detail) log=\(gpu.model.log.suffix(500))" }) { gpu.model.phase == .homebrewRunning }
+        check(gpu.model.postRun.canFinish && gpu.model.postRun.homebrewStage == .running && gpu.model.canDumpSystemCode,
+              "a running MintBrew exposes the existing Finish control and an in-session system-code dump")
+        gpu.model.dumpSystemCode()
+        try await until("MintBrew held-session system-code dump") {
+            gpu.model.postRun.dumpCompleted && gpu.model.postRun.stage == .held
+        }
+        check(gpu.model.dumpFolder != nil && !gpu.model.canDumpSystemCode,
+              "the held-session dump exposes its folder and cannot repeat in this session")
         gpu.model.finishPostRun()
-        try await until("GPU launcher original-session final cleanup") { gpu.model.phase == .verified && !gpu.model.hasLiveWorkers }
+        try await until("MintBrew original-session final cleanup") { gpu.model.phase == .verified && !gpu.model.hasLiveWorkers }
         let controls = try String(contentsOf: gpu.root.appendingPathComponent("controls"), encoding: .utf8)
             .split(separator: "\n").map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String:Any] }
-        check(controls.compactMap { $0["action"] as? String } == ["post-run", action, "finish"] && gpu.invocations == ["host"],
-              "GPU launch uses one control on its existing host and never starts a second exploit or retries")
-        if action == "launch-izlauncher" {
-            check(controls[1].count == 1, "IZlauncher attaches to the current session without overriding its host or edition")
-        }
-        }
+        check(controls.compactMap { $0["action"] as? String } == ["post-run", "launch-mintbrew", "dump-system-code", "finish"] &&
+              gpu.invocations == ["host"],
+              "automatic MintBrew and its dump use the same original held host")
+        let launchControl = controls.first { $0["action"] as? String == "launch-mintbrew" }
+        check((launchControl?["addonUrls"] as? [String]) == addonURLs &&
+              (launchControl?["libraryItems"] as? [[String: String]])?.first?["id"] == "fixture-library",
+              "automatic MintBrew receives the current Stremio account configuration")
 
-        for (keepRPC, launcher) in [(false, "gpu"), (true, "gpu"), (true, "hb"), (true, "iz")] {
+        for (keepRPC, launcher) in [(false, "mint"), (true, "mint"), (true, "iz")] {
             let host = try SetupFixture(edition: .full, addressProvider: { [address] })
             defer { host.dispose() }
             host.model.addresses = [address]; host.model.selectedAddress = address.address
@@ -767,15 +787,17 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                   "host-ready exposes only the captured pairing command and never launches HID")
             check(host.model.activeSessionSupportsHomebrew == keepRPC && !host.model.canLaunchHomebrew && !host.model.postRun.heldConfirmed,
                   "host readiness alone never grants homebrew or held proof")
-            host.model.start(); host.model.launchGPUBrewLauncher(); host.model.launchHBLauncher(); host.model.launchIZlauncher()
+            host.model.start(); host.model.launchMintBrew(); host.model.launchIZlauncher()
             try host.put("release-console-result")
             if keepRPC {
                 try await until("manual host held choice") { FileManager.default.fileExists(atPath: host.root.appendingPathComponent("held-choice-received").path) }
                 check(!host.model.canLaunchHomebrew, "post-run choice alone is not positive retained-endpoint proof")
                 try host.put("release-rpc-held")
                 try await until("host-only positive held proof") { host.model.canLaunchHomebrew }
-                if launcher == "hb" { host.model.launchHBLauncher() } else if launcher == "iz" { host.model.launchIZlauncher() } else { host.model.launchGPUBrewLauncher() }
-                check(host.model.homebrewTitle == (launcher == "hb" ? "HBLauncher" : launcher == "iz" ? "IZlauncher" : "GPUBrewLauncher"),
+                check(host.model.phase == .rpcHeld && !host.model.postRun.homebrewAttempted,
+                      "host-only held RPC keeps app selection manual")
+                if launcher == "iz" { host.model.launchIZlauncher() } else { host.model.launchMintBrew() }
+                check(host.model.homebrewTitle == (launcher == "iz" ? "IZlauncher" : "MintBrew"),
                       "host-only launches the selected independent launcher")
                 try host.put("release-gpu-running")
                 try await until("homebrew on manually connected host") { host.model.phase == .homebrewRunning }
@@ -789,27 +811,92 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                   "host-only sends only the address and optional held flag, never invalid USB timings")
         }
 
-        let demoIZ = try SetupFixture(edition: .demo, addressProvider: { [address] })
-        defer { demoIZ.dispose() }
-        demoIZ.model.addresses = [address]; demoIZ.model.selectedAddress = address.address
-        demoIZ.model.start()
-        try await until("demo held choice") { FileManager.default.fileExists(atPath: demoIZ.root.appendingPathComponent("held-choice-received").path) }
-        try demoIZ.put("release-rpc-held")
-        try await until("demo held proof") { demoIZ.model.canLaunchHomebrew }
-        check(demoIZ.model.activeEdition == .demo && demoIZ.model.activeHost == .bermTheSequel && demoIZ.model.canLaunchIZlauncher,
-              "the Berm host's verified demo session permits IZlauncher")
-        demoIZ.model.launchIZlauncher()
-        check(demoIZ.model.postRun.homebrewAttempted && demoIZ.model.phase == .launchingHomebrew &&
-              demoIZ.model.homebrewTitle == "IZlauncher",
-              "demo IZlauncher consumes the same held session's sole app attempt")
-        try demoIZ.put("release-gpu-running")
-        try await until("demo IZlauncher running") { demoIZ.model.phase == .homebrewRunning }
-        demoIZ.model.finishPostRun()
-        try await until("demo IZlauncher session finishes") { demoIZ.model.phase == .verified && !demoIZ.model.hasLiveWorkers }
-        let demoControls = try String(contentsOf: demoIZ.root.appendingPathComponent("controls"), encoding: .utf8)
+        let assistedHost = try SetupFixture(edition: .full, addressProvider: { [address] })
+        defer { assistedHost.dispose() }
+        assistedHost.model.addresses = [address]; assistedHost.model.selectedAddress = address.address
+        try assistedHost.put("manual-host-fixture")
+        try assistedHost.put("manual-host-ready", "{\"type\":\"host-ready\",\"startCommand\":\"V=START(39380,192,0,2,42)\"}\n")
+        assistedHost.model.startHostOnly(keepRPC: false)
+        try assistedHost.put("release-host-ready")
+        try await until("host-only sender becomes available") { assistedHost.model.canSendHostOnlyCommands }
+        check(assistedHost.model.canStartKeyboard && assistedHost.model.hostStartCommand == "V=START(39380,192,0,2,42)" &&
+              assistedHost.invocations == ["host"],
+              "host-only offers live keyboard and the exact current pairing command without starting HID")
+        assistedHost.model.sendHostOnlyCommands()
+        check(assistedHost.model.phase == .commands && !assistedHost.model.canSendHostOnlyCommands,
+              "explicit host-only button starts the existing four-command HID sender alongside the host")
+        try await until("host-only command worker starts") { assistedHost.invocations == ["host", "commands"] }
+        try assistedHost.put("release-commands")
+        for step in 1...4 {
+            try assistedHost.put("release-command-start-\(step)")
+            try assistedHost.put("release-command-complete-\(step)")
+        }
+        try assistedHost.put("release-load-confirmation")
+        try assistedHost.put("release-command-wait-1")
+        try assistedHost.put("release-command-transfer")
+        try await until("host-only command sender finishes", diagnostic: {
+            " phase=\(assistedHost.model.phase) status=\(assistedHost.model.status) detail=\(assistedHost.model.detail) invocations=\(assistedHost.invocations) log=\(assistedHost.model.log.suffix(400))"
+        }) {
+            assistedHost.model.phase == .waitingForConsole && assistedHost.invocations == ["host", "commands"]
+        }
+        check(!assistedHost.model.canSendHostOnlyCommands && !assistedHost.model.canStartKeyboard,
+              "completed host-only command transfer cannot be sent twice or overlap live keyboard")
+        try assistedHost.put("release-console-result")
+        try await until("assisted host-only verification") { assistedHost.model.phase == .verified && !assistedHost.model.hasLiveWorkers }
+        let assistedArguments = try String(contentsOf: assistedHost.root.appendingPathComponent("arguments"), encoding: .utf8)
+        check(assistedArguments.contains("hid commands auto 10") && !assistedArguments.contains("--start-prefix") &&
+              !assistedArguments.contains("--start-command"),
+              "host-only button uses the host's published pairing instead of inventing a START address")
+
+        let keyboardHost = try SetupFixture(edition: .full, addressProvider: { [address] })
+        defer { keyboardHost.dispose() }
+        keyboardHost.model.addresses = [address]; keyboardHost.model.selectedAddress = address.address
+        try keyboardHost.put("manual-host-fixture")
+        try keyboardHost.put("host-stage-fixture")
+        try keyboardHost.put("manual-host-ready", "{\"type\":\"host-ready\",\"startCommand\":\"V=START(39380,192,0,2,42)\"}\n")
+        keyboardHost.model.startHostOnly(keepRPC: false)
+        try keyboardHost.put("release-host-ready")
+        try await until("host-only live keyboard can connect") { keyboardHost.model.canStartKeyboard }
+        keyboardHost.model.startKeyboardForwarding()
+        check(keyboardHost.model.phase == .waitingForConsole && keyboardHost.model.hasLiveWorkers &&
+              !keyboardHost.model.canSendHostOnlyCommands,
+              "live keyboard preserves the waiting host and prevents a second automatic command sequence")
+        try keyboardHost.put("release-live")
+        try await until("host-only live keyboard is active") { keyboardHost.model.keyboardActive }
+        check(keyboardHost.model.phase == .waitingForConsole && keyboardHost.invocations == ["host", "live"],
+              "live keyboard is usable while the original host keeps listening")
+        try keyboardHost.put("release-host-connected")
+        try await until("host connection releases only live keyboard") {
+            keyboardHost.model.hostIsExploiting && !keyboardHost.model.keyboardActive &&
+            keyboardHost.model.phase == .waitingForConsole
+        }
+        check(keyboardHost.model.hasLiveWorkers && keyboardHost.model.error == nil,
+              "host connection keeps its worker while the keyboard releases")
+        try keyboardHost.put("release-host-waiting")
+        try keyboardHost.put("release-host-pipeline")
+        try keyboardHost.put("release-console-result")
+        try await until("host verifies after live keyboard release") {
+            keyboardHost.model.phase == .verified && !keyboardHost.model.hasLiveWorkers
+        }
+
+        let demo = try SetupFixture(edition: .demo, addressProvider: { [address] })
+        defer { demo.dispose() }
+        demo.model.addresses = [address]; demo.model.selectedAddress = address.address
+        demo.model.start()
+        try await until("demo held choice") { FileManager.default.fileExists(atPath: demo.root.appendingPathComponent("held-choice-received").path) }
+        try demo.put("release-rpc-held")
+        try await until("demo MintBrew launch") { demo.model.postRun.homebrewAttempted }
+        check(demo.model.activeEdition == .demo && demo.model.activeHost == .kurumuz &&
+              demo.model.homebrewTitle == "MintBrew" && demo.model.phase == .launchingHomebrew,
+              "the verified kurumuz demo flow automatically launches MintBrew")
+        try demo.put("release-gpu-running")
+        try await until("demo MintBrew running", diagnostic: { " phase=\(demo.model.phase) status=\(demo.model.status) detail=\(demo.model.detail) log=\(demo.model.log.suffix(500))" }) { demo.model.phase == .homebrewRunning }
+        demo.model.finishPostRun()
+        try await until("demo MintBrew session finishes") { demo.model.phase == .verified && !demo.model.hasLiveWorkers }
+        let demoControls = try String(contentsOf: demo.root.appendingPathComponent("controls"), encoding: .utf8)
             .split(separator: "\n").map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String:Any] }
-        check(demoControls.compactMap { $0["action"] as? String } == ["post-run", "launch-izlauncher", "finish"] && demoIZ.invocations == ["host"],
-              "demo IZlauncher reuses the original Berm host without another bootstrap or edition override")
+        check(demoControls.compactMap { $0["action"] as? String } == ["post-run", "launch-mintbrew", "finish"] && demo.invocations == ["host"],
+              "automatic demo MintBrew reuses the original kurumuz host")
 
         let unprovenHost = try SetupFixture(edition: .full, addressProvider: { [address] })
         defer { unprovenHost.dispose() }
@@ -1027,9 +1114,12 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             commandFlow.model.phase == .commands && FileManager.default.fileExists(atPath: commandFlow.root.appendingPathComponent("waiting-commands").path)
         }
         let commandArguments = try String(contentsOf: commandFlow.root.appendingPathComponent("arguments"), encoding: .utf8)
-        check(commandArguments.contains("--load-confirm-wait-ms 1000") &&
-              commandArguments.contains("--demo") == (edition == .demo),
-              "both editions pass a one-second confirmation wait to the native command sender")
+        check(commandArguments.contains("--load-confirm-wait-ms 0") && commandArguments.contains("--load-wait-ms 1000") &&
+              commandArguments.contains("--run-wait-ms 0") && commandArguments.contains("--remove-wait-ms 0") &&
+              commandArguments.contains("--demo") == (edition == .demo) &&
+              !commandArguments.contains("--save-name") && !commandArguments.contains("--load-name") &&
+              !commandArguments.contains("--start-port"),
+              "both editions pass one second after LOAD confirmation without duplicating host profile flags")
         try await Task.sleep(nanoseconds: 30_000_000)
         check(commandFlow.model.status == "Waiting for USB keyboard…" && commandFlow.model.isEnumerating,
               "standard commands wait for USB and ignore invalid count, label and purpose events")
@@ -1054,13 +1144,9 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             check(commandFlow.model.progressLabel == "\(step) of 4 commands sent", "\(label) completion counts only submitted commands")
             if step == 1 {
                 try commandFlow.put("release-load-confirmation")
-                let confirmationStatus = edition == .demo ? "Waiting to confirm LOADV (OK)…" : "Waiting to confirm LOAD (YES)…"
-                try await until("waiting before the second Enter") { commandFlow.model.status == confirmationStatus }
-                check(commandFlow.model.progressLabel.contains("1 of 4 commands sent"), "LOAD confirmation wait does not claim confirmation has already been accepted")
-            }
-            if step < 4 {
-                try commandFlow.put("release-command-wait-\(step)")
-                try await until("post-\(label) wait") { commandFlow.model.status == "Waiting after \(label)…" }
+                try await until("post-confirmation LOAD wait") { commandFlow.model.status == "Waiting after LOAD…" }
+                check(commandFlow.model.progressLabel.contains("1 of 4 commands sent"), "LOAD settle wait preserves command progress")
+                try commandFlow.put("release-command-wait-1")
             }
         }
         check(commandFlow.model.phase == .commands && !commandFlow.model.canLaunchHomebrew,
@@ -1078,7 +1164,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
 
         let ui = try String(contentsOfFile: CommandLine.arguments[1], encoding: .utf8)
         check(ui.contains("I’m using the SmileBASIC demo") && ui.contains("selectedEdition"), "the view exposes the demo edition selector")
-        check(ui.contains("Picker(\"Quality\"") && ui.contains("$model.stremioQuality"), "Stremio offers the persistent quality selection")
+        check(ui.contains("Picker(\"Video output\"") && ui.contains("$model.stremioQuality"), "Stremio offers the persistent quality selection")
         check(SmileBASICEdition.allCases == [.full, .demo] && SmileBASICEdition(rawValue: "demo") == .demo, "full and demo editions can be selected")
         print("First-time setup, keyboard, commands-only, host-only and homebrew model checks passed: \(checks). No app, driver, keychain, USB or RPC operations run.")
     }

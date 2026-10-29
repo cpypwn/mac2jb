@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 'use strict';
-// Authorize one local development attachment without owning the source host.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -11,7 +10,7 @@ const {verifiedSession} = require('./gui-dump.cjs');
 const FORMAT = 'mac2jb-local-rpc-attachment-v1';
 const OWNER = '.mac2jb-attachment-owner.json';
 const ATTEMPT = '.mac2jb-hblauncher-attempt.json';
-const applications = new Set(['hblauncher', 'gpubrewlauncher', 'izlauncher', 'stremio', 'ouncecake']);
+const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'custom-homebrew', 'izlauncher', 'stremio', 'ouncecake', 'system-code-dump']);
 const check = (value, message) => {if (!value) throw Error(message);};
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -37,8 +36,8 @@ async function writeJSON(file, value, exclusive = false) {
   await fs.writeFile(file, JSON.stringify(value, null, 2)+'\n', {flag: exclusive ? 'wx' : 'w', mode: 0o600});
 }
 
-// Do not require code from the selected run until every bundled input matches.
-// Generated JSON/captures may be present, but extra executable modules may not.
+// do not require code from the selected run until every bundled input matches.
+// generated json/captures may be present, but extra executable modules may not.
 async function verifyCode(directory, source) {
   const expected = new Map();
   async function sourceFiles(relative) {
@@ -87,7 +86,7 @@ async function verifyCode(directory, source) {
       else {
         check(!item.isSymbolicLink(), 'The selected run contains a source-tree symlink: '+name);
         const executable = /\.(?:cjs|mjs|js|node)$/i.test(name) || path.basename(name) === 'package.json';
-        // The live runner atomically renames generated JSON/capture temporary
+        // the live runner atomically renames generated json/capture temporary
         // files. They are not code inputs, and may vanish after readdir.
         if (!expected.has(name) && !executable) continue;
         const info = await owned(file, 'file', false);
@@ -156,7 +155,7 @@ async function inspect(root, directory, options = {}) {
   check(selectedProfile(root).supportsHeldRPC, 'Select a host profile that supports held RPC.');
   const result = await readJSON(path.join(directory, 'result.json'));
   const trusted = trustedProfileForDigest(root, result.sourceSha256), profile = trusted.profile;
-  // Bounded private reads supplement the ordinary held proof validator.
+  // bounded private reads supplement the ordinary held proof validator.
   const current = await readJSON(path.join(directory, 'switch2/fs-execution-current.json'));
   async function runJSON(file) {
     check(typeof file === 'string' && file.startsWith(directory+path.sep) && path.resolve(file) === file,
@@ -184,7 +183,7 @@ async function inspect(root, directory, options = {}) {
     'The held retained endpoint does not belong to the current acquisition.');
   check(path.isAbsolute(socketPath) && path.resolve(socketPath) === socketPath &&
     !(await fs.lstat(socketPath)).isSymbolicLink(), 'The retained endpoint must be an owned local socket.');
-  // macOS TMPDIR commonly starts with /var, whose system alias is /private/var.
+  // macos tmpdir commonly starts with /var, whose system alias is /private/var.
   const canonicalSocket = await fs.realpath(socketPath);
   await owned(canonicalSocket, 'socket');
   await owned(path.dirname(canonicalSocket), 'directory');
@@ -195,7 +194,7 @@ async function inspect(root, directory, options = {}) {
   let info, busy = false;
   try {info = await (options.retainedInfo || retainedInfo)(socketPath, options.timeoutMs, options.signal);}
   catch (error) {
-    // The upstream runner rejects this read-only request before dispatch when
+    // the upstream runner rejects this read-only request before dispatch when
     // another retained operation owns it. Monitoring must not interrupt that work.
     if (options.allowRetainedBusy && error.message === 'Another memory request is active') busy = true;
     else throw error;
@@ -230,7 +229,7 @@ async function claimedStatus(initial, options) {
   const connectionFile = path.join(directory, 'connection.json'), connection = await readJSON(connectionFile);
   check(hash(await fs.readFile(connectionFile)) === initial.connectionSha256,
     'The original held RPC session connection changed.');
-  // Once an app owns the attempt, never probe the retained FS runner: even an
+  // once an app owns the attempt, never probe the retained fs runner: even an
   // info request takes its exclusive busy flag. Mutable in-flight proof fields
   // are not evidence of session loss. Native status is serialized by the bridge.
   const status = await (options.statusRequest || statusRequest)(connection.port, options.timeoutMs, options.signal);
@@ -266,7 +265,7 @@ async function prepare(root, config, options = {}) {
     path.isAbsolute(config.runDirectory), 'Choose an existing local held RPC run folder.');
   root = await fs.realpath(root);
   const directory = path.resolve(config.runDirectory);
-  // Reject aliased selections rather than following a link into another run.
+  // reject aliased selections rather than following a link into another run.
   check(config.runDirectory === directory, 'Use the canonical path to the held run folder.');
   const initial = await inspect(root, directory, options);
   check(await absent(path.join(directory, ATTEMPT)) && await absent(path.join(directory, OWNER)),
@@ -318,15 +317,37 @@ async function prepare(root, config, options = {}) {
     })();
     return claimInFlight;
   }
+  async function releaseApplication() {
+    check(claimed && !closed && !lost, 'No live application claim can be released.');
+    await claimInFlight;
+    const status = await verify();
+    check(status?.ready === true && await absent(path.join(directory, ATTEMPT)),
+      'The app did not prove a pre-transfer failure. Keep this session claimed.');
+    const ownerFile = path.join(directory, OWNER), owner = await readJSON(ownerFile);
+    check(owner.token === token && owner.session === initial.session && owner.application === manifest.application,
+      'The original session attachment ownership changed.');
+    const application = manifest.application;
+    delete manifest.application;
+    try {
+      await writeJSON(manifestPath, manifest);
+      await fs.unlink(ownerFile);
+    } catch (error) {
+      manifest.application = application;
+      await writeJSON(manifestPath, manifest).catch(() => {});
+      throw error;
+    }
+    claimed = false; claimInFlight = undefined;
+    return status;
+  }
   async function close() {
     if (closed) return; closed = true;
     abortVerification();
     await claimInFlight?.catch(()=>{});
     await removeAuthorization();
-    // Never remove the original attempt/owner markers, stop its host or retire FS.
+    // never remove the original attempt/owner markers, stop its host or retire fs.
   }
   return {directory, sourceSession:initial.session, description:initial.description,
-    manifestPath, verify, abortVerification, claimApplication, close};
+    manifestPath, verify, abortVerification, claimApplication, releaseApplication, close};
 }
 
 module.exports = {prepare, validateManifest, inspect, verifyCode, statusRequest, retainedInfo, OWNER, ATTEMPT};

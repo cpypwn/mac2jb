@@ -71,6 +71,7 @@ function catalogEntries(games){
 async function main(args=process.argv.slice(2),options={}){
  const root=options.root||path.resolve(__dirname,'..');
  const snapshot=await (options.verifySnapshot||verifySnapshot)(root);
+ const label=snapshot.application||'OunceCake';
  if(args.length===1&&args[0]==='--self-test'){
   for(const name of ['session','content','mounts','ftp'])require(path.join(snapshot.vendor,'engine',name+'.cjs'));
   const {vendor,image,...result}=snapshot;process.stdout.write(JSON.stringify(result)+'\n');return result;
@@ -106,15 +107,19 @@ async function main(args=process.argv.slice(2),options={}){
   const parent=path.join(root,'runs');await fs.mkdir(parent,{recursive:true,mode:0o700});
   const info=await fs.lstat(parent);check(info.isDirectory()&&!info.isSymbolicLink()&&info.uid===process.getuid()&&(info.mode&0o077)===0,'OunceCake output must be a private owned directory.');
   directory=await fs.mkdtemp(path.join(await fs.realpath(parent),'ouncecake-'));
-  report={session:path.basename(directory),sourceSession:run.proof.session,commit:PIN,status:'preparing',started:new Date().toISOString(),consoleAddress:config.consoleAddress,port:2121};await save();
+  report={session:path.basename(directory),sourceSession:run.proof.session,
+   application:label,version:snapshot.version||'local',commit:snapshot.commit||null,
+   customPackageFingerprint:snapshot.customPackageFingerprint||null,
+   nativeImageSha256:snapshot.nativeImageSha256,status:'preparing',
+   started:new Date().toISOString(),consoleAddress:config.consoleAddress,port:2121};await save();
   isLive=options.isLive||(()=>{try{const value=JSON.parse(sync.readFileSync(path.join(run.directory,'result.json'),'utf8'));return value.verified===true&&value.rpc?.mode==='held'&&value.rpc?.state==='listening'&&!value.error;}catch{return false;}});
   check(isLive(),'The original held session is no longer live.');
-  const marker=JSON.stringify({application:'OunceCake',started:report.started});
+  const marker=JSON.stringify({application:label,started:report.started});
   // Share the existing one-application marker with the GPU launcher and Stremio.
   await fs.writeFile(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'),marker,{flag:'wx',mode:0o600});
   await fs.writeFile(path.join(run.directory,'.mac2jb-ouncecake-attempt.json'),marker,{flag:'wx',mode:0o600});
   const modules=options.modules||Object.fromEntries(['session','content','mounts','ftp'].map(name=>[name,require(path.join(snapshot.vendor,'engine',name+'.cjs'))]));
-  emit('started',{message:'Preparing OunceCake game export. Keep SmileBASIC and mac2jb open.'});
+  emit('started',{message:'Preparing '+label+' game export. Keep SmileBASIC and mac2jb open.'});
   monitor=setInterval(()=>{if(!isLive())stop();},1000);monitor.unref();
   try{attachment=await modules.session.attachGame(run.directory);}
   catch(error){error.cleanupBlocked=true;throw error;}
@@ -146,13 +151,13 @@ async function main(args=process.argv.slice(2),options={}){
   if(report){report.status=cleanupBlocked?'cleanup-blocked':failure?'failed':'stopped';report.completed=new Date().toISOString();report.cleanupBlocked=cleanupBlocked;if(failure)report.error=failure.message;
    try{await save();}catch(error){failure ||= error;}}
   if(cleanupBlocked){
-   emit('failed',{cleanupBlocked:true,message:'OunceCake could not verify native shutdown or restoration. RPC and resources remain held. Restart the console before closing this session.'});
+   emit('failed',{cleanupBlocked:true,message:label+' could not verify native shutdown or restoration. RPC and resources remain held. Restart the console before closing this session.'});
    // Signals/EOF cannot make uncertain native resources safe to free. The parent
    // retains the original RPC and terminates this helper after console disconnect.
    if(options.waitBlocked)await options.waitBlocked();
    else await new Promise(resolve=>{const timer=setInterval(()=>{if(!isLive||!isLive()){clearInterval(timer);resolve();}},1000);});
   }else if(failure)emit('failed',{cleanupBlocked:false,message:failure.message+' This launch was not retried. Finish RPC and restart the console.'});
-  else emit('stopped',{message:'OunceCake native FTP stopped, executable mappings removed and owned handles released.'});
+  else emit('stopped',{message:label+' native FTP stopped, executable mappings removed and owned handles released.'});
   input.removeListener('data',data);input.removeListener('end',ended);input.pause();process.removeListener('SIGTERM',stop);process.removeListener('SIGINT',stop);process.stdout.removeListener('error',pipeError);
  }
  if(failure||cleanupBlocked){const error=failure||Error('OunceCake cleanup was blocked.');error.homebrewReported=true;error.cleanupBlocked=cleanupBlocked;throw error;}

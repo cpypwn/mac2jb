@@ -1,0 +1,16 @@
+/runtime/
+/data/
+/.dev/
+/dist/
+/.versions/
+**/node_modules/
+**/test-data/
+__pycache__/
+*.pyc
+*.log
+*.izm
+checksums.json
+*.tmp
+.env
+*.key
+*.pem

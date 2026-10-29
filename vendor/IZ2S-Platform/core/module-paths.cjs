@@ -1,8 +1,19 @@
-// Stable API identities and human-readable installation directories are separate.
-// Discovery reads bounded JSON only; it never imports an extension's code.
 const fs = require('node:fs'), path = require('node:path');
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/;
 const DIRECTORY = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/;
+const archiveDescriptors = new Map();
+const MAX_CACHED_DESCRIPTORS = 32;
+function descriptorFromArchive(source, stat, archive) {
+  const stamp = [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(':');
+  const cached = archiveDescriptors.get(source);
+  if (cached?.stamp === stamp) return cached.descriptor;
+  const descriptor = archive.inspect(fs.readFileSync(source)).descriptor;
+  archiveDescriptors.delete(source);
+  archiveDescriptors.set(source, { stamp, descriptor });
+  if (archiveDescriptors.size > MAX_CACHED_DESCRIPTORS)
+    archiveDescriptors.delete(archiveDescriptors.keys().next().value);
+  return descriptor;
+}
 function directory(descriptor) {
   const name = descriptor.installationDirectory ?? descriptor.id;
   if (typeof descriptor.id!=='string' || typeof name!=='string' || !ID.test(descriptor.id) || !DIRECTORY.test(name)) throw Error('Invalid module installation directory');
@@ -22,14 +33,14 @@ function discover(root) {
         if(names.length!==1)throw Error('Ambiguous module package');
         const source=path.join(home,names[0]),stat=fs.lstatSync(source),archive=require('./archive.cjs');
         if(!stat.isFile()||stat.isSymbolicLink()||stat.size>archive.MAX_ARCHIVE)throw Error('Invalid module package file');
-        descriptor=archive.inspect(fs.readFileSync(source)).descriptor;
+        descriptor=descriptorFromArchive(source,stat,archive);
       } else {
       const stat = fs.lstatSync(file);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 65536) throw Error('Invalid module descriptor file');
       descriptor = JSON.parse(fs.readFileSync(file, 'utf8'));
       }
       const name = directory(descriptor);
-      // The identity-named directory remains readable during an explicit migration.
+      // the identity-named directory remains readable during an explicit migration.
       if (entry.name !== name && entry.name !== descriptor.id) throw Error('Module installation directory mismatch');
       items.push({ id: descriptor.id, home, descriptor });
     } catch (error) { errors.push({ module: entry.name, error: error.message }); }

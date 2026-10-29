@@ -1,0 +1,324 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x=256) in;
+#include "abi.glsl"
+#include "hb.glsl"
+#include "layout.glsl"
+layout(set=0,binding=1,std430) buffer NesStorage {uint words[];} nes;
+
+const uint A=0u,X=1u,Y=2u,SP=3u,PC=4u,P=5u,HALT=6u,FRAME=7u;
+const uint PPUCTRL=8u,PPUMASK=9u,PPUSTATUS=10u,PPUADDR=11u,PPULATCH=12u,OAMADDR=13u;
+const uint CTRLSTROBE=14u,CTRLSHIFT=15u,CTRLBUTTONS=16u,SCROLLX=17u,SCROLLY=18u;
+const uint MENU=19u,MENU_INDEX=20u,MENU_COUNT=21u,LOAD_REQUEST=22u,REFRESH_REQUEST=23u,MINUS_HELD=24u;
+const uint CPU_CYCLES=27u,HIT_CHECKED=28u,SPLIT_Y=29u,TOP_CTRL=30u,TOP_SCROLL_X=31u,TOP_SCROLL_Y=58u,PPUTEMP=59u,FINE_X=60u;
+const uint APU_LENGTHS=62u;
+const uint F_C=1u,F_Z=2u,F_I=4u,F_D=8u,F_B=16u,F_V=64u,F_N=128u;
+uint pattern(uint base,uint tile,uint x,uint y);
+uint spritePattern(uint ctrl,uint tile,uint x,uint y);
+uint spriteZeroRow();
+uint lengthValue(uint index){
+ const uint values[32]=uint[32](10u,254u,20u,2u,40u,4u,80u,6u,160u,8u,60u,10u,14u,12u,26u,14u,12u,16u,24u,18u,48u,20u,96u,22u,192u,24u,72u,26u,16u,28u,32u,30u);
+ return values[index&31u];
+}
+uint apuLength(uint channel){return (nes.words[APU_LENGTHS]>>(channel*8u))&255u;}
+void setApuLength(uint channel,uint value){uint shift=channel*8u;nes.words[APU_LENGTHS]=(nes.words[APU_LENGTHS]&~(255u<<shift))|((value&255u)<<shift);}
+
+uint ram(uint a){return nes.words[NES_RAM+(a&0x7ffu)]&255u;}
+void putRam(uint a,uint v){nes.words[NES_RAM+(a&0x7ffu)]=v&255u;}
+uint prg(uint a){return nes.words[NES_PRG+((a-0x8000u)&0x7fffu)]&255u;}
+uint chr(uint a){return nes.words[NES_CHR+(a&0x1fffu)]&255u;}
+uint ntIndex(uint a){
+ uint o=(a-0x2000u)&0xfffu,table=o/1024u,offset=o%1024u;
+ return (((nes.words[NES_MIRRORING]!=0u)?(table&1u):(table>>1u))*1024u)+offset;
+}
+uint palIndex(uint a){uint i=(a-0x3f00u)&31u;return i==16u||i==20u||i==24u||i==28u?i-16u:i;}
+uint ppuRead(uint a){
+ a&=0x3fffu;
+ if(a<0x2000u)return chr(a);
+ if(a<0x3f00u)return nes.words[NES_NAMETABLE+ntIndex(a)]&255u;
+ return nes.words[NES_PALETTE+palIndex(a)]&63u;
+}
+void ppuWrite(uint a,uint v){
+ a&=0x3fffu;
+ if(a<0x2000u&&nes.words[NES_CHR_RAM]!=0u)nes.words[NES_CHR+a]=v&255u;
+ else if(a>=0x2000u&&a<0x3f00u)nes.words[NES_NAMETABLE+ntIndex(a)]=v&255u;
+ else if(a>=0x3f00u)nes.words[NES_PALETTE+palIndex(a)]=v&63u;
+}
+uint readCpu(uint a){
+ a&=0xffffu;
+ if(a<0x2000u)return ram(a);
+ if(a<0x4000u){
+  uint r=a&7u;
+  if(r==2u){
+   uint sy=nes.words[NES_OAM]&255u;
+   if(nes.words[HIT_CHECKED]==0u&&nes.words[CPU_CYCLES]>=2400u+sy*114u){
+    uint hit=spriteZeroRow();nes.words[HIT_CHECKED]=1u;
+    if(hit<240u){
+     nes.words[PPUSTATUS]|=64u;nes.words[SPLIT_Y]=hit;
+     nes.words[TOP_CTRL]=nes.words[PPUCTRL];
+     nes.words[TOP_SCROLL_X]=nes.words[SCROLLX];nes.words[TOP_SCROLL_Y]=nes.words[SCROLLY];
+    }
+   }
+   uint v=nes.words[PPUSTATUS];nes.words[PPUSTATUS]=v&0x7fu;nes.words[PPULATCH]=0u;return v;
+  }
+  if(r==4u){uint v=nes.words[NES_OAM+(nes.words[OAMADDR]&255u)];return v&255u;}
+  if(r==7u){uint addr=nes.words[PPUADDR],next=ppuRead(addr),v=addr>=0x3f00u?next:nes.words[NES_PPU_READ_BUFFER];nes.words[NES_PPU_READ_BUFFER]=addr>=0x3f00u?ppuRead(addr-0x1000u):next;nes.words[PPUADDR]=(addr+(((nes.words[PPUCTRL]&4u)!=0u)?32u:1u))&0x3fffu;return v;}
+  return 0u;
+ }
+ if(a==0x4016u){uint i=nes.words[CTRLSHIFT],v=(nes.words[CTRLBUTTONS]>>min(i,7u))&1u;if(nes.words[CTRLSTROBE]==0u)nes.words[CTRLSHIFT]=min(i+1u,8u);return i>=8u?1u:v;}
+ if(a==0x4015u){uint status=0u;for(uint channel=0u;channel<4u;channel++)if(apuLength(channel)!=0u)status|=1u<<channel;return status;}
+ if(a>=0x8000u)return prg(a);
+ return 0u;
+}
+void writeCpu(uint a,uint v){
+ a&=0xffffu;v&=255u;
+ if(a<0x2000u){putRam(a,v);return;}
+ if(a<0x4000u){
+  uint r=a&7u;
+  if(r==0u){nes.words[PPUCTRL]=v;nes.words[PPUTEMP]=(nes.words[PPUTEMP]&~0x0c00u)|((v&3u)<<10u);}
+  else if(r==1u)nes.words[PPUMASK]=v;
+  else if(r==3u)nes.words[OAMADDR]=v;
+  else if(r==4u){nes.words[NES_OAM+(nes.words[OAMADDR]&255u)]=v;nes.words[OAMADDR]=(nes.words[OAMADDR]+1u)&255u;}
+  else if(r==5u){
+   if(nes.words[PPULATCH]==0u){nes.words[SCROLLX]=v;nes.words[FINE_X]=v&7u;nes.words[PPUTEMP]=(nes.words[PPUTEMP]&~31u)|(v>>3u);}
+   else{nes.words[SCROLLY]=v;nes.words[PPUTEMP]=(nes.words[PPUTEMP]&~0x73e0u)|((v&0xf8u)<<2u)|((v&7u)<<12u);}
+   nes.words[PPULATCH]^=1u;
+  }
+  else if(r==6u){
+   if(nes.words[PPULATCH]==0u)nes.words[PPUTEMP]=(nes.words[PPUTEMP]&0xffu)|((v&63u)<<8u);
+   else{nes.words[PPUTEMP]=(nes.words[PPUTEMP]&0x7f00u)|v;nes.words[PPUADDR]=nes.words[PPUTEMP];}
+   nes.words[PPULATCH]^=1u;
+  }
+  else if(r==7u){ppuWrite(nes.words[PPUADDR],v);nes.words[PPUADDR]=(nes.words[PPUADDR]+(((nes.words[PPUCTRL]&4u)!=0u)?32u:1u))&0x3fffu;}
+  return;
+ }
+ if(a==0x4014u){for(uint i=0u;i<256u;i++)nes.words[NES_OAM+((nes.words[OAMADDR]+i)&255u)]=ram((v<<8u)+i);return;}
+ if(a==0x4016u){if((v&1u)!=0u){nes.words[CTRLSTROBE]=1u;nes.words[CTRLSHIFT]=0u;}else if(nes.words[CTRLSTROBE]!=0u){nes.words[CTRLSTROBE]=0u;nes.words[CTRLSHIFT]=0u;}return;}
+ if(a>=0x4000u&&a<=0x4017u){
+  nes.words[NES_APU_BASE+a-0x4000u]=v;
+  if(a==0x4015u){for(uint channel=0u;channel<4u;channel++)if((v&(1u<<channel))==0u)setApuLength(channel,0u);}
+  else if(a==0x4003u||a==0x4007u||a==0x400bu||a==0x400fu){
+   uint channel=(a-0x4003u)/4u;
+   if((nes.words[NES_APU_BASE+0x15u]&(1u<<channel))!=0u)setApuLength(channel,lengthValue(v>>3u));
+  }
+  uint sequence=nes.words[NES_APU_SEQUENCE]+1u,slot=(sequence-1u)%NES_APU_EVENT_COUNT;
+  nes.words[NES_APU_EVENT_BASE+slot*3u]=a;
+  nes.words[NES_APU_EVENT_BASE+slot*3u+1u]=v;
+  nes.words[NES_APU_EVENT_BASE+slot*3u+2u]=sequence;
+  nes.words[NES_APU_SEQUENCE]=sequence;return;
+ }
+}
+uint fetch(){uint pc=nes.words[PC]&0xffffu;nes.words[PC]=(pc+1u)&0xffffu;return readCpu(pc);}
+uint fetch16(){uint lo=fetch();return lo|(fetch()<<8u);}
+void setFlag(uint bit,bool on){nes.words[P]=on?nes.words[P]|bit:nes.words[P]&~bit;}
+bool flag(uint bit){return (nes.words[P]&bit)!=0u;}
+void setZN(uint v){setFlag(F_Z,(v&255u)==0u);setFlag(F_N,(v&128u)!=0u);}
+void push(uint v){putRam(0x100u+nes.words[SP],v);nes.words[SP]=(nes.words[SP]-1u)&255u;}
+uint pop(){nes.words[SP]=(nes.words[SP]+1u)&255u;return ram(0x100u+nes.words[SP]);}
+uint modeAddr(uint mode){
+ if(mode==1u){uint z=(fetch()+nes.words[X])&255u;return ram(z)|(ram((z+1u)&255u)<<8u);}
+ if(mode==5u)return fetch();
+ if(mode==9u){uint a=nes.words[PC];nes.words[PC]=(a+1u)&0xffffu;return a;}
+ if(mode==13u)return fetch16();
+ if(mode==17u){uint z=fetch();return (ram(z)|(ram((z+1u)&255u)<<8u))+nes.words[Y]&0xffffu;}
+ if(mode==21u)return (fetch()+nes.words[X])&255u;
+ if(mode==25u)return (fetch16()+nes.words[Y])&0xffffu;
+ if(mode==29u)return (fetch16()+nes.words[X])&0xffffu;
+ return 0u;
+}
+void compare(uint a,uint v){uint d=(a-v)&255u;setFlag(F_C,a>=v);setZN(d);}
+void addCarry(uint v){uint a=nes.words[A],carry=uint(flag(F_C)),sum=a+v+carry,r=sum&255u;setFlag(F_C,sum>255u);setFlag(F_V,((~(a^v)&(a^r))&128u)!=0u);nes.words[A]=r;setZN(r);}
+uint buttons(){
+ uint b=hbButtons(),v=0u;
+ if((b&HB_A)!=0u)v|=1u;
+ if((b&(HB_B|HB_Y))!=0u)v|=2u;
+ if((b&HB_X)!=0u)v|=4u;
+ if((b&HB_PLUS)!=0u)v|=8u;
+ if((b&HB_UP)!=0u)v|=16u;
+ if((b&HB_DOWN)!=0u)v|=32u;
+ if((b&HB_LEFT)!=0u)v|=64u;
+ if((b&HB_RIGHT)!=0u)v|=128u;
+ return v;
+}
+void nmi(){
+ uint pc=nes.words[PC];push(pc>>8u);push(pc&255u);push((nes.words[P]&~F_B)|32u);setFlag(F_I,true);
+ nes.words[PC]=readCpu(0xfffau)|(readCpu(0xfffbu)<<8u);
+}
+bool branch(uint op,uint off){
+ bool take=(op==0x10u&&!flag(F_N))||(op==0x30u&&flag(F_N))||(op==0x50u&&!flag(F_V))||(op==0x70u&&flag(F_V))||(op==0x90u&&!flag(F_C))||(op==0xb0u&&flag(F_C))||(op==0xd0u&&!flag(F_Z))||(op==0xf0u&&flag(F_Z));
+ if(take)nes.words[PC]=uint((int(nes.words[PC])+int(off<128u?off:off-256u))&65535);
+ return take;
+}
+void instruction(){
+ uint op=fetch();
+ if((op&3u)==1u){
+  uint group=op>>5u,mode=op&31u;
+  if(mode!=1u&&mode!=5u&&mode!=9u&&mode!=13u&&mode!=17u&&mode!=21u&&mode!=25u&&mode!=29u){nes.words[HALT]=op+1u;return;}
+  if(group==4u&&mode==9u){nes.words[HALT]=op+1u;return;}
+  uint addr=modeAddr(mode),v=group==4u?0u:readCpu(addr),a=nes.words[A];
+  if(group==0u){nes.words[A]=a|v;setZN(nes.words[A]);}
+  else if(group==1u){nes.words[A]=a&v;setZN(nes.words[A]);}
+  else if(group==2u){nes.words[A]=a^v;setZN(nes.words[A]);}
+  else if(group==3u)addCarry(v);
+  else if(group==4u)writeCpu(addr,a);
+  else if(group==5u){nes.words[A]=v;setZN(v);}
+  else if(group==6u)compare(a,v);
+  else addCarry(v^255u);
+  return;
+ }
+ if((op&0x1fu)==0x10u){branch(op,fetch());return;}
+ if(op==0xa2u||op==0xa6u||op==0xb6u||op==0xaeu||op==0xbeu){uint at=op==0xa2u?modeAddr(9u):op==0xa6u?modeAddr(5u):op==0xb6u?(fetch()+nes.words[Y])&255u:op==0xaeu?modeAddr(13u):modeAddr(25u);nes.words[X]=readCpu(at);setZN(nes.words[X]);return;}
+ if(op==0xa0u||op==0xa4u||op==0xb4u||op==0xacu||op==0xbcu){uint at=op==0xa0u?modeAddr(9u):op==0xa4u?modeAddr(5u):op==0xb4u?modeAddr(21u):op==0xacu?modeAddr(13u):modeAddr(29u);nes.words[Y]=readCpu(at);setZN(nes.words[Y]);return;}
+ if(op==0x86u||op==0x96u||op==0x8eu){uint at=op==0x86u?modeAddr(5u):op==0x96u?(fetch()+nes.words[Y])&255u:modeAddr(13u);writeCpu(at,nes.words[X]);return;}
+ if(op==0x84u||op==0x94u||op==0x8cu){uint at=op==0x84u?modeAddr(5u):op==0x94u?modeAddr(21u):modeAddr(13u);writeCpu(at,nes.words[Y]);return;}
+ if(op==0xe0u||op==0xe4u||op==0xecu){compare(nes.words[X],readCpu(modeAddr(op==0xe0u?9u:op==0xe4u?5u:13u)));return;}
+ if(op==0xc0u||op==0xc4u||op==0xccu){compare(nes.words[Y],readCpu(modeAddr(op==0xc0u?9u:op==0xc4u?5u:13u)));return;}
+ if(op==0x24u||op==0x2cu){uint v=readCpu(modeAddr(op==0x24u?5u:13u));setFlag(F_Z,(nes.words[A]&v)==0u);setFlag(F_N,(v&128u)!=0u);setFlag(F_V,(v&64u)!=0u);return;}
+ if(op==0xe6u||op==0xf6u||op==0xeeu||op==0xfeu||op==0xc6u||op==0xd6u||op==0xceu||op==0xdeu){uint at=(op&15u)==6u?(((op&16u)!=0u)?modeAddr(21u):modeAddr(5u)):(((op&16u)!=0u)?modeAddr(29u):modeAddr(13u));uint v=(readCpu(at)+((op&32u)!=0u?1u:255u))&255u;writeCpu(at,v);setZN(v);return;}
+ if(op==0x0au||op==0x4au||op==0x2au||op==0x6au||op==0x06u||op==0x16u||op==0x0eu||op==0x1eu||op==0x46u||op==0x56u||op==0x4eu||op==0x5eu||op==0x26u||op==0x36u||op==0x2eu||op==0x3eu||op==0x66u||op==0x76u||op==0x6eu||op==0x7eu){
+  bool accum=(op&15u)==10u;uint at=0u;
+  if(!accum)at=(op&15u)==6u?(((op&16u)!=0u)?modeAddr(21u):modeAddr(5u)):(((op&16u)!=0u)?modeAddr(29u):modeAddr(13u));
+  uint v=accum?nes.words[A]:readCpu(at),kind=op&0xe0u,r=0u;
+  if(kind==0u){setFlag(F_C,(v&128u)!=0u);r=(v<<1u)&255u;}
+  else if(kind==0x20u){uint c=uint(flag(F_C));setFlag(F_C,(v&128u)!=0u);r=((v<<1u)|c)&255u;}
+  else if(kind==0x40u){setFlag(F_C,(v&1u)!=0u);r=v>>1u;}
+  else{uint c=uint(flag(F_C));setFlag(F_C,(v&1u)!=0u);r=(v>>1u)|(c<<7u);}
+  if(accum)nes.words[A]=r;else writeCpu(at,r);setZN(r);return;
+ }
+ if(op==0x4cu){nes.words[PC]=fetch16();return;}
+ if(op==0x6cu){uint at=fetch16();nes.words[PC]=readCpu(at)|(readCpu((at&0xff00u)|((at+1u)&255u))<<8u);return;}
+ if(op==0x20u){uint target=fetch16(),ret=(nes.words[PC]-1u)&65535u;push(ret>>8u);push(ret&255u);nes.words[PC]=target;return;}
+ if(op==0x00u){uint ret=(nes.words[PC]+1u)&65535u;push(ret>>8u);push(ret&255u);push(nes.words[P]|F_B|32u);setFlag(F_I,true);nes.words[PC]=readCpu(0xfffeu)|(readCpu(0xffffu)<<8u);return;}
+ if(op==0x60u){nes.words[PC]=((pop()|(pop()<<8u))+1u)&65535u;return;}
+ if(op==0x40u){nes.words[P]=(pop()|32u)&~F_B;nes.words[PC]=pop()|(pop()<<8u);return;}
+ if(op==0x48u){push(nes.words[A]);return;}
+ if(op==0x68u){nes.words[A]=pop();setZN(nes.words[A]);return;}
+ if(op==0x08u){push(nes.words[P]|F_B|32u);return;}
+ if(op==0x28u){nes.words[P]=pop()|32u;return;}
+ if(op==0xaau){nes.words[X]=nes.words[A];setZN(nes.words[X]);return;}
+ if(op==0xa8u){nes.words[Y]=nes.words[A];setZN(nes.words[Y]);return;}
+ if(op==0x8au){nes.words[A]=nes.words[X];setZN(nes.words[A]);return;}
+ if(op==0x98u){nes.words[A]=nes.words[Y];setZN(nes.words[A]);return;}
+ if(op==0xbau){nes.words[X]=nes.words[SP];setZN(nes.words[X]);return;}
+ if(op==0x9au){nes.words[SP]=nes.words[X];return;}
+ if(op==0xe8u||op==0xcau||op==0xc8u||op==0x88u){uint r=(op==0xe8u||op==0xcau)?X:Y;nes.words[r]=(nes.words[r]+((op==0xe8u||op==0xc8u)?1u:255u))&255u;setZN(nes.words[r]);return;}
+ if(op==0x18u||op==0x38u){setFlag(F_C,op==0x38u);return;}
+ if(op==0x58u||op==0x78u){setFlag(F_I,op==0x78u);return;}
+ if(op==0xd8u||op==0xf8u){setFlag(F_D,op==0xf8u);return;}
+ if(op==0xb8u){setFlag(F_V,false);return;}
+ if(op==0xeau)return;
+ nes.words[HALT]=op+1u;
+}
+void cpuFrame(){
+ nes.words[FRAME]++;
+ nes.words[NES_APU_FRAME]=nes.words[FRAME];
+ for(uint channel=0u;channel<4u;channel++){
+  uint length=apuLength(channel),control=nes.words[NES_APU_BASE+channel*4u];
+  if(channel==2u)control=(control&128u)!=0u?32u:0u;
+  if(length>0u&&(control&32u)==0u)setApuLength(channel,length>2u?length-2u:0u);
+ }
+ nes.words[PPUSTATUS]=(nes.words[PPUSTATUS]&~64u)|128u;
+ nes.words[CPU_CYCLES]=0u;nes.words[HIT_CHECKED]=0u;nes.words[SPLIT_Y]=240u;
+ nes.words[CTRLBUTTONS]=buttons();
+ if(nes.words[HALT]==0u){
+  if((nes.words[PPUCTRL]&128u)!=0u)nmi();
+  uint lastBranch=65536u,repeat=0u;
+  for(uint i=0u;i<12000u;i++){
+   uint pc=nes.words[PC];if(pc>=0x2000u&&pc<0x8000u){nes.words[HALT]=0x101u;break;}
+   uint op=readCpu(pc);
+   instruction();if(nes.words[HALT]!=0u)break;
+   nes.words[CPU_CYCLES]+=3u;
+   if(nes.words[CPU_CYCLES]>=29780u)break;
+   if(op==0x4cu&&nes.words[PC]==pc)break;
+   if((op==0xf0u||op==0x10u)&&nes.words[PC]<pc){if(pc==lastBranch)repeat++;else{lastBranch=pc;repeat=0u;}if(repeat>32u)break;}
+  }
+ }
+ nes.words[PPUSTATUS]&=0x7fu;
+}
+uint pattern(uint base,uint tile,uint x,uint y){uint at=base+tile*16u+y;uint bit=7u-x;return ((chr(at)>>bit)&1u)|(((chr(at+8u)>>bit)&1u)<<1u);}
+uint spritePattern(uint ctrl,uint tile,uint x,uint y){
+ if((ctrl&32u)!=0u)return pattern((tile&1u)*0x1000u,(tile&0xfeu)+(y>>3u),x,y&7u);
+ return pattern((ctrl&8u)!=0u?0x1000u:0u,tile,x,y);
+}
+uint backgroundPixel(uint x,uint y,uint ctrl,uint scrollX,uint scrollY){
+ uint wx=(x+scrollX+(((ctrl&1u)!=0u)?256u:0u))%512u;
+ uint wy=(y+scrollY+(((ctrl&2u)!=0u)?240u:0u))%480u;
+ uint table=(wy/240u)*2u+wx/256u,sx=wx%256u,sy=wy%240u;
+ uint addr=0x2000u+table*1024u+(sy/8u)*32u+sx/8u;
+ uint tile=nes.words[NES_NAMETABLE+ntIndex(addr)]&255u;
+ return pattern((ctrl&16u)!=0u?0x1000u:0u,tile,sx&7u,sy&7u);
+}
+uint spriteZeroRow(){
+ uint mask=nes.words[PPUMASK],ctrl=nes.words[PPUCTRL];
+ if((mask&24u)!=24u)return 240u;
+ uint sy=nes.words[NES_OAM]&255u,tile=nes.words[NES_OAM+1u]&255u,attr=nes.words[NES_OAM+2u]&255u,sx=nes.words[NES_OAM+3u]&255u;
+ uint height=(ctrl&32u)!=0u?16u:8u;
+ for(uint row=0u;row<height;row++){
+  uint y=sy+1u+row;if(y>=240u)break;
+  uint py=((attr&128u)!=0u)?height-1u-row:row;
+  for(uint col=0u;col<8u;col++){
+   uint x=sx+col;if(x>=255u)break;
+   if(x<8u&&((mask&6u)!=6u))continue;
+   uint px=((attr&64u)!=0u)?7u-col:col;
+   if(spritePattern(ctrl,tile,px,py)!=0u&&backgroundPixel(x,y,ctrl,nes.words[SCROLLX],nes.words[SCROLLY])!=0u)return y;
+  }
+ }
+ return 240u;
+}
+uint pixel(uint x,uint y){
+ bool top=nes.words[SPLIT_Y]<240u&&y<nes.words[SPLIT_Y];
+ uint bg=0u,pal=0u,ctrl=top?nes.words[TOP_CTRL]:nes.words[PPUCTRL],mask=nes.words[PPUMASK];
+ if((mask&8u)!=0u&&(x>=8u||(mask&2u)!=0u)){
+  uint scrollX=top?nes.words[TOP_SCROLL_X]:nes.words[SCROLLX],scrollY=top?nes.words[TOP_SCROLL_Y]:nes.words[SCROLLY];
+  uint wx=(x+scrollX+(((ctrl&1u)!=0u)?256u:0u))%512u;
+  uint wy=(y+scrollY+(((ctrl&2u)!=0u)?240u:0u))%480u;
+  uint table=(wy/240u)*2u+wx/256u,sx=wx%256u,sy=wy%240u;
+  uint tx=sx/8u,ty=sy/8u,base=0x2000u+table*1024u;
+  uint nt=nes.words[NES_NAMETABLE+ntIndex(base+ty*32u+tx)]&255u;
+  bg=pattern((ctrl&16u)!=0u?0x1000u:0u,nt,sx&7u,sy&7u);
+  uint attr=nes.words[NES_NAMETABLE+ntIndex(base+960u+(ty/4u)*8u+tx/4u)]&255u;
+  uint shift=((ty&2u)!=0u?4u:0u)+((tx&2u)!=0u?2u:0u);
+  pal=((attr>>shift)&3u)*4u;
+ }
+ uint color=nes.words[NES_PALETTE+(bg==0u?0u:pal+bg)]&63u;
+ if((mask&16u)!=0u&&(x>=8u||(mask&4u)!=0u)){for(uint i=0u;i<64u;i++){
+  uint sy=nes.words[NES_OAM+i*4u]&255u,sx=nes.words[NES_OAM+i*4u+3u]&255u;
+  uint height=(ctrl&32u)!=0u?16u:8u;
+  if(y<=sy||y>sy+height||x<sx||x>=sx+8u)continue;
+  uint tile=nes.words[NES_OAM+i*4u+1u]&255u,attr=nes.words[NES_OAM+i*4u+2u]&255u;
+  uint px=((attr&64u)!=0u)?7u-(x-sx):x-sx,py=((attr&128u)!=0u)?height-(y-sy):y-sy-1u;
+  uint sprite=spritePattern(ctrl,tile,px,py);
+  if(sprite==0u)continue;
+  if(bg==0u||(attr&32u)==0u)color=nes.words[NES_PALETTE+16u+(attr&3u)*4u+sprite]&63u;
+  break;
+ }}
+ return color;
+}
+void main(){
+ if(gl_LocalInvocationID.x==0u){
+  c.motion.x+=1.0/60.0;c.state.z++;
+  c.transition.x=max(0.0,c.transition.x-1.0/15.0);
+  uint held=hbButtons(),pressed=hbPressed();
+  if(nes.words[MENU]!=0u){
+   uint count=min(nes.words[MENU_COUNT],16u),index=nes.words[MENU_INDEX];
+   if((pressed&(HB_B|HB_MINUS))!=0u)hbExit();
+   else if(count>0u){
+    if((pressed&HB_UP)!=0u)index=(index+count-1u)%count;
+    if((pressed&HB_DOWN)!=0u)index=(index+1u)%count;
+    nes.words[MENU_INDEX]=index;
+    if((pressed&HB_A)!=0u)nes.words[LOAD_REQUEST]=index+1u;
+   }
+   if((pressed&HB_X)!=0u)nes.words[REFRESH_REQUEST]++;
+  }else{
+   uint duration=nes.words[MINUS_HELD];
+   if((held&HB_MINUS)!=0u){duration++;if(duration>=45u)hbExit();}
+   else if(duration>0u){nes.words[MENU]=1u;nes.words[NES_APU_FRAME]=0u;duration=0u;}
+   nes.words[MINUS_HELD]=duration;
+   if(nes.words[MENU]==0u)cpuFrame();
+  }
+  hbEndFrame();
+ }
+ memoryBarrierBuffer();barrier();
+ uint x=gl_LocalInvocationID.x;
+ if(nes.words[MENU]==0u)for(uint y=0u;y<240u;y++)nes.words[NES_FRAMEBUFFER+y*256u+x]=pixel(x,y);
+}

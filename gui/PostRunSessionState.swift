@@ -15,10 +15,15 @@ struct PostRunSessionState: Equatable {
     private(set) var cleanupBlocked = false
 
     var isActive: Bool { [.awaitingChoice, .held, .dumping, .finishing].contains(stage) }
-    var canFinish: Bool { stage == .awaitingChoice || stage == .held && !statusInFlight && homebrewStage != .launching }
-    var canCheckStatus: Bool { stage == .held && !statusInFlight && homebrewStage == .idle }
+    var dumpInProgress: Bool { dumpRequested && !dumpCompleted }
+    var canFinish: Bool { stage == .awaitingChoice || stage == .held && !dumpInProgress && !statusInFlight && homebrewStage != .launching }
+    var canCheckStatus: Bool { stage == .held && !dumpInProgress && !statusInFlight && homebrewStage == .idle }
     var homebrewAttempted: Bool { homebrewStage != .idle }
-    var canLaunchHomebrew: Bool { stage == .held && heldConfirmed && !statusInFlight && !homebrewAttempted }
+    var canLaunchHomebrew: Bool { stage == .held && heldConfirmed && !dumpInProgress && !statusInFlight && !homebrewAttempted }
+    var canDumpSystemCode: Bool {
+        stage == .held && heldConfirmed && !dumpRequested && !statusInFlight && !cleanupBlocked &&
+        [.idle, .running, .stopped].contains(homebrewStage)
+    }
 
     @discardableResult mutating func ready() -> Bool {
         guard stage == .inactive else { return false }
@@ -45,6 +50,16 @@ struct PostRunSessionState: Equatable {
         return true
     }
 
+    @discardableResult mutating func requestDump() -> Bool {
+        guard canDumpSystemCode else { return false }
+        dumpRequested = true
+        return true
+    }
+
+    mutating func cancelDumpRequest() {
+        if stage == .held && dumpInProgress { dumpRequested = false }
+    }
+
     @discardableResult mutating func launchHomebrew() -> Bool {
         guard canLaunchHomebrew else { return false }
         homebrewStage = .launching
@@ -59,13 +74,14 @@ struct PostRunSessionState: Equatable {
         return true
     }
 
-    @discardableResult mutating func receive(_ event: String) -> Bool {
+    @discardableResult mutating func receive(_ event: String, retrySafe: Bool = false) -> Bool {
         switch event {
         case "rpc-held":
             guard keepRPC, stage == .held else { return false }
             heldConfirmed = true
         case "dump-started":
-            guard dumpRequested, stage == .dumping else { return false }
+            guard dumpRequested, [.held, .dumping].contains(stage) else { return false }
+            stage = .dumping
         case "dump-complete":
             guard stage == .dumping else { return false }
             dumpCompleted = true; stage = keepRPC ? .held : .finishing
@@ -89,6 +105,10 @@ struct PostRunSessionState: Equatable {
         case "homebrew-stopped", "homebrew-failed":
             guard [.held, .finishing].contains(stage), homebrewAttempted else { return false }
             if homebrewStage == .failed, event == "homebrew-stopped" { return true }
+            if event == "homebrew-failed", retrySafe, stage == .held, heldConfirmed, !cleanupBlocked {
+                homebrewStage = .idle
+                return true
+            }
             homebrewStage = event == "homebrew-stopped" ? .stopped : .failed
             if event == "homebrew-failed" { heldConfirmed = false }
         case "verified":

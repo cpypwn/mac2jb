@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 'use strict';
-// IZlauncher owns only its shell workers. The verified ns2jb host stays with its original owner.
 process.umask(0o077);
 const fs = require('node:fs/promises'), sync = require('node:fs'), path = require('node:path');
 const {spawn} = require('node:child_process');
 const {validateRun, serveProxy} = require('./gui-homebrew.cjs');
-const REVISION = '907de0d9f5a4e358079306e7f04a8c43d463142a';
+const modules = require('./izlauncher-modules.cjs');
+const {readPanel} = require('./izlauncher-panel.cjs');
+const REVISION = 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b';
 const stages = [
   ['core/services/inspect-display.cjs'],
   ['core/services/inspect-compatibility.cjs'],
@@ -30,11 +31,19 @@ async function privatePath(file, directory=false, forbiddenMode=0o077) {
 }
 async function readJSON(file) {await privatePath(file);return JSON.parse(await fs.readFile(file,'utf8'));}
 function argumentsFor(args) {
-  check(args.length===1, 'Usage: gui-izlauncher.cjs RUN_DIRECTORY');
+  check(args.length===1 || args.length===3 && args[1]==='--modules',
+    'Usage: gui-izlauncher.cjs RUN_DIRECTORY [--modules JSON_IDS]');
   return args[0];
 }
+function moduleSelection(args) {
+  if(args.length===1)return null;
+  let ids;
+  try{ids=JSON.parse(args[2]);}catch{throw Error('Invalid IZlauncher module selection.');}
+  check(modules.validIds(ids),'Choose up to 15 distinct compatible IZlauncher modules.');
+  return ids;
+}
 async function verifyProcessIdentity(run) {
-  // Upstream fs.cp preserves source directory permissions inside the already-private run root.
+  // upstream fs.cp preserves source directory permissions inside the already-private run root.
   const folder=await privatePath(path.join(run.directory,'switch2/process'),true,0o022);
   const prefix=run.proof.session+'-qualification-';
   const names=(await fs.readdir(folder)).filter(name=>name.startsWith(prefix) && /^\d+\.json$/.test(name.slice(prefix.length)))
@@ -50,6 +59,14 @@ async function verifyProcessIdentity(run) {
 function runtimeEnvironment(root, directory, inherited=process.env) {
   const env={...require('./prepare-izlauncher.cjs').runtimeEnvironment(root,inherited),IZ11_STATE_DIR:path.join(directory,'state')};
   delete env.PYTHONHOME;return env;
+}
+async function prepareSelection(runtime,selected,apps,environment,prepare) {
+  const keys=['PATH','PYTHONPATH','PYTHONNOUSERSITE','PYTHONDONTWRITEBYTECODE','PYTHONHOME',
+    'SPIRV_VAL','GLSLANG','HB_FONT','HB_APPS_DIR','IZ2S_ROOT','IZ15_ROOT','IZ15_SHELL','IZ2S_MODULE_PINS'];
+  const previous=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
+  for(const key of keys){if(environment[key]===undefined)delete process.env[key];else process.env[key]=environment[key];}
+  try{await prepare(runtime,selected,apps,{shell:'izlauncher'});}
+  finally{for(const key of keys){if(previous[key]===undefined)delete process.env[key];else process.env[key]=previous[key];}}
 }
 async function verifyRuntime(root) {
   const prepared=require('./prepare-izlauncher.cjs').verify(root);
@@ -79,10 +96,12 @@ async function frameProof(directory, session, stopped=false) {
 }
 async function main(args=process.argv.slice(2), options={}) {
   const candidate=argumentsFor(args), root=options.root||path.resolve(__dirname,'..');
+  const selected=moduleSelection(args);
   const runtime=path.join(root,'homebrew/IZ2S-Platform');
   const run=await validateRun(root,candidate,options.verifySession||require('./gui-dump.cjs').verifiedSession);
   const identity=await verifyProcessIdentity(run);
   await (options.verifyRuntime||verifyRuntime)(root);
+  if(selected!==null)await (options.validateModules||modules.validate)(root,selected);
   const request=options.request||require(path.join(root,'vendor/ns2jb/rpc.cjs')).request;
   check((await request(run.directory,{command:'status'}))?.ready===true,'The existing native RPC connection is not ready.');
   await writeJSON(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'),{
@@ -91,16 +110,37 @@ async function main(args=process.argv.slice(2), options={}) {
   const parent=path.join(root,'runs');await fs.mkdir(parent,{recursive:true,mode:0o700});await privatePath(parent,true);
   const directory=await fs.mkdtemp(path.join(await fs.realpath(parent),'izlauncher-'));
   const report={session:path.basename(directory),sourceSession:run.proof.session,sourceDirectory:run.directory,
-    application:'izlauncher',version:'0.16.0-rc.3',source:{commit:REVISION},identity,
+    application:'izlauncher',version:'0.16.0-rc.5',source:{commit:REVISION},identity,
     started:new Date().toISOString(),status:'preparing',stages:[],children:[],resourcesRetained:true};
   const save=()=>writeJSON(path.join(directory,'mac2jb-homebrew.json'),report);
   const emit=options.emit||((type,fields)=>process.stdout.write('MAC2JB_HOMEBREW '+JSON.stringify({type,...fields})+'\n'));
-  let stopping=false, failure, proxy, monitor, stopResolve, nativeTouched=false, cleanupBlocked=false, acceptingRPC=true, environment;
+  let stopping=false, failure, proxy, monitor, panelMonitor, panelURL, panelWarning=false, stopResolve, nativeTouched=false, cleanupBlocked=false, acceptingRPC=true, environment;
   const stopRequested=new Promise(resolve=>{stopResolve=resolve;});
   const children=new Set(), activeOwners=new Map(), pendingRPC=new Set();
   function stop(){if(!stopping){stopping=true;stopResolve();}}
   function fail(error){failure ||= error;stop();}
   function safeEmit(type,fields={}){try{emit(type,{path:directory,...fields});}catch(error){if(error.code!=='EPIPE')throw error;stop();}}
+  let running=false;
+  function checkPanel(){
+    if(!running||stopping)return;
+    try{
+      const panel=readPanel(root,directory);
+      if(panel&&panel.url!==panelURL){panelURL=panel.url;safeEmit('panel',{url:panel.url});}
+    }catch{
+      if(!panelWarning){panelWarning=true;safeEmit('progress',{message:'The local BlitBun panel address could not be verified.'});}
+    }
+  }
+  const input=options.input||process.stdin;
+  const control=require('node:readline').createInterface({input,crlfDelay:Infinity});
+  control.on('line',line=>{
+    if(line.length>8192)return safeEmit('module-progress',{message:'The IZlauncher module request is too large.'});
+    let command;try{command=JSON.parse(line);}catch{return safeEmit('module-progress',{message:'Invalid IZlauncher module request.'});}
+    if(command?.action!=='load-modules'||!running||stopping||!modules.validIds(command.ids)||!command.ids.length)
+      return safeEmit('module-progress',{message:'Select a compatible module while IZlauncher is running.'});
+    void (options.queueModules||modules.queue)(root,path.join(directory,'state'),command.ids)
+      .then(()=>safeEmit('module-progress',{message:'Queued '+command.ids.length+' IZlauncher module'+(command.ids.length===1?'':'s')+' from this Mac.'}))
+      .catch(error=>safeEmit('module-progress',{message:'IZlauncher module load failed: '+error.message}));
+  });
   function stdoutError(error){if(error.code!=='EPIPE')failure ||= error;stop();}
   process.stdout.on('error',stdoutError);process.on('SIGTERM',stop);process.on('SIGINT',stop);
   options.signal?.addEventListener('abort',stop,{once:true});if(options.signal?.aborted)stop();
@@ -125,7 +165,8 @@ async function main(args=process.argv.slice(2), options={}) {
     let readyResolve,readyReject;
     state.readiness=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});state.readiness.catch(()=>{});
     const observe=line=>{if(readyText && line.trim()===readyText)readyResolve();if(line.trim()===FRAME_READY)state.frameReady=true;
-      safeEmit('progress',{message:script+': '+line});};
+      if(line.startsWith('PC Screen capture: '))checkPanel();
+      safeEmit('progress',{message:script+': '+line.replace(/http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}\/#([a-f0-9]{48})/g,'[local panel address]')});};
     readLines(child.stdout,observe);readLines(child.stderr,observe);
     state.done=new Promise(resolve=>{
       child.once('error',error=>{state.closed=true;state.outcome={code:null,error};children.delete(state);readyReject(error);resolve(state.outcome);if(role!=='prepare')fail(error);});
@@ -148,9 +189,15 @@ async function main(args=process.argv.slice(2), options={}) {
   let graphics;
   try {
     environment=(options.runtimeEnvironment||runtimeEnvironment)(root,directory);
+    if(selected!==null){
+      const apps=path.join(directory,'app-links');await fs.mkdir(apps,{mode:0o700});
+      await prepareSelection(runtime,selected,apps,environment,
+        options.prepareModules||require(path.join(runtime,'core/session/preload.cjs')).prepare);
+      environment.HB_APPS_DIR=apps;
+    }
     proxy=await (options.serveProxy||serveProxy)({live:()=>acceptingRPC&&live(),request:forward});
     await fs.mkdir(path.join(directory,'shared'),{mode:0o700});
-    // This frozen client describes exactly the older bridge's capabilities; no unsupported batch methods are advertised.
+    // this frozen client describes exactly the older bridge's capabilities; no unsupported batch methods are advertised.
     await fs.copyFile(path.join(root,'vendor/GPUBrewLauncher/smilebasic/engine/shared/rpc.cjs'),path.join(directory,'shared/rpc.cjs'));
     await fs.chmod(path.join(directory,'shared/rpc.cjs'),0o600);
     await writeJSON(path.join(directory,'connection.json'),{port:proxy.port,token:proxy.token,addresses:{...run.connection.addresses,session:report.session}});
@@ -175,11 +222,12 @@ async function main(args=process.argv.slice(2), options={}) {
     if(catalog.catalog.apps.some(app=>Object.keys(app.effects||{}).length))await startOwner(owners[2]);
     check(live() && !stopping,'The original RPC session ended during launcher preparation.');
     await frameProof(directory,report.session);report.status='running';await save();
-    safeEmit('running',{message:'IZlauncher is running. Keep SmileBASIC and mac2jb open.'});await stopRequested;
+    running=true;safeEmit('running',{message:'IZlauncher is running. Select and load compatible modules from mac2jb, or use the console menu.'});
+    checkPanel();panelMonitor=setInterval(checkPanel,options.panelPollMs||250);panelMonitor.unref();await stopRequested;
   } catch(error){failure ||= error;stop();}
   finally {
-    clearInterval(monitor);stopping=true;
-    // Drain auxiliary owners and the native frame worker before allowing the original RPC owner to finish.
+    clearInterval(monitor);clearInterval(panelMonitor);stopping=true;running=false;control.close();
+    // drain auxiliary owners and the native frame worker before allowing the original rpc owner to finish.
     for(const role of ['ftp','audio','graphics'])await end(activeOwners.get(role));
     for(const state of [...children])await end(state);
     acceptingRPC=false;
@@ -208,7 +256,7 @@ async function main(args=process.argv.slice(2), options={}) {
   }
   if(failure){failure.homebrewReported=true;failure.cleanupBlocked=cleanupBlocked;throw failure;}return {directory,stopped:true};
 }
-module.exports={main,argumentsFor,verifyProcessIdentity,frameProof,runtimeEnvironment,verifyRuntime,stages,owners,FRAME_READY,REVISION};
+module.exports={main,argumentsFor,moduleSelection,verifyProcessIdentity,frameProof,runtimeEnvironment,verifyRuntime,stages,owners,FRAME_READY,REVISION};
 if(require.main===module)(async()=>{
   if(process.argv.length===3 && process.argv[2]==='--self-test'){
     await verifyRuntime(path.resolve(__dirname,'..'));console.log('IZlauncher held-RPC adapter self-test passed.');return;

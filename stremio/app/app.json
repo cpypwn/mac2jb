@@ -2,9 +2,9 @@
   "format": "hblauncher.gpu-app",
   "abi": 1,
   "id": "stremio-experimental",
-  "name": "Stremio media display",
+  "name": "Stremio",
   "version": "0.4.0",
-  "description": "Mac-assisted 720p menus and video with controller, timeline drag and subtitle display",
+  "description": "Discover movies and shows · setup required on Mac",
   "transition": "none",
   "shaders": {
     "vertex": "app.vert.spv",

@@ -2,6 +2,7 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const {PassThrough}=require('node:stream');
 const {main,argumentsFor,verifyProcessIdentity,frameProof,stages,owners,FRAME_READY,REVISION}=require('./gui-izlauncher.cjs');
 function fixture(t,options={}) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-izlauncher-test-')));
@@ -70,6 +71,43 @@ test('CLI attaches to one existing run without selecting or replacing its editio
   assert.equal(argumentsFor(['/run']),'/run');
   for(const values of [[],['/run','--edition','demo'],['/run','--edition','full'],['/run','extra']])
     assert.throws(()=>argumentsFor(values),/Usage/);
+});
+test('selected modules are prepared before graphics and live load requests reach the package queue',{timeout:10000},async t=>{
+  const f=fixture(t),input=new PassThrough(),seen=[];
+  f.api.input=input;
+  f.api.runtimeEnvironment=()=>({...process.env});
+  f.api.validateModules=async(root,ids)=>{seen.push(['validate',root,ids]);};
+  f.api.prepareModules=async(runtime,ids,apps)=>{seen.push(['prepare',runtime,ids,apps]);};
+  f.api.queueModules=async(root,state,ids)=>{seen.push(['queue',root,state,ids]);};
+  f.api.emit=(type,value)=>{
+    f.events.push({type,...value});
+    if(type==='running')input.write('invalid json\n'+JSON.stringify({action:'load-modules',ids:['blitbun']})+'\n');
+    if(type==='module-progress'&&value.message?.startsWith('Queued 1 IZlauncher module'))f.controller.abort();
+  };
+  const result=await main([f.directory,'--modules','["blitbun"]'],f.api);
+  assert.equal(result.stopped,true);
+  assert.deepEqual(seen.map(row=>row[0]),['validate','prepare','queue']);
+  assert.deepEqual(seen[0][2],['blitbun']);
+  assert.deepEqual(seen[1][2],['blitbun']);
+  assert.deepEqual(seen[2][3],['blitbun']);
+  assert.equal(seen[2][1],f.root);
+  assert.equal(seen[2][2],path.join(result.directory,'state'));
+  assert.deepEqual(f.events.filter(event=>event.type==='module-progress').map(event=>event.message),
+    ['Invalid IZlauncher module request.','Queued 1 IZlauncher module from this Mac.']);
+  assert.equal(f.events.some(event=>event.type==='progress'&&event.message?.startsWith('Queued 1 IZlauncher module')),false);
+  input.destroy();
+});
+test('the current IZlauncher run publishes a verified local panel address',{timeout:10000},async t=>{
+  const f=fixture(t),input=new PassThrough(),url='http://127.0.0.1:53674/#'+'a'.repeat(48);
+  f.api.input=input;
+  f.api.emit=(type,value)=>{
+    f.events.push({type,...value});
+    if(type==='running')fs.writeFileSync(path.join(value.path,'pc-screen-local.json'),JSON.stringify({url,port:53674}),{mode:0o600});
+    if(type==='panel')f.controller.abort();
+  };
+  const result=await main(args(f),f.api);
+  assert.deepEqual(f.events.filter(event=>event.type==='panel'),[{type:'panel',path:result.directory,url}]);
+  input.destroy();
 });
 test('real process proof rejects unknown, foreign, failed and unclean qualification before RPC or exclusivity',async t=>{
   const f=fixture(t);

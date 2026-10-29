@@ -1,0 +1,17 @@
+const uint C8_MEMORY=256u;
+const uint C8_REGISTERS=4352u;
+const uint C8_STATE=4368u;
+const uint C8_STACK=4384u;
+const uint C8_DISPLAY=4400u;
+const uint C8_PC=0u;
+const uint C8_I=1u;
+const uint C8_SP=2u;
+const uint C8_DELAY=3u;
+const uint C8_SOUND=4u;
+const uint C8_RANDOM=5u;
+const uint C8_HALTED=6u;
+const uint C8_LAST_CLOCK=7u;
+const uint C8_CLOCK_PHASE=8u;
+const uint C8_CLOCK_READY=9u;
+const uint C8_FRAME=10u;
+const uint C8_INSTRUCTIONS=11u;

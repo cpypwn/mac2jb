@@ -1,0 +1,22 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "ouncecake",
+  "name": "OunceCake",
+  "version": "0.1.0",
+  "description": "Browse installed game files through a read-only FTP connection",
+  "service": "ouncecake-v1",
+  "transition": "none",
+  "icon": "icon.png",
+  "initialState": "state.bin",
+  "data": "data.bin",
+  "memory": {
+    "initial": "memory.bin",
+    "bytes": 16777216
+  },
+  "shaders": {
+    "vertex": "app.vert.spv",
+    "fragment": "app.frag.spv",
+    "compute": "app.comp.spv"
+  }
+}

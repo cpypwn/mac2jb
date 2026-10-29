@@ -5,6 +5,7 @@ layout(local_size_x=1) in;
 #include "hb.glsl"
 #include "focus-layout.glsl"
 #include "focus-library.glsl"
+#include "menu-removal.glsl"
 #include "features.glsl"
 #include "app-menu.glsl"
 #if defined(IZ_CALC) || defined(IZ_STREAM) || defined(IZ_CONTROLLERS)
@@ -53,6 +54,7 @@ streamInput(pressed);return;}}
 #ifdef IZ_CONTROLLERS
  if(c.atlas[CB+7u]==CMAGIC&&c.atlas[CB+1u]==3u){controllerHubInput(pressed);return;}
 #endif
+ if(menuRemovalInput(pressed))return;
  if(c.transition.y!=0.0){c.transition.x=min(1.0,c.transition.x+1.0/15.0);if(c.transition.x>=1.0)c.reserved.y=c.state.x+1u;hbEndFrame();return;}
  c.transition.x=max(0.0,c.transition.x-1.0/15.0);
  bool wasSearch=c.rows[1]!=0u;

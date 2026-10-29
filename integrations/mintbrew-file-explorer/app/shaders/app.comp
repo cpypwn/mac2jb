@@ -1,0 +1,19 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x=1) in;
+#include "abi.glsl"
+#include "hb.glsl"
+void main(){
+ uint pressed=hbPressed();c.motion.x+=1.0/60.0;c.state.z++;c.transition.x=max(0.0,c.transition.x-1.0/15.0);
+ if((pressed&(HB_B|HB_MINUS))!=0u)hbExit();
+ if((pressed&HB_X)!=0u){c.game.x=0x4d465447u;hbExit();}
+ bool toggle=(pressed&HB_A)!=0u;
+ bool touching=c.touch[2]==1u&&(c.touch[6]&2u)==0u;
+ if(touching&&c.library.w==0u){vec2 p=vec2(c.touch[8],c.touch[9])*1.5;
+  if(p.x>=690&&p.x<=1050&&p.y>=678&&p.y<=750)toggle=true;
+  if(p.x>=1080&&p.x<=1400&&p.y>=678&&p.y<=750){c.game.x=0x4d465447u;hbExit();}
+  if(p.x>=1400&&p.x<=1660&&p.y>=678&&p.y<=750)hbExit();}
+ c.library.w=touching?1u:0u;
+ if(toggle&&hbFtpAvailable()&&!hbFtpBusy())hbFtpCommand(hbFtpState()==1u||hbFtpState()==2u?2u:1u);
+ hbEndFrame();
+}

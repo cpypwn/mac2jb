@@ -1,7 +1,7 @@
 # Frozen upstream revisions (only changed by maintainer)
 libusbd 4fe5521e424061b823c3f7aebaa754150f94a821 https://github.com/shinyquagsire23/libusbd.git
 macos_usb_gadget_poc c8349b449a2171c1b5b7c59b882728b130fc6b88 https://github.com/shinyquagsire23/macos_usb_gadget_poc.git
-ns2jb 84619429e937c132e27a6d576892515ea0018d86 https://gitlab.com/BermTheSequel/ns2jb2.git
+ns2jb 9accf75508f4e7033ffc6912b2ebb7e0b6704e84 https://gitlab.com/BermTheSequel/ns2jb2.git
 HBLauncher b40723be04baa51e5d1f121a1e2242c4167b6cbc https://github.com/ravensclawx/HBLauncher.git
 GPUBrewLauncher f35ff64ea4b9b42cf2a75095d24662fe250f03e4 https://github.com/NiftyNova/GPUBrewLauncher.git
 OunceCake e3bcbd229be2229d44f036455adddda921ade3b2 https://github.com/misshexa66/OunceCake.git

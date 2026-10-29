@@ -14,7 +14,8 @@ async function main() {
   await save();
   try {
     proof.app = await client.info(0xffff8001); await save();
-    check(!proof.app.result && proof.app.programId === '0100c9100b06a000', 'The transferred current-process handle is not SmileBASIC');
+    check(!proof.app.result && ['0100c9100b06a000', '0100b4b00f9f6000'].includes(proof.app.programId),
+      'The transferred current-process handle is not SmileBASIC');
     const fsHandle = await client.fsProcess();
     proof.fs = await client.info(fsHandle); await save();
     check(!proof.fs.result && proof.fs.programId === '0400000000000000', 'The exported handle is not native FS');

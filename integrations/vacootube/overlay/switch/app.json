@@ -1,0 +1,31 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "vacootube",
+  "name": "VacooTube",
+  "version": "1.4.1",
+  "description": "Independent video player for Switch 2 · touch and controller input",
+  "icon": "icon.png",
+  "builtin": "vacootube",
+  "hostModule": {
+    "id": "vacootube",
+    "version": "1.4.1",
+    "folder": "modules/vacootube/server/local-package"
+  },
+  "shellContribution": {
+    "files": [
+      "modules/tiny-calc.glsl",
+      "modules/pc-screen.glsl",
+      "modules/pc-screen-input.glsl",
+      "modules/pc-screen-draw.glsl",
+      "modules/vacootube-menu.glsl"
+    ],
+    "defines": [
+      "IZ_STREAM",
+      "IZ_STREAM_PRIVATE",
+      "IZ_VACOOTUBE_MENU"
+    ],
+    "scene": 6,
+    "memoryBytes": 2097152
+  }
+}

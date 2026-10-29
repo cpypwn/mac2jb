@@ -1,4 +1,3 @@
-// Common translucent application navigation, using the main launcher type atlas.
 const uint AM=(0x701800u-1024u)/4u;
 #ifndef HB_READONLY
 int uiMenuInput(uint pressed,bool held,bool tap,vec2 p,inout uint menu,inout uint selected,uint count){
@@ -6,7 +5,7 @@ int uiMenuInput(uint pressed,bool held,bool tap,vec2 p,inout uint menu,inout uin
  bool close=tap&&menu!=0u&&all(lessThanEqual(abs(p-vec2(492,90)),vec2(30)));
  if((pressed&HB_MINUS)!=0u||badge||close){menu=menu==0u?1u:0u;selected=0u;return -1;}
  if(menu==0u)return -1;
- if((pressed&HB_B)!=0u){menu=0u;return -1;}
+ if((pressed&(HB_B|HB_X))!=0u){menu=0u;return -1;}
  int move=(pressed&HB_UP)!=0u?-1:(pressed&HB_DOWN)!=0u?1:0;
  if(c.atlas[AM+3u]>0u)c.atlas[AM+3u]--;vec2 stick=hbStick(false);
  if(abs(stick.y)>.55&&c.atlas[AM+3u]==0u){move=stick.y>0.0?-1:1;c.atlas[AM+3u]=12u;}
@@ -21,7 +20,7 @@ float uiFill(float d){return 1.0-smoothstep(-.8,.8,d);}
 float uiPixel(ivec2 q){if(any(lessThan(q,ivec2(0)))||q.x>=768||q.y>=1172)return 0.0;uint i=uint(q.y*768+q.x);return float((c.atlas[16384u+(i>>4u)]>>((i&15u)*2u))&3u)/3.0;}
 float uiGlyph(vec2 p,uint ch,float scale){
  if(ch<32u||ch>127u)return 0.0;if(ch==46u||ch==44u)p.y-=19.0*scale;if(ch==45u)p.y-=10.0*scale;
- vec2 v=p/scale;if(any(lessThan(v,vec2(0)))||v.x>=24.0||v.y>=25.0)return 0.0;
+ vec2 v=p/scale;if(any(lessThan(v,vec2(0)))||v.x>=24.0||v.y>=25.0)return 0.0;if(ch==73u)v.x=(v.x-8.0)*.5+2.0;
  uint i=ch-32u;vec2 at=v+vec2(float(i%32u)*24.0,1075.0+float(i/32u)*32.0);ivec2 q=ivec2(floor(at));vec2 f=fract(at);return mix(mix(uiPixel(q),uiPixel(q+ivec2(1,0)),f.x),mix(uiPixel(q+ivec2(0,1)),uiPixel(q+ivec2(1)),f.x),f.y);
 }
 const uint UI_CHARS[191]=uint[191](77u,69u,78u,85u,73u,90u,76u,65u,85u,78u,67u,72u,69u,82u,67u,79u,78u,84u,73u,78u,85u,69u,82u,69u,84u,85u,82u,78u,32u,84u,79u,32u,76u,65u,85u,78u,67u,72u,69u,82u,65u,32u,83u,69u,76u,69u,67u,84u,32u,32u,32u,66u,32u,66u,65u,67u,75u,80u,67u,32u,83u,84u,82u,69u,65u,77u,68u,79u,79u,77u,72u,65u,76u,70u,45u,76u,73u,70u,69u,32u,50u,89u,79u,85u,84u,85u,66u,69u,83u,72u,65u,82u,69u,32u,80u,67u,32u,87u,73u,78u,68u,79u,87u,83u,84u,65u,82u,84u,32u,68u,79u,79u,77u,67u,65u,76u,67u,85u,76u,65u,84u,79u,82u,82u,69u,65u,68u,89u,32u,84u,79u,32u,67u,65u,76u,67u,85u,76u,65u,84u,69u,70u,73u,76u,69u,83u,85u,80u,32u,47u,32u,68u,79u,87u,78u,32u,84u,79u,32u,67u,72u,79u,79u,83u,69u,67u,76u,69u,65u,82u,77u,69u,77u,79u,82u,89u,45u,32u,77u,69u,78u,85u,50u,88u,32u,45u,32u,77u,69u,78u,85u);

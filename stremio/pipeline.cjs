@@ -10,19 +10,24 @@ const subtitleTools=require('./subtitles.cjs');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const BUTTONS=[[0,'a'],[1,'b'],[2,'x'],[3,'y'],[6,'l'],[7,'r'],[8,'zl'],[9,'zr'],[10,'plus'],
  [12,'left'],[13,'up'],[14,'right'],[15,'down'],[16,'left'],[17,'up'],[18,'right'],[19,'down']];
-function gain(pcm,volume){if(volume===1)return pcm;const output=Buffer.alloc(pcm.length);for(let i=0;i<pcm.length;i+=2)output.writeInt16LE(Math.max(-32768,Math.min(32767,Math.round(pcm.readInt16LE(i)*volume))),i);return output;}
-async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,root,onAccountProgress=()=>{},onFatal=()=>{},onProgress=()=>{},
- createDecoder=decoderTools.create,render,encode=codec.encode,pollIntervalMs=50,quality}){
+function navigationKey(controller){
+ const {view,selected,catalogIndex,tabSelected,sidebarSelected,section,focusArea,overlay}=controller;
+ return [view,selected,catalogIndex,tabSelected,sidebarSelected,section,focusArea,
+  overlay?.visible,overlay?.focused,overlay?.mode,overlay?.optionSelected].join('|');
+}
+async function create({graphics,audio,addonUrls=[],libraryItems=[],sourcePreferences,directory,root,onAccountProgress=()=>{},onFatal=()=>{},onProgress=()=>{},
+ onNavigation=()=>{},createDecoder=decoderTools.create,render,encode=codec.encode,pollIntervalMs=50,quality}){
  const profile=qualityProfile(quality),format={width:profile.width,height:profile.height};
  const ownedRenderer=render?null:createMenuRenderer();render ||= ownedRenderer;
- let controller,decoder,currentSource,sourceInfo,playing=false,paused=false,seeking=false,volume=1,position=0,wallStart=0,pausedAt=0,audioStarted=false,menuRevision=0;
+ let controller,decoder,currentSource,sourceInfo,playing=false,paused=false,seeking=false,position=0,wallStart=0,pausedAt=0,audioStarted=false,menuRevision=0;
  let generation=0,closed=false,dirty=true,tickBusy=false,timer,clockAt=0,clockValue=0,sourceBaseSamples=0,sourceOffset=0,clockOffset=0,lastAudioCount=0,startupAbort,currentTick=Promise.resolve(),lastInfo="",lastSave=0,firstFrame=false,firstMediaSequence=Infinity,progressWaiting=false,pendingProgressSnapshot,controls=Promise.resolve();
  let overlayFrame,lastFrame,displayTail=Promise.resolve(),stopTail=Promise.resolve(),stopFailure,pendingControls=0,axisAt=Date.now(),heldName='',heldSince=0,heldRepeat=0;
  let overlayKey='',overlayTail=Promise.resolve(),sourceEpoch=0,subtitleAbort,subtitleSelection=0,subtitleTracks=[],subtitleCues=[],selectedSubtitleId=null,selectedAudioId;
- let lastInputOverruns=0,touchWasDown=false;
+ let lastInputOverruns=0,touchWasDown=false,navigationSoundFailed=false;
+ let marqueeKey='',marqueeStartedAt=0,marqueeRenderedAt=0;
  const acceptedTimes=[];
  const report={started:new Date().toISOString(),quality:profile.id,targetWidth:profile.width,targetHeight:profile.height,targetFPS:profile.fps,
-  menuWidth:MENU_WIDTH,menuHeight:MENU_HEIGHT,frames:0,overlayFrames:0,droppedFrames:0,droppedInputActions:0,sourceChanges:0,position:0,volume:1,resourcesRetained:true};
+  menuWidth:MENU_WIDTH,menuHeight:MENU_HEIGHT,frames:0,overlayFrames:0,droppedFrames:0,droppedInputActions:0,sourceChanges:0,position:0,resourcesRetained:true};
  const builtin=await require('./builtin.cjs').create({root});
  const effectiveAddons=[builtin.manifestURL,...addonUrls];
  const reporter=require('./progress.cjs').createReporter({session:path.basename(directory),emit:update=>{if(!update.itemId.startsWith('mac2jb:'))onAccountProgress(update);}});
@@ -81,7 +86,14 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
  function queueControl(action,{repeat=false}={}){
   if(closed||controller.busy||pendingControls>=(repeat?1:4)){report.droppedInputActions++;return false;}
   pendingControls++;
-  controls=controls.then(()=>{if(!closed)return action();}).catch(()=>onProgress('The selected action could not finish.')).finally(()=>pendingControls--);
+  controls=controls.then(async()=>{
+   if(closed)return;
+   const before=navigationKey(controller);
+   await action();
+   if(!closed&&navigationKey(controller)!==before)Promise.resolve().then(onNavigation).catch(()=>{
+    if(!navigationSoundFailed){navigationSoundFailed=true;onProgress('Navigation sound is unavailable.');}
+   });
+  }).catch(()=>onProgress('The selected action could not finish.')).finally(()=>pendingControls--);
   return true;
  }
  async function stopPlayback(reset=true,{preserveFrame=false}={}){
@@ -132,7 +144,7 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
    },
    onAudio:async pcm=>{
     if(closed||attempt!==generation)return;
-    await native(()=>audio.write(gain(pcm,volume)));
+    await native(()=>audio.write(pcm));
     if(!audioStarted){audioStarted=true;wallStart ||= Date.now();}
    },
    onError:error=>defer(async()=>{
@@ -181,7 +193,6 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
  }
  async function seekTo(seconds){if(!currentSource||!playing||!Number.isFinite(seconds))return;const target=Math.max(0,Math.min(sourceInfo?.duration?Math.max(0,sourceInfo.duration-.1):Infinity,seconds));await start(currentSource,target,true);}
  async function seek(seconds){return seekTo(progressState().position+seconds);}
- async function adjustVolume(delta){volume=Math.max(0,Math.min(1,volume+delta));report.volume=volume;dirty=true;}
  async function selectAudio(id){
   if(!sourceInfo?.audioTracks?.some(track=>track.id===id))throw Error('That audio language is unavailable in this source.');
   if(id===selectedAudioId)return;
@@ -195,7 +206,7 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
   if(closed||epoch!==sourceEpoch||selection!==subtitleSelection)return;
   selectedSubtitleId=id;subtitleCues=cues;overlayKey='';dirty=true;menuRevision++;
  }
- controller=createController({addonUrls:effectiveAddons,libraryItems,callbacks:{play:source=>start(source),pause,seek,seekTo,selectAudio,selectSubtitle,stop:async()=>{const state=progressState();reporter.update(state,{reason:'stop'});controller.setPlaybackInfo(state);await stopPlayback();},volume:adjustVolume},
+ controller=createController({addonUrls:effectiveAddons,libraryItems,sourcePreferences,callbacks:{play:source=>start(source),pause,seek,seekTo,selectAudio,selectSubtitle,stop:async()=>{const state=progressState();reporter.update(state,{reason:'stop'});controller.setPlaybackInfo(state);await stopPlayback();}},
   onChange:()=>{dirty=true;menuRevision++;},onLog:message=>onProgress(message)});
  const onArtworkReady=()=>{if(!closed){dirty=true;menuRevision++;}};
  const renderOptions={python:path.join(root,'homebrew/python/bin/python3'),fontPath:path.join(root,'homebrew/fonts/DejaVuSans.ttf')};
@@ -209,11 +220,14 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
    else dirty=revision!==menuRevision;
    return;
   }
-  const renderAt=performance.now();
-  const rgba=await render(controller.getMenuModel(),{...renderOptions,width:MENU_WIDTH,height:MENU_HEIGHT,fetchImages:true,onArtworkReady});
+  const renderAt=performance.now(),model=controller.getMenuModel();
+  if(marqueeKey)model.titleMarqueeMs=Date.now()-marqueeStartedAt;
+  const rgba=await render(model,{...renderOptions,width:MENU_WIDTH,height:MENU_HEIGHT,fetchImages:true,onArtworkReady});
   report.lastMenuRenderMs=performance.now()-renderAt;
   if(closed||playing||seeking&&lastFrame)return;
-  dirty=!(await display(()=>native(()=>graphics.publish(encode(rgba,MENU_WIDTH,MENU_HEIGHT),Math.round(position*1000),{width:MENU_WIDTH,height:MENU_HEIGHT}))))||revision!==menuRevision;
+  const published=await display(()=>native(()=>graphics.publish(encode(rgba,MENU_WIDTH,MENU_HEIGHT),Math.round(position*1000),{width:MENU_WIDTH,height:MENU_HEIGHT})));
+  if(published)marqueeRenderedAt=Date.now();
+  dirty=!published||revision!==menuRevision;
  }
  async function tick(){
   if(closed||tickBusy)return;tickBusy=true;
@@ -233,12 +247,13 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
     }
     const names=new Set(BUTTONS.filter(([bit])=>{
      if(!(event.buttons&(1<<bit)))return false;
-     if(scrubControls&&[8,9,16,18].includes(bit)&&held&(1<<bit))return false;
+     if(scrubControls&&[16,18].includes(bit))return false;
+     if(scrubControls&&[8,9].includes(bit)&&held&(1<<bit))return false;
      return true;
     }).map(([,name])=>name));
     if(scrubControls){
-     if(event.buttons&(1<<16)){names.delete('left');if(!(held&(1<<16)))names.add('seekLeft');}
-     if(event.buttons&(1<<18)){names.delete('right');if(!(held&(1<<18)))names.add('seekRight');}
+     if(event.buttons&(1<<16)&&!(held&(1<<16)))names.add('seekLeft');
+     if(event.buttons&(1<<18)&&!(held&(1<<18)))names.add('seekRight');
     }
     if(!Number.isFinite(state.rightStickX)){if(event.buttons&(1<<20))names.add('seekLeft');if(event.buttons&(1<<22))names.add('seekRight');}
     for(const name of names)queueControl(()=>controller.handleButton(name));
@@ -254,7 +269,8 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
      touchWasDown=state.touch.active;
     }
    },{repeat:true});
-   const repeatName=(!scrubControls&&held&(1<<16))?'left':(held&(1<<17))?'up':(!scrubControls&&held&(1<<18))?'right':(held&(1<<19))?'down':'';
+   const repeatName=(held&(1<<12))?'left':(held&(1<<13))?'up':(held&(1<<14))?'right':(held&(1<<15))?'down':
+    (!scrubControls&&held&(1<<16))?'left':(held&(1<<17))?'up':(!scrubControls&&held&(1<<18))?'right':(held&(1<<19))?'down':'';
    if(repeatName!==heldName){heldName=repeatName;heldSince=heldRepeat=now;}
    else if(heldName&&now-heldSince>=450&&now-heldRepeat>=200&&!controller.busy&&pendingControls===0){
     const repeatAction=heldName;
@@ -270,7 +286,12 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
     if(firstFrame&&state.activeFrameSeq>=firstMediaSequence){report.displayAcknowledgedPosition=state.activePtsMs/1000;report.avDriftMs=Math.round((report.displayAcknowledgedPosition-clockValue)*1000);}
     wallStart=clockAt-(clockValue-sourceOffset)*1000;
    }
-   if(playing){reporter.update(progressState());const info={position:Math.floor(position),duration:sourceInfo?.duration||0,paused,volume};const value=JSON.stringify(info);if(value!==lastInfo){lastInfo=value;controller.setPlaybackInfo(info);}}
+   if(playing){reporter.update(progressState());const info={position:Math.floor(position),duration:sourceInfo?.duration||0,paused,seeking};const value=JSON.stringify(info);if(value!==lastInfo){lastInfo=value;controller.setPlaybackInfo(info);}}
+   const focusedTitle=controller.view==='catalog'&&controller.focusArea==='content'?
+    String(controller.catalogItems[controller.selected]?.name||''):'';
+   const nextMarqueeKey=focusedTitle.length>=11?controller.catalogIndex+':'+controller.selected+':'+focusedTitle:'';
+   if(nextMarqueeKey!==marqueeKey){marqueeKey=nextMarqueeKey;marqueeStartedAt=now;marqueeRenderedAt=0;}
+   else if(marqueeKey&&now-marqueeRenderedAt>=125)dirty=true;
    if(dirty)await drawMenu();
    if(Date.now()-lastSave>2000){report.position=position;report.paused=paused;report.playing=playing;report.firstMediaFrameUploaded=firstFrame;await save();lastSave=Date.now();}
   }catch(error){if(!closed)onFatal(error);}finally{tickBusy=false;}
@@ -292,4 +313,4 @@ async function create({graphics,audio,addonUrls=[],libraryItems=[],directory,roo
   report.completed=new Date().toISOString();report.stopped=true;await save();
  }};
 }
-module.exports={create,gain,BUTTONS};
+module.exports={create,BUTTONS};

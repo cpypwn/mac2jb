@@ -272,6 +272,34 @@ test('held ZR and left stick continuously preview and each reopen once after rel
   assert.deepEqual(f.state.errors, []);
 });
 
+test('physical D-pad navigates playback controls and track pages while the left stick seeks', {timeout: 10000}, async t => {
+  const audioTracks = Array.from({length: 8}, (_, id) => ({id, label: `Track ${id}`}));
+  const f = await fixture(t, {audioTracks}); await f.start(); await f.frame(10000);
+  await until(() => f.controller.playback.duration === 600);
+  f.state.events.push({buttons: 1 << 14});
+  await until(() => f.controller.overlay.focused === 'audio');
+  f.state.events.push({buttons: 1});
+  await until(() => f.controller.overlay.mode === 'audio');
+  f.state.events.push({buttons: 1 << 15});
+  await until(() => f.controller.overlay.optionSelected === 1);
+  f.state.events.push({buttons: 1 << 14});
+  await until(() => f.controller.overlay.optionSelected === 6);
+  f.state.events.push({buttons: 1 << 12});
+  await until(() => f.controller.overlay.optionSelected === 0);
+  f.state.events.push({buttons: 1 << 1});
+  await until(() => f.controller.overlay.mode === 'controls');
+  f.state.currentButtons = 1 << 18;
+  f.state.events.push({buttons: 1 << 18});
+  await until(() => f.controller.seekGesture?.owner === 'held');
+  const preview = f.controller.seekPreview, focused = f.controller.overlay.focused;
+  f.state.events.push({buttons: (1 << 12) | (1 << 18)});
+  await until(() => f.controller.overlay.focused !== focused);
+  await until(() => f.controller.seekPreview > preview);
+  f.state.currentButtons = 0;
+  await until(() => f.state.decoders.length === 2 && !f.controller.busy);
+  assert.deepEqual(f.state.errors, []);
+});
+
 test('stable touch snapshot recovers drag moves and release without another ring edge', {timeout: 10000}, async t => {
   const f = await fixture(t); await f.start(); await f.frame(10000);
   await until(() => f.controller.playback.duration === 600);

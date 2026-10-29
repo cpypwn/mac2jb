@@ -49,7 +49,7 @@ async function dispatch(context, request, state, domain) {
     check(donor?.ready && !donor.pendingRemoval && !s.threads.size && !s.pendingIpc && state.worker?.joined,
       'Donor cleanup requires the completed launch and an idle worker');
     const filesystem = require('../app/filesystem.cjs');
-    const handle = await require('../app/mounted-save.cjs').cloneMountedFilesystem(s, 'tmp');
+    const handle = await require('../app/mounted-save.cjs').cloneMountedFilesystem(s, donor.mount || 'save');
     try {
       for (const item of donor.files.filter(item => item.created && !item.removed)) {
         check(['main', 'main.npdm'].includes(item.name) && item.verified, 'Unknown donor file');
@@ -87,8 +87,8 @@ async function dispatch(context, request, state, domain) {
     if (state.donor?.ready) return state.donor;
     const directory = path.join(__dirname, '../app');
     if (!state.donor) {
-      const handle = await require(path.join(directory, 'mounted-save.cjs')).cloneMountedFilesystem(s, 'tmp');
-      state.donor = {handle, mount: 'tmp', files: [], checkedAbsent: [], created: new Date().toISOString()};
+      const handle = await require(path.join(directory, 'mounted-save.cjs')).cloneMountedFilesystem(s, 'save');
+      state.donor = {handle, mount: 'save', files: [], checkedAbsent: [], created: new Date().toISOString()};
       await save();
     }
     const donor = state.donor;

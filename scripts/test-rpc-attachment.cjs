@@ -98,7 +98,7 @@ test('local attachment validates real held proof and both live endpoints without
   assert.deepEqual(await fs.readFile(f.resultFile), before);
 });
 
-for (const application of ['hblauncher','izlauncher']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {
+for (const application of ['hblauncher','mintbrew','izlauncher']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {
   const f = await fixture(t), context = await f.attach();
   await assert.rejects(validateRun(f.root, f.directory, verifiedSession), /current held run|authorized/);
   await assert.rejects(validateManifest(f.root, f.directory, context.manifestPath), /authorization/);
@@ -115,6 +115,22 @@ for (const application of ['hblauncher','izlauncher']) test(application+' extern
   await context.close();
   assert.equal(JSON.parse(await fs.readFile(path.join(f.directory, OWNER))).token, owner.token);
   await assert.rejects(f.attach(), /already has a homebrew attempt/);
+});
+
+test('a proven pre-transfer failure releases only its own claim and permits another app', async t => {
+  const f = await fixture(t), context = await f.attach();
+  await context.claimApplication('custom-homebrew');
+  const attemptFile = path.join(f.directory, ATTEMPT);
+  await write(attemptFile, {application:'custom-homebrew'});
+  await assert.rejects(context.releaseApplication(), /did not prove a pre-transfer failure/);
+  await fs.unlink(attemptFile);
+  assert.equal((await context.releaseApplication()).ready, true);
+  await assert.rejects(fs.access(path.join(f.directory, OWNER)), {code:'ENOENT'});
+  await assert.rejects(validateManifest(f.root, f.directory, context.manifestPath), /authorization/);
+  await context.claimApplication('ouncecake');
+  assert.equal(JSON.parse(await fs.readFile(path.join(f.directory, OWNER))).application, 'ouncecake');
+  assert.equal((await validateManifest(f.root, f.directory, context.manifestPath)).session, 'switch2-test');
+  assert.equal(f.state.ready, true);
 });
 
 test('exclusive source reservation allows only one attachment and never duplicates helper attempt marker', async t => {

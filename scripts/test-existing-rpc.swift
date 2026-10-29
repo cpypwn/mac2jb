@@ -45,7 +45,25 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
           printf '%s\n' "$control" >> controls
           case "$control" in
             *'"action":"rpc-status"'*) printf '%s\n' '{"type":"rpc-status","ready":true,"message":"Fixture RPC connected."}' ;;
-            *'"action":"launch-gpubrewlauncher"'*|*'"action":"launch-hblauncher"'*|*'"action":"launch-izlauncher"'*)
+            *'"action":"launch-custom-homebrew"'*)
+              case "$control" in
+                *missing*) printf '%s\n' '{"type":"action-rejected","action":"launch-custom-homebrew","message":"Invalid app.json package."}' ;;
+                *) printf '%s\n' '{"type":"homebrew-accepted","action":"launch-custom-homebrew","message":"Validated custom app."}' '{"type":"homebrew-started"}' '{"type":"homebrew-running","message":"Inert app running."}' ;;
+              esac ;;
+            *'"action":"list-izlauncher-modules"'*)
+              printf '%s\n' '{"type":"izlauncher-catalog","modules":[{"id":"blitbun","name":"BlitBun","version":"1.14.4","description":"PC streaming"}]}' ;;
+            *'"action":"load-izlauncher-modules"'*)
+              printf '%s\n' '{"type":"izlauncher-module-progress","message":"Loaded selected modules."}' '{"type":"homebrew-progress","message":"frame-loop.cjs: Creating app pipelines: IZlauncher modules"}' ;;
+            *'"moduleFolderPath":'*)
+              case "$control" in
+                *missing*) printf '%s\n' '{"type":"action-rejected","action":"launch-izlauncher","message":"Invalid module package."}' ;;
+                *) printf '%s\n' '{"type":"homebrew-accepted","action":"launch-izlauncher","message":"Validated module."}' '{"type":"homebrew-started"}' '{"type":"homebrew-running","message":"Inert app running."}' ;;
+              esac ;;
+            *'"action":"launch-izlauncher"'*)
+              printf '{"type":"homebrew-started","path":"%s/izlauncher-fixture"}\n' "$PWD"
+              printf '%s\n' '{"type":"homebrew-running","message":"Inert app running."}'
+              emit_events panel-events ;;
+            *'"action":"launch-mintbrew"'*)
               printf '%s\n' '{"type":"homebrew-started"}' '{"type":"homebrew-running","message":"Inert app running."}' ;;
             *'"action":"finish"'*)
               printf '%s\n' '{"type":"homebrew-stopped"}' '{"type":"verified"}' '{"type":"rpc-finishing"}'
@@ -105,12 +123,28 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         check(predicate(), "Timed out: " + message)
     }
     static func main() async throws {
+        let panelToken = String(repeating: "a", count: 48)
+        let validPanel = "http://127.0.0.1:53674/#" + panelToken
+        check(IZlauncherPanelAddress.parse(validPanel)?.absoluteString == validPanel,
+              "a current local IZlauncher panel address is accepted")
+        for invalid in ["https://127.0.0.1:53674/#" + panelToken,
+                        "http://localhost:53674/#" + panelToken,
+                        "http://127.0.0.1:53674/other#" + panelToken,
+                        "http://127.0.0.1:53674/#short",
+                        "http://127.0.0.1:53674/#" + String(repeating: "A", count: 48),
+                        "http://127.0.0.1:53674/?x=1#" + panelToken] {
+            check(IZlauncherPanelAddress.parse(invalid) == nil,
+                  "nonlocal, malformed and altered panel addresses are rejected")
+        }
         check(!HostProfile.pepsipu.supportsHeldRPC && !HostProfile.pepsipu.supportsDemo && HostProfile.pepsipu.startArgumentCount == 9,
               "pepsipu capabilities preserve its nine-argument bootstrap and no held endpoint")
-        check(HostProfile.kurumuz.supportsHeldRPC && !HostProfile.kurumuz.supportsDemo && HostProfile.kurumuz.startArgumentCount == 5,
-              "kurumuz exposes held RPC but not unsupported demo mode")
+        check(HostProfile.kurumuz.supportsHeldRPC && HostProfile.kurumuz.supportsDemo && HostProfile.kurumuz.startArgumentCount == 5,
+              "kurumuz exposes held RPC and demo mode")
         check(HostProfile.bermTheSequel.supportsHeldRPC && HostProfile.bermTheSequel.supportsDemo && HostProfile.bermTheSequel.startArgumentCount == 5,
               "BermTheSequel retains held RPC and demo support")
+        check(!HostProfile.izmysh.supportsHeldRPC && !HostProfile.izmysh.supportsDemo &&
+              HostProfile.izmysh.startArgumentCount == 9 && HostProfile.izmysh.startPort == 39395 &&
+              HostProfile.izmysh.saveName == "NS2I", "IZMYSH uses its full-version bootstrap and separate START protocol")
         let five = "V=START(39380,192,0,2,42)", nine = "V=START(39380,192,0,2,42,1,2,3,281474976710655)"
         check(PostBootstrapCommandSelection.validStartCommand(nine, host: .pepsipu) && !PostBootstrapCommandSelection.validStartCommand(five, host: .pepsipu),
               "pepsipu validates the exact nine-value START including token values")
@@ -130,9 +164,9 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         check(!unsupported.model.hasLiveWorkers && unsupported.invocations.isEmpty && unsupported.model.runMode == .exploitOnly,
               "unsupported held workflows never spawn a worker")
 
-        for (launcher, action, edition) in [("GPUBrewLauncher", "launch-gpubrewlauncher", SmileBASICEdition.full), ("HBLauncher", "launch-hblauncher", .full), ("IZlauncher", "launch-izlauncher", .full), ("IZlauncher", "launch-izlauncher", .demo)] {
+        for (launcher, action, edition, host) in [("MintBrew", "launch-mintbrew", SmileBASICEdition.full, HostProfile.kurumuz), ("IZlauncher", "launch-izlauncher", .full, .bermTheSequel), ("IZlauncher", "launch-izlauncher", .demo, .bermTheSequel)] {
         var addressReads = 0
-        let fixture = try AttachmentFixture(edition: edition, addressProvider: {addressReads += 1; return []})
+        let fixture = try AttachmentFixture(host: host, edition: edition, addressProvider: {addressReads += 1; return []})
         defer {fixture.dispose()}
         let model = fixture.model
         for bad in ["", "relative/run", "/run\nother", "/run\0other"] {
@@ -163,22 +197,65 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               "the supervisor receives only the explicit local source selection")
         try fixture.put("release-attach")
         try await until("verified attachment enables homebrew") {model.phase == .rpcHeld && model.canLaunchHomebrew}
+        if action == "launch-izlauncher" {
+            try await until("IZlauncher module catalog") {model.izlauncherCatalogLoaded}
+            check(model.selectedIZlauncherModuleIDs.isEmpty,
+                  "standard IZlauncher modules are not preselected for manual loading")
+        }
         check(model.postRun.heldConfirmed && model.activeSessionSupportsHomebrew && !model.canStartKeyboard,
               "a live verified attachment enters held homebrew state without keyboard ownership")
+        let exploitLogs = fixture.source.appendingPathComponent("switch2", isDirectory: true)
+        try FileManager.default.createDirectory(at: exploitLogs, withIntermediateDirectories: false)
+        try Data("{\"stage\":\"pipeline-fixture\"}\n".utf8).write(to: exploitLogs.appendingPathComponent("pipeline.json"))
+        try Data("acquisition-fixture\n".utf8).write(to: exploitLogs.appendingPathComponent("acquisition.log"))
+        model.refreshExploitLogs()
+        check(model.pipelineLog.contains("pipeline-fixture") && model.acquisitionLog.contains("acquisition-fixture"),
+              "exploit logs come from the held run's switch2 directory")
         model.checkRPCStatus()
         try await until("local status response") {!model.postRun.statusInFlight && model.rpcStatus.contains("connected")}
-        if action == "launch-hblauncher" { model.launchHBLauncher() } else if action == "launch-izlauncher" { model.launchIZlauncher() } else { model.launchGPUBrewLauncher() }
+        if action == "launch-izlauncher" {
+            let panelDirectory = fixture.root.appendingPathComponent("izlauncher-fixture")
+            try FileManager.default.createDirectory(at: panelDirectory, withIntermediateDirectories: false)
+            let invalidEvent = ["type": "izlauncher-panel", "path": panelDirectory.path,
+                                "url": "http://localhost:53674/#" + panelToken]
+            let validEvent = ["type": "izlauncher-panel", "path": panelDirectory.path, "url": validPanel]
+            let events = try [invalidEvent, validEvent].map { event in
+                String(decoding: try JSONSerialization.data(withJSONObject: event), as: UTF8.self)
+            }.joined(separator: "\n") + "\n"
+            try fixture.put("panel-events", events)
+        }
+        if action == "launch-izlauncher" { model.launchIZlauncher() } else { model.launchMintBrew() }
         try await until("attached GPU launcher runs") {model.phase == .homebrewRunning}
+        if action == "launch-izlauncher" {
+            try await until("current IZlauncher panel address") { model.canOpenIZlauncherPanel }
+            check(model.izlauncherPanelURL?.absoluteString == validPanel && !model.log.contains(panelToken),
+                  "only the current run's validated panel URL is retained without logging its token")
+            check(!model.canLoadIZlauncherModules,
+                  "manual module loading waits for an explicit checkbox selection")
+            model.selectIZlauncherModule("blitbun", selected: true)
+            check(model.canLoadIZlauncherModules, "selected IZlauncher modules can be loaded while the app is running")
+            model.loadIZlauncherModules()
+            try await until("module load result") {model.izlauncherModuleMessage == "Loaded selected modules."}
+            try await until("ordinary console progress") {model.progressLabel.contains("frame-loop.cjs: Creating app pipelines")}
+            check(model.izlauncherModuleMessage == "Loaded selected modules.",
+                  "ordinary console progress does not overwrite the IZlauncher module helper")
+        } else {
+            check(!model.canOpenIZlauncherPanel && model.izlauncherPanelURL == nil,
+                  "other homebrew apps never expose an IZlauncher panel")
+        }
         check(model.homebrewTitle == launcher,
               "attached RPC forwards the selected launcher identity")
         if action == "launch-izlauncher" {
-            check(fixture.controls.first { $0["action"] as? String == action }?.count == 1 && model.activeEdition == edition && model.activeHost == .bermTheSequel,
-                  "attached IZlauncher preserves the current Berm host and full or demo edition")
+            check(fixture.controls.first { $0["action"] as? String == action }?["moduleIds"] == nil &&
+                  model.activeEdition == edition && model.activeHost == .bermTheSequel,
+                  "default IZlauncher startup leaves its bundled modules to auto-load and preserves the current Berm host and edition")
         }
-        model.launchGPUBrewLauncher(); model.launchHBLauncher(); model.launchIZlauncher(); model.attachExistingRPC()
+        model.launchMintBrew(); model.launchIZlauncher(); model.attachExistingRPC()
         check(!model.canLaunchHomebrew && fixture.invocations.count == 1, "one live supervisor owns the sole app attempt")
         try fixture.eventFile("premature-detach", type: "rpc-detached", session: "wrong-session")
         model.finishPostRun()
+        check(!model.canOpenIZlauncherPanel && model.izlauncherPanelURL == nil,
+              "finishing clears the local control panel capability")
         try await until("local finish request") {fixture.exists("finish-received")}
         try await Task.sleep(nanoseconds: 30_000_000)
         check(model.phase == .rpcFinishing && model.hasLiveWorkers && !model.canReturnToStart,
@@ -196,6 +273,36 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               fixture.controls.filter {$0["action"] as? String == "finish"}.count == 1,
               "duplicate app and finish operations are never replayed")
         model.returnToStart(); check(model.phase == .ready && !model.hasLiveWorkers, "detachment returns to the start screen after drain")
+        }
+
+        for module in [false, true] {
+            let fixture = try AttachmentFixture()
+            defer {fixture.dispose()}
+            let model = fixture.model
+            model.attachExistingRPC(); try fixture.put("release-attach")
+            try await until("held RPC for package validation") {model.canLaunchHomebrew}
+            if module {try await until("default module selection for custom package") {model.izlauncherCatalogLoaded}}
+            if module {model.launchIZlauncher(moduleFolder: URL(fileURLWithPath: "/tmp/missing-module"))}
+            else {model.launchCustomHomebrew(folder: URL(fileURLWithPath: "/tmp/missing-app"))}
+            check(!model.canLaunchHomebrew && !model.postRun.homebrewAttempted && model.pendingHomebrewAction != nil,
+                  "package validation waits before claiming the only app attempt")
+            try await until("invalid package rejection") {model.pendingHomebrewAction == nil && model.canLaunchHomebrew}
+            check(!model.postRun.homebrewAttempted && model.phase == .rpcHeld,
+                  "invalid package can be corrected in the same held session")
+            if module {model.launchIZlauncher(moduleFolder: URL(fileURLWithPath: "/tmp/compatible-module"))}
+            else {model.launchCustomHomebrew(folder: URL(fileURLWithPath: "/tmp/compatible-app"))}
+            try await until("validated package running") {model.phase == .homebrewRunning}
+            check(model.postRun.homebrewAttempted && model.pendingHomebrewAction == nil,
+                  "the accepted package claims exactly one launch")
+            if module {
+                check(fixture.controls.first { $0["moduleFolderPath"] != nil }?["moduleIds"] == nil,
+                      "custom module launch leaves standard IZlauncher modules to the host when none are selected")
+            }
+            model.finishPostRun()
+            try await until("validated package finish request") {fixture.exists("finish-received")}
+            try fixture.put("release-detach"); try fixture.put("release-exit")
+            try await until("validated package detach") {!model.hasLiveWorkers}
+            check(model.phase == .rpcDetached,"the validated package drains before detaching")
         }
 
         for badExit in [false, true] {

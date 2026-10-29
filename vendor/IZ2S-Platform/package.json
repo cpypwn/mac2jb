@@ -1,6 +1,6 @@
 {
   "name": "iz2s-platform",
-  "version": "0.16.0-rc.3",
+  "version": "0.16.0-rc.5",
   "private": true,
   "description": "Modular Switch 2 host platform prerelease",
   "engines": {

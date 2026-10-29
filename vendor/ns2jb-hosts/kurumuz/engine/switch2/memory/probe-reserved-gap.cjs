@@ -9,6 +9,7 @@ const {RunControl, StopRequested, reportWriter} = require("./run-control.cjs");
 const {packPages} = require("./session-tools.cjs");
 const {paths, pathPacket, pathPackets} = require("./paths.cjs");
 const normalizedPath = require("./normalized-path.cjs");
+const {qualifyOverlap} = require("./wave-overlap.cjs");
 const {packet, response} = require("../../shared/ipc.cjs");
 const functions = require("../../shared/sdk-functions.json");
 
@@ -173,7 +174,7 @@ async function main() {
     check(([native.restartAll, native.joinAll, affinity.pinAll].every(fn => typeof fn === 'function')),
       'Current helpers lack batching; bind current helpers or use --serial-host');
     await fs.copyFile(__filename, path.join(__dirname, label + '-source.cjs'));
-    for (const helper of ['cache-address-plan.cjs', 'fs-memory-control.cjs', 'session-tools.cjs', 'run-control.cjs', 'capture-workers.cjs', 'native-links.cjs'])
+    for (const helper of ['cache-address-plan.cjs', 'fs-memory-control.cjs', 'session-tools.cjs', 'run-control.cjs', 'capture-workers.cjs', 'native-links.cjs', 'wave-overlap.cjs'])
       await fs.copyFile(path.join(__dirname, helper), path.join(__dirname, label + '-' + helper));
     for (const helper of ['native-worker.cjs', 'affinity.cjs'])
       await fs.copyFile(path.join(directory, helper), path.join(__dirname, label + '-' + helper));
@@ -188,8 +189,9 @@ async function main() {
     await events.verify(s);
     const frequency = await timing.verify(s), mask = await affinity.available(s);
     const cores = Array.from({length: 32}, (_, i) => 1n << BigInt(i)).filter(bit => bit & mask);
+    report.mountPlan = {save: 'save', temporary: 'save'};
     saved = await mounted.cloneMountedFilesystem(s, 'save');
-    temporary = await mounted.cloneMountedFilesystem(s, 'tmp');
+    temporary = await mounted.cloneMountedFilesystem(s, 'save');
     root = await s.openService('fsp-srv');
     check(!(await s.ipc('Initialize gap root', root, 1, u64(0), {pid: true})).result, 'Root initialization failed');
     {
@@ -198,24 +200,15 @@ async function main() {
       originalRom = copied.handle;
       report.originalRom = copied.source;
     }
-    for (const [name, handle, bytes] of [['save', saved, writeSize + 0x400000], ['tmp', temporary, 0x10000]]) {
-      const space = await normal(handle, 11, '/');
-      const free = space.result ? 0n : space.data.readBigUInt64LE();
-      (report.freeSpace ||= {})[name] = {result: space.result, bytes: free.toString(), required: bytes};
-      if (name === 'tmp' && !space.result && free < BigInt(bytes)) {
-        // A low-space result does not establish that our own scratch remains.
-        // Inventory the root read-only before deciding what, if anything, is safe to remove.
-        try { report.tmpRootEntries = await require(path.join(directory, 'filesystem.cjs')).listDirectory(s, handle, '/'); }
-        catch (error) { report.tmpRootReadError = error.message; }
-        await save();
-      }
-      check(!space.result && (name === 'tmp' ? free >= BigInt(bytes) : free > BigInt(bytes)),
-        'Insufficient ' + name + ' space');
-      check((await normal(handle, 7, scratch)).canonicalResult === 0x202, 'Scratch already exists');
-      check(!(await normal(handle, 2, scratch)).result, 'Scratch creation failed');
-      created.push({name, handle, path: scratch});
-      await save();
-    }
+    const requiredSaveSpace = writeSize + 0x400000 + 0x10000;
+    const space = await normal(saved, 11, '/');
+    const free = space.result ? 0n : space.data.readBigUInt64LE();
+    report.freeSpace = {save: {result: space.result, bytes: free.toString(), required: requiredSaveSpace}};
+    check(!space.result && free > BigInt(requiredSaveSpace), 'Insufficient save space');
+    check((await normal(saved, 7, scratch)).canonicalResult === 0x202, 'Scratch already exists');
+    check(!(await normal(saved, 2, scratch)).result, 'Scratch creation failed');
+    created.push({name: 'save', handle: saved, path: scratch});
+    await save();
     const filename = scratch + '/commit_data';
     check(!(await normal(saved, 0, filename, Buffer.concat([u64(0), u64(writeSize)]))).result, 'Commit file creation failed');
     const parts = canary.slice(1).split('/');
@@ -442,6 +435,7 @@ async function main() {
       const heldPaths = rows.filter(row => ['canary', 'filler0', 'filler1', 'guard0', 'guard1'].includes(row.role));
       const beforeRelease = rows.find(row => row.role === 'preRelease');
       const canaryRow = rows.find(row => row.role === 'canary');
+      const overlap = qualifyOverlap(rows);
       const guardBytes = await s.readOwned(completedFlag, 32);
       const nativeGuard = {completed: guardBytes.readUInt32LE(completedDecision - completedFlag),
         earlyHole: guardBytes.readUInt32LE(holeDecision - completedFlag),
@@ -452,8 +446,7 @@ async function main() {
         preReleaseUsed: group.held[5] - beforeRelease.memory[5],
         restored: after[5] + (createPin ? 13616 : 0) === group.before[5], baseline: group.before[5], after: after[5],
         newPersistentBytes: createPin ? group.before[5] - after[5] : 0,
-        allPending: [...heldPaths, ...rows.filter(r => r.role.startsWith('tail') || r.role === 'commit')].every(
-          r => r.startUs < trigger.startUs && trigger.endUs < r.endUs),
+        allPending: overlap.qualified, pendingMode: overlap.mode,
         selectedMarker: trigger.result === 0 && Buffer.from(trigger.inline, 'hex').readUInt32LE() === 1,
         changedPaths: heldPaths.filter(r => r.result !== (r.role === 'canary' ? 0 : 0x202) ||
           r.role === 'canary' && Buffer.from(r.inline, 'hex').readUInt32LE() !== 1).map(r => r.role),

@@ -12,8 +12,8 @@ struct BundledRuntime {
     var host: HostProfile {
         guard let data = try? Data(contentsOf: root.appendingPathComponent("selected-host.json")),
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = value["id"] as? String else { return .bermTheSequel }
-        return HostProfile(rawValue: id) ?? .bermTheSequel
+              let id = value["id"] as? String else { return .kurumuz }
+        return HostProfile(rawValue: id) ?? .kurumuz
     }
 
     enum RuntimeError: LocalizedError {
@@ -25,7 +25,7 @@ struct BundledRuntime {
 
     // Each launch has its own host files and pairing state. A prior session's
     // pairing command can never be consumed by a new GUI launch.
-    static func prepare(sessionParent: URL? = nil, host: HostProfile = .bermTheSequel) throws -> BundledRuntime {
+    static func prepare(sessionParent: URL? = nil, host: HostProfile = .kurumuz) throws -> BundledRuntime {
         umask(0o077)
         guard let bytes = embeddedPayloadBytes(), embeddedPayloadSize() > 0 else {
             throw RuntimeError.invalid("The offline runtime is missing from this app. Rebuild or download a complete app.")
@@ -82,7 +82,7 @@ struct BundledRuntime {
                          "--no-same-owner", "--no-same-permissions"])
             try manager.removeItem(at: archive)
             let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard",
-                                       "homebrew/bin/spirv-val", "homebrew/python/bin/python3",
+                                       "homebrew/bin/spirv-val", "homebrew/bin/glslangValidator", "homebrew/python/bin/python3",
                                        "homebrew/python/bin/python3.13"])
             if let walker = manager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
                 for case let url as URL in walker {
@@ -109,19 +109,28 @@ struct BundledRuntime {
                          "scripts/gui-attach.cjs", "scripts/rpc-attachment.cjs",
                          "scripts/host-profiles.cjs", "scripts/prepare-host-profiles.cjs", "packaging/host-profiles.json",
                          "vendor/ns2jb-hosts/pepsipu/run.cjs", "vendor/ns2jb-hosts/kurumuz/run.cjs",
-                         "scripts/gui-homebrew.cjs", "scripts/gui-stremio.cjs", "stremio/pipeline.cjs", "stremio/app/app.json", "scripts/check-homebrew-runtime.cjs",
+                         "scripts/gui-homebrew.cjs", "scripts/gui-stremio.cjs", "stremio/pipeline.cjs", "stremio/source-preferences.cjs", "stremio/app/app.json", "scripts/check-homebrew-runtime.cjs",
                          "scripts/gui-hblauncher.cjs", "vendor/HBLauncher/homebrew-launcher/launcher.cjs",
+                         "scripts/gui-mintbrew.cjs", "scripts/prepare-mintbrew.cjs",
+                         "vendor/MintBrew/manifest.json", "vendor/MintBrew/homebrew-launcher/launcher.cjs", "vendor/MintBrew/apps/hello-world/app.json",
+                         "vendor/MintBrew/apps/froggy-road/app.json", "vendor/MintBrew/apps/cpu-gpu-probe/app.json",
+                         "vendor/MintBrew/apps/chip8-test/app.json", "vendor/MintBrew/apps/ftpd-sb/app.json",
+                         "vendor/MintBrew/apps/izdoom/app.json", "vendor/MintBrew/apps/stremio/app.json",
+                         "vendor/MintBrew/apps/ouncecake/app.json",
+                         "integrations/mintbrew-stremio/adapter.cjs", "integrations/mintbrew-ouncecake/service.cjs",
+                         "packaging/ftpd-sb-v0.1.0-SHA256SUMS", "packaging/ftpd-sb-v0.1.0-release-SHA256SUMS",
+                         "packaging/ftpd-sb-v0.1.0-provenance.json",
                          "vendor/HBLauncher/apps/ftpd-sb/app.json", "packaging/HBLauncher-v0.2.0-SHA256SUMS",
                          "scripts/gui-gpubrewlauncher.cjs", "vendor/GPUBrewLauncher/homebrew-launcher/launcher.cjs",
                          "vendor/GPUBrewLauncher/CREDITS", "packaging/GPUBrewLauncher-SHA256SUMS",
-                         "scripts/gui-izlauncher.cjs", "scripts/prepare-izlauncher.cjs", "scripts/check-izlauncher-runtime.cjs",
                          "vendor/IZ2S-Platform/LICENSE", "packaging/IZ2S-Platform-SHA256SUMS",
-                         "packaging/IZ2S-Platform-provenance.json", "homebrew/IZ2S-Platform/mac2jb-runtime.json",
-                         "homebrew/IZ2S-Platform/shells/izlauncher/server/runtime.cjs",
-                         "homebrew/IZ2S-Platform/modules/iz-exchange/iz-exchange.izm",
+                         "vendor/IZ2S-Platform/engines/izmysh/server/host.cjs",
+                         "packaging/IZ2S-Platform-provenance.json", "packaging/runtime-homebrew.json",
                          "scripts/gui-ouncecake.cjs", "vendor/OunceCake/LICENSE", "vendor/OunceCake/engine/oz-code/native.bin",
+                         "integrations/izdoom/prepare.cjs", "vendor/IZDOOM/IZDOOM-v0.17.1-IZ2S.izm",
+                         "vendor/IZDOOM/IZDOOM-v0.17.1-source.tar.gz", "vendor/IZDOOM/SHA256SUMS",
                          "packaging/OunceCake-provenance.json", "packaging/OunceCake-SHA256SUMS",
-                         "homebrew/manifest.json", "homebrew/fonts/DejaVuSans.ttf",
+                         "homebrew/manifest.json", "homebrew/fonts/DejaVuSans.ttf", "homebrew/bin/glslangValidator",
                          "scripts/install-driver.sh", "drivers/SHA256SUMS",
                          "drivers/usbgadget.kext/Contents/MacOS/usbgadget",
                          "vendor/ns2jb/run.cjs", "assets/bootstrap.bas", "source/LICENSE"] {

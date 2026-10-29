@@ -130,7 +130,7 @@ async function create({rpc,directory,appDirectory=path.join(__dirname,'app'),onP
     const qualified=await readJSON(path.join(directory,'launcher-auto-check.json'));
     check(menu.session===rpc.a.session&&menu.ready&&menu.scratchRestored&&qualified.session===rpc.a.session&&
       qualified.passed&&qualified.scratchRestored,'Graphics preparation belongs to another or incomplete session');
-    onProgress('Preparing the Stremio media display');
+    onProgress('Preparing Stremio');
     const app=await require('../vendor/GPUBrewLauncher/homebrew-launcher/app-catalog.cjs').readApp(appDirectory);
     check(app.id==='stremio-experimental'&&app.files.memory?.allocationBytes===P.MEMORY_BYTES,'Unexpected media package layout');
     const gpu=await require('../vendor/GPUBrewLauncher/homebrew-launcher/gpu-app.cjs').prepare(nativeRpc,menu,app,directory);

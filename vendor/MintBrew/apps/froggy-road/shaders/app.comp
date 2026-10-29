@@ -1,0 +1,145 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x = 1) in;
+#include "abi.glsl"
+#include "hb.glsl"
+#include "game.glsl"
+
+bool hitCar(int col, int row, uint tick) {
+    if (!fgIsRoad(row)) return false;
+    int lane = fgRowLane(row);
+    if (lane < 0) return false;
+    float left = float(col) * FG_CELL + 16.0;
+    float right = left + 32.0;
+    for (int slot = 0; slot < 3; slot++) {
+        float x = fgCarX(lane, slot, tick);
+        if (x < right && x + FG_CAR_LEN > left) return true;
+    }
+    return false;
+}
+
+void main() {
+    uint pressed = hbPressed();
+    uint mode = c.game.x;
+    uint lives = c.game.y;
+    int timer = int(c.game.z);
+    uint pads = c.game.w;
+    ivec4 frog = c.piece;
+    uint tick = c.stats.y + 1u;
+    int score = int(c.stats.x);
+    int best = int(c.stats.w);
+    int lastDir = frog.w;
+
+    bool exitNow = hbConnected() && (pressed & (HB_B | HB_MINUS)) != 0u;
+    if (exitNow) {
+        hbExit();
+    } else if (mode == 3u) {
+        // Short squash pause before respawning or ending the run.  If the
+        // player lets go of the stick while waiting, re-arm the flick.
+        if (length(hbStick(false)) <= 0.45) lastDir = -1;
+        int dying = frog.z - 1;
+        if (dying <= 0) {
+            if (lives == 0u) {
+                mode = 2u;
+                hbSound(5);
+            } else {
+                mode = 0u;
+                frog.x = 6;
+                frog.y = 0;
+                timer = FG_GAME_FRAMES;
+            }
+            dying = 0;
+        }
+        frog.z = dying;
+    } else if (mode == 0u) {
+        if (timer > 0) timer--;
+        if (timer <= 0) {
+            if (lives > 0u) lives--;
+            mode = 3u;
+            frog.z = 40;
+            hbSound(2);
+        } else {
+            int dir = -1;
+            if ((pressed & HB_UP) != 0u) dir = 0;
+            else if ((pressed & HB_DOWN) != 0u) dir = 1;
+            else if ((pressed & HB_LEFT) != 0u) dir = 2;
+            else if ((pressed & HB_RIGHT) != 0u) dir = 3;
+
+            // A stick flick moves one cell.  Returning to centre re-arms it;
+            // keeping the stick held does not race the frog across the board.
+            vec2 stick = hbStick(false);
+            int stickDir = -1;
+            if (length(stick) > 0.45) {
+                if (abs(stick.x) > abs(stick.y)) stickDir = stick.x > 0.0 ? 3 : 2;
+                else stickDir = stick.y > 0.0 ? 0 : 1;
+            }
+            if (dir < 0 && stickDir >= 0 && stickDir != lastDir) dir = stickDir;
+            lastDir = stickDir;
+
+            if (dir >= 0) {
+                int dx = 0;
+                int dy = 0;
+                if (dir == 0) dy = 1;
+                else if (dir == 1) dy = -1;
+                else if (dir == 2) dx = -1;
+                else dx = 1;
+
+                int col = frog.x + dx;
+                int row = frog.y + dy;
+                if (col < 0 || col >= FG_COLS || row < 0 || row >= FG_ROWS) {
+                    hbSound(6);
+                } else if (row == 12) {
+                    if (fgPadCol(col)) {
+                        int pad = fgPadIndex(col);
+                        if ((pads & (1u << pad)) == 0u) {
+                            pads |= 1u << pad;
+                            score += 100 + timer / 6;
+                            if (pads == FG_ALL_PADS) {
+                                mode = 1u;
+                                score += 1000;
+                                hbSound(4);
+                            } else {
+                                frog.x = 6;
+                                frog.y = 0;
+                                timer = FG_GAME_FRAMES;
+                                hbSound(3);
+                            }
+                        } else {
+                            hbSound(6);
+                        }
+                    } else {
+                        hbSound(6);
+                    }
+                } else {
+                    frog.x = col;
+                    frog.y = row;
+                    if (dy > 0) score += 10;
+                    hbSound(1);
+                }
+            }
+
+            if (mode == 0u && hitCar(frog.x, frog.y, tick)) {
+                if (lives > 0u) lives--;
+                mode = 3u;
+                frog.z = 40;
+                hbSound(2);
+            }
+        }
+    } else if ((mode == 1u || mode == 2u) && hbConnected() && (pressed & HB_A) != 0u) {
+        mode = 0u;
+        lives = 3u;
+        timer = FG_GAME_FRAMES;
+        pads = 0u;
+        frog = ivec4(6, 0, 0, -1);
+        lastDir = -1;
+        score = 0;
+        hbSound(1);
+    }
+
+    best = max(best, score);
+    c.game = uvec4(mode, lives, uint(max(timer, 0)), pads);
+    c.piece = ivec4(frog.x, frog.y, frog.z, lastDir);
+    c.stats = uvec4(uint(max(score, 0)), tick, 0u, uint(max(best, 0)));
+    c.transition.x = max(0.0, c.transition.x - 1.0 / 15.0);
+    hbEndFrame();
+}

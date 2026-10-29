@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / 'packaging/homebrew-runtime.lock.json'
 ADAPTER = ROOT / 'packaging/homebrew/sitecustomize.py'
-EXE = {'bin/spirv-val', 'python/bin/python3', 'python/bin/python3.13'}
+EXE = {'bin/spirv-val', 'bin/glslangValidator', 'python/bin/python3', 'python/bin/python3.13'}
 def digest(path): return hashlib.sha256(path.read_bytes()).hexdigest()
 def run(args, **kwargs): return subprocess.run(list(map(str,args)), check=True, **kwargs)
 def manifest_ok(output):
@@ -87,6 +87,12 @@ def main():
             run([cmake,'--build',build,'--target','spirv-val','-j','8'])
             validator=build/'tools/spirv-val'
         (stage/'bin').mkdir(); shutil.copyfile(validator,stage/'bin/spirv-val')
+        with tempfile.TemporaryDirectory(prefix='glslang-',dir=work) as directory:
+            run(['tar','-xzf',archives['glslang'],'-C',directory])
+            run(['lipo',Path(directory)/'bin/glslang','-thin','arm64','-output',stage/'bin/glslangValidator'])
+        if digest(stage/'bin/glslangValidator') != lock['glslang']['arm64Sha256']:
+            raise SystemExit('Unexpected glslang arm64 executable')
+        shutil.copyfile(archives['glslangLicense'],stage/'licenses/glslang-LICENSE.txt')
         native=[]
         for file in sorted(stage.rglob('*')):
             if file.is_symlink(): raise SystemExit('Unexpected runtime link: '+str(file))

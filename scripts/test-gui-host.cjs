@@ -109,7 +109,7 @@ test('ordinary host cannot call a bind failure safe after '+prefix.trim(),{timeo
 });
 test('timing defaults and independent range limits are validated', () => {
   assert.deepEqual(hidSettings([]), {delay: 10, enumerationTimeout: 4,
-    loadWaitMs: 1000, runWaitMs: 1000, removeWaitMs: 1000, loadConfirmWaitMs: 1000});
+    loadWaitMs: 1000, runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0});
   assert.equal(hidSettings(['2000', '--enumeration-timeout', '120', '--load-wait-ms', '0']).loadWaitMs, 0);
   for (const args of [['0'], ['2001'], ['50', '--enumeration-timeout', '0'],
     ['50', '--enumeration-timeout', '121'], ['50', '--run-wait-ms', '120001'],
@@ -156,6 +156,9 @@ for (const demo of [false,true]) test(`save-bootstrap submits only the ${demo?'d
     assert.equal(call.helper,'mac2jb-commands');assert.equal(call.args.includes('--save-bootstrap'),true);
     assert.equal(call.args.includes('--demo'),demo);assert.equal(call.args[call.args.indexOf('--delay-ms')+1],demo?'37':'10');
     assert.equal(call.args[call.args.indexOf('--load-wait-ms')+1],'22');
+    assert.equal(call.args[call.args.indexOf('--save-name')+1],'NS2');
+    assert.equal(call.args[call.args.indexOf('--load-name')+1],'NS2');
+    assert.equal(call.args[call.args.indexOf('--start-port')+1],'39380');
     assert.equal(call.args.some(value=>['--commands','--start-command','--start-prefix'].includes(value)),false);
   }
   assert.deepEqual(result.events.filter(row=>row.type==='typing').map(row=>[row.kind,row.total,row.controller]),[['save-bootstrap',1,'usb-drd0']]);

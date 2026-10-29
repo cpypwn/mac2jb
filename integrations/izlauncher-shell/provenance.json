@@ -1,0 +1,29 @@
+{
+  "scope": "offline shader shell for the pinned IZlauncher base and compatible module contributions",
+  "platformCommit": "d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
+  "moduleCommits": {
+    "blitbun": "7d4098df26909016ace0fb4760ef9269cd2b4743",
+    "vacootube": "f28e762a085c4a4adcd655f12b40f4a68d646a4f"
+  },
+  "variants": {
+    "iz-shell-926e77aeaca833b4": [
+      "blitbun",
+      "iz-exchange"
+    ],
+    "iz-shell-d37f5c9d3aeab4c6": [
+      "blitbun",
+      "iz-exchange",
+      "vacootube"
+    ]
+  },
+  "compiler": {
+    "name": "Khronos glslangValidator",
+    "version": "16.6.0",
+    "archive": "https://github.com/KhronosGroup/glslang/releases/download/16.6.0/glslang-16.6.0-macos-universal-release.tar.gz",
+    "archiveSha256": "4f8c05f2888a73ed0b7b274bc524af9130e09ae94b43c0f3f9ed83cfae852834",
+    "binarySha256": "18c23a68d6f4a21e822a8dcee212a2a448a66494b8f58aaf1655ef6328543d11",
+    "arm64Sha256": "0b879298501031c4aa5eb5bb584ec8005692bd983738611f7c3fc8c23fb90a03"
+  },
+  "validator": "SPIRV-Tools v2026.4 v2026.4-0-gef96ed7",
+  "consoleValidation": "not performed"
+}

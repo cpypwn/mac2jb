@@ -1,0 +1,113 @@
+#version 450
+#extension GL_GOOGLE_include_directive : require
+layout(local_size_x=1) in;
+#include "launcher-state.glsl"
+#include "hb.glsl"
+void launchSelection(){
+ if(c.state.x<c.reserved.w)c.transition.y=1.0;
+ else c.state.w=1u;
+}
+float scrollTarget(uint selection,uint count){
+ return count>4u?clamp(float(selection)-1.0,0.0,float(count-4u)):0.0;
+}
+int hitRow(vec2 p,uint count){
+ if(p.y<350.0||p.y>950.0)return -1;
+ uint first=uint(floor(clamp(c.transition.w,0.0,28.0)));
+ for(uint row=0u;row<5u;row++){
+  uint index=first+row;if(index>=count)break;
+  float y=424.0+(float(index)-c.transition.w)*151.0;
+  vec2 q=abs(p-vec2(960,y))-vec2(642,44);
+  if(min(max(q.x,q.y),0.0)+length(max(q,0.0))-18.0<=0.0)return int(index);
+ }
+ return -1;
+}
+void main(){
+ uint buttons=hbButtons(),pressed=hbPressed();
+ c.motion.x+=1.0/60.0;c.state.z++;
+ vec2 optical=vec2(0);bool leftMouse=false,rightMouse=false;
+ if(c.game.x==0u){c.flow.xy=vec2(960,540);c.game.x=1u;}
+ vec2 stickPointer=hbStick(true);
+ if(length(stickPointer)>0.0){
+  c.flow.xy=clamp(c.flow.xy+vec2(stickPointer.x,-stickPointer.y)*18.0,vec2(24),vec2(1896,1056));
+  c.game.y=1u;
+ }
+ if(hbHas(HB_JOY_MOUSE)){
+  for(uint player=0u;player<8u;player++){
+   leftMouse=leftMouse||(hbJoyMouseAttributes(player,0u)&2u)!=0u;
+   rightMouse=rightMouse||(hbJoyMouseAttributes(player,1u)&2u)!=0u;
+   for(uint side=0u;side<2u;side++)optical+=hbJoyMouseDelta(player,side,c.rows[player*2u+side]);
+  }
+  c.flow.xy=clamp(c.flow.xy+optical*1.5,vec2(24),vec2(1896,1056));
+ }
+
+ c.stats.w=((leftMouse||rightMouse)||c.game.y!=0u)?1u:0u;
+ c.motion.w=max(0.0,c.motion.w-1.0/60.0);
+ if(c.transition.y!=0.0){
+  c.transition.x=min(1.0,c.transition.x+1.0/15.0);
+  if(c.transition.x>=1.0)c.reserved.y=c.state.x+1u;
+  c.state.y=buttons;return;
+ }
+ c.transition.x=max(0.0,c.transition.x-1.0/15.0);
+ bool connected=(c.raw[2].x&1u)!=0u;
+ uint count=min(c.library.x,32u);
+ if(count==0u){c.state.x=0u;c.state.w=0u;}else c.state.x=min(c.state.x,count-1u);
+ uint previousSelection=c.state.x;
+ float target=scrollTarget(c.state.x,count);
+ if(c.state.z==1u)c.transition.w=target;
+ else c.transition.w=mix(clamp(c.transition.w,0.0,scrollTarget(count>0u?count-1u:0u,count)),target,.22);
+ if(connected){
+  float stick=float(int(c.raw[1].y))/32767.0;int direction=0;
+  if((pressed&(1u<<13))!=0u)direction=-1;
+  if((pressed&(1u<<15))!=0u)direction=1;
+  if(abs(stick)>.55&&c.motion.w<=0.0){direction=stick>0.0?-1:1;c.motion.w=.4;}
+  if(direction!=0&&count>0u&&c.state.w==0u)c.state.x=uint((int(c.state.x)+direction+int(count))%int(count));
+  if((pressed&2u)!=0u)c.state.w=0u;
+ }
+ if(c.stats.w!=0u&&c.state.w==0u){
+  bool click=(pressed&512u)!=0u||(leftMouse&&(pressed&HB_L)!=0u)||(rightMouse&&(pressed&HB_R)!=0u);
+  // the appearance switch accepts mouse or zr dragging and snaps to either side.
+  bool sliderDown=leftMouse||rightMouse||(buttons&512u)!=0u;
+  if(sliderDown&&abs(c.flow.xy.x-960.0)<=92.0&&abs(c.flow.xy.y-1017.0)<=24.0)c.reserved.x=c.flow.xy.x>=960.0?1u:0u;
+  if(length(optical)>0.0||length(stickPointer)>0.0||click){
+   int index=hitRow(c.flow.xy,count);
+   if(index>=0){c.state.x=uint(index);if(click)launchSelection();}
+  }
+  if(click&&distance(c.flow.xy,vec2(1660,179))<=65.0&&c.refresh.x<=0.0){c.refresh.x=1.0;c.refresh.y=0.0;c.refresh.z+=1.0;}
+ }
+ bool touching=c.touch[2]==1u&&(c.touch[6]&2u)==0u;
+ if(touching){
+  vec2 p=vec2(c.touch[8],c.touch[9])*1.5;
+  if(c.library.w==0u&&distance(p,vec2(1660,179))<=65.0&&c.state.w==0u&&c.refresh.x<=0.0){c.refresh.x=1.0;c.refresh.y=0.0;c.refresh.z+=1.0;}
+  if(c.state.w==0u&&p.x>=868.0&&p.x<=1052.0&&p.y>=993.0&&p.y<=1041.0)c.reserved.x=p.x>=960.0?1u:0u;
+  if(c.state.w==0u){
+   int index=hitRow(p,count);
+   if(index>=0){c.state.x=uint(index);if(c.state.x<c.reserved.w&&c.library.w==0u)launchSelection();}
+  }
+ }
+ c.library.w=touching?1u:0u;
+ // a confirms the highlighted row when the pointer is hidden. with a pointer,
+ // it clicks the hovered row or the appearance switch.
+ if((pressed&1u)!=0u&&count>0u&&c.state.w==0u){
+  bool pointerActive=c.stats.w!=0u;
+  bool overSwitch=pointerActive&&abs(c.flow.xy.x-960.0)<=92.0&&abs(c.flow.xy.y-1017.0)<=24.0;
+  if(overSwitch)c.reserved.x=c.flow.xy.x>=960.0?1u:0u;
+  else if(pointerActive){
+   int index=hitRow(c.flow.xy,count);
+   if(index>=0){c.state.x=uint(index);launchSelection();}
+  }
+  else launchSelection();
+ }
+ if(c.state.x!=previousSelection){
+  c.stats.y=c.state.z;
+  c.events.x++;
+  c.events.y=8u;
+  target=scrollTarget(c.state.x,count);
+  if(abs(target-c.transition.w)>3.0)c.transition.w=target;
+ }
+ // completion is acknowledged by the host after a real folder rescan.
+ if(c.refresh.x>0.0)c.refresh.y=mod(c.refresh.y+.14,6.28318530718);
+ c.motion.y=float(c.state.x);c.motion.z=mix(c.motion.z,float(c.state.w),.13);
+ // reserved.x is the light/dark target; transition.z eases towards it so the
+ // fragment shader can cross-fade without any extra host work.
+ c.transition.z=mix(c.transition.z,float(c.reserved.x!=0u),.18);c.state.y=buttons;
+}

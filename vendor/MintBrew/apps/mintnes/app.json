@@ -1,0 +1,21 @@
+{
+  "format": "hblauncher.gpu-app",
+  "abi": 1,
+  "id": "mintnes",
+  "name": "MintNES",
+  "version": "0.1.0",
+  "description": "Play mapper-0 NES homebrew on the Switch GPU",
+  "transition": "none",
+  "icon": "assets/icon.png",
+  "initialState": "assets/state.bin",
+  "data": "assets/text.bin",
+  "memory": {
+    "bytes": 434176,
+    "initial": "assets/memory.bin"
+  },
+  "shaders": {
+    "vertex": "app.vert.spv",
+    "fragment": "app.frag.spv",
+    "compute": "app.comp.spv"
+  }
+}

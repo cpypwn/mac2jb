@@ -7,8 +7,16 @@
 
 static bool demo_edition = false;
 static int start_argument_count = 5;
+static int start_port = 39380;
+static char save_name[17] = "NS2";
+static char load_name[17] = "NS2";
+static char load_command[64] = "LOAD \"TXT:NS2\"";
+static char save_command[64] = "SAVE \"NS2\"";
+static char demo_load_command[128];
+static char demo_save_command[256];
+static char start_prefix_text[64] = "V=START(39380,";
 static const char *steps[] = {
-    "LOAD \"TXT:NS2\"",
+    load_command,
     "RUN",
     "REMOVE NSR,&H60000000,&H3FFFFFFF",
     NULL // Loaded from the currently running ns2jb host
@@ -58,7 +66,7 @@ static int load_active_start(char *destination, size_t capacity) {
         char *next;
         unsigned long long value = strtoull(p, &next, 10);
         if (errno == ERANGE || next == p ||
-            (i == 0 && value != 39380) ||
+            (i == 0 && value != (unsigned long long)start_port) ||
             (i >= 1 && i <= 4 && value > 255) ||
             (i >= 5 && value > 281474976710655ULL) ||
             (i < start_argument_count - 1 && *next != ',') ||
@@ -90,7 +98,7 @@ static int manual_start(const char *text, char *destination, size_t capacity) {
     for (int i=0;i<start_argument_count;i++) {
         if (*p<'0' || *p>'9' || (*p=='0' && p[1]>='0' && p[1]<='9')) return -1;
         char *next; errno=0; unsigned long long value=strtoull(p,&next,10);
-        if (errno || next==p || (i==0 ? value!=39380 : i<5 ? value>255 : value>281474976710655ULL) ||
+        if (errno || next==p || (i==0 ? value!=(unsigned long long)start_port : i<5 ? value>255 : value>281474976710655ULL) ||
             (i<start_argument_count-1 ? *next!=',' : *next!=')')) return -1;
         p=next+1;
     }
@@ -100,7 +108,13 @@ static int manual_start(const char *text, char *destination, size_t capacity) {
 static int gui_selection[4]={0,1,2,3},gui_command_count=4;
 static bool gui_start_prefix=false;
 static bool gui_save_bootstrap=false;
-static const char *start_prefix_text="V=START(39380,";
+static bool valid_program_name(const char *name) {
+    size_t length = strlen(name);
+    if (length < 1 || length > 16) return false;
+    for (const unsigned char *p = (const unsigned char *)name; *p; ++p)
+        if (!((*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '_')) return false;
+    return true;
+}
 static int command_selection(const char *text) {
     const char *names[]={"load","run","remove","start"};
     const char *p=text;int count=0,previous=-1;
@@ -116,8 +130,8 @@ static int command_selection(const char *text) {
     gui_command_count=count;return 0;
 }
 static bool gui_events = false;
-static int gui_load_wait_ms = 1000, gui_run_wait_ms = 1000;
-static int gui_remove_wait_ms = 1000, gui_load_confirm_wait_ms = 1000;
+static int gui_load_wait_ms = 1000, gui_run_wait_ms = 0;
+static int gui_remove_wait_ms = 0, gui_load_confirm_wait_ms = 0;
 static int gui_enumeration_seconds = 4;
 static const char *gui_command_names[] = {"LOAD", "RUN", "REMOVE", "START"};
 static void gui_command_event(const char *type, int step) {
@@ -129,10 +143,11 @@ static void gui_command_event(const char *type, int step) {
 }
 static void gui_prefix_event(int step) {
     if (!gui_events) return;
-    printf("MAC2JB_GUI {\"type\":\"command-prefix-complete\",\"step\":%d,\"completed\":%d,\"total\":%d,\"label\":\"START\",\"prefix\":\"V=START(39380,\",\"startPending\":true}\n",step,step-1,gui_command_count);
+    printf("MAC2JB_GUI {\"type\":\"command-prefix-complete\",\"step\":%d,\"completed\":%d,\"total\":%d,\"label\":\"START\",\"prefix\":\"%s\",\"startPending\":true}\n",step,step-1,gui_command_count,start_prefix_text);
     fflush(stdout);
 }
 static int gui_wait(int milliseconds, const char *label, int completed) {
+    if (milliseconds == 0) return interrupted ? -1 : 0;
     double deadline = seconds_now() + (double)milliseconds / 1000.0;
     for (;;) {
         double left = deadline - seconds_now();
@@ -163,7 +178,7 @@ static int gui_timing_test(void) {
         if (selected==3 && gui_start_prefix) gui_prefix_event(step);
         else gui_command_event("command-complete", step);
         if (selected == 0 && gui_wait(gui_load_confirm_wait_ms, "LOAD confirmation", step)<0) return 1;
-        if (step < gui_command_count && gui_wait(waits[selected], gui_command_names[selected], step)<0) return 1;
+        if ((selected == 0 || step < gui_command_count) && gui_wait(waits[selected], gui_command_names[selected], step)<0) return 1;
     }
     return interrupted ? 1 : 0;
 }
@@ -219,8 +234,9 @@ static int type_selected(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep, int del
             if (gui_wait(gui_load_confirm_wait_ms,"LOAD confirmation",step)<0 || interrupted ||
                 send_stroke(ctx,iface,ep,0,40,delay_ms)<0) return 1;
             release_all_keys(ctx,iface,ep);
+            if (gui_wait(gui_load_wait_ms,"LOAD",step)<0) return 1;
         }
-        if (automatic && step<gui_command_count && gui_wait(waits[selected],gui_command_names[selected],step)<0) return 1;
+        if (automatic && selected!=0 && step<gui_command_count && gui_wait(waits[selected],gui_command_names[selected],step)<0) return 1;
     }
     return interrupted ? 1 : 0;
 }
@@ -272,6 +288,21 @@ int main(int argc, char **argv) {
             if (gui_start_prefix) { fputs("Duplicate --start-prefix.\n",stderr); return 2; }
             gui_start_prefix=true;
         }
+        else if (!strcmp(argv[a], "--start-port") && a+1<argc) {
+            char *end=NULL;long value=strtol(argv[++a],&end,10);
+            if (!end || *end || value<1024 || value>65535) {fputs("--start-port must be 1024..65535.\n",stderr);return 2;}
+            start_port=(int)value;
+        }
+        else if (!strcmp(argv[a], "--save-name") && a+1<argc) {
+            const char *value=argv[++a];
+            if (!valid_program_name(value)) {fputs("--save-name must contain 1..16 uppercase letters, digits or underscores.\n",stderr);return 2;}
+            snprintf(save_name,sizeof(save_name),"%s",value);
+        }
+        else if (!strcmp(argv[a], "--load-name") && a+1<argc) {
+            const char *value=argv[++a];
+            if (!valid_program_name(value)) {fputs("--load-name must contain 1..16 uppercase letters, digits or underscores.\n",stderr);return 2;}
+            snprintf(load_name,sizeof(load_name),"%s",value);
+        }
         else if ((!strcmp(argv[a],"--commands") || !strcmp(argv[a],"--start-command")) && a+1<argc) {
             const char *option=argv[a];const char **destination=!strcmp(option,"--commands") ? &selection_text : &start_command;
             if (*destination) { fprintf(stderr,"Duplicate %s.\n",option); return 2; }
@@ -308,12 +339,19 @@ int main(int argc, char **argv) {
     }
     char session_start[512] = {0};
 #ifdef MAC2JB_GUI
+    snprintf(load_command,sizeof(load_command),"LOAD \"TXT:%s\"",load_name);
+    snprintf(save_command,sizeof(save_command),"SAVE \"%s\"",save_name);
+    snprintf(demo_load_command,sizeof(demo_load_command),"PRGEDIT 0:LOADV \"TXT:%s\" OUT C$:PRGSET C$",load_name);
+    snprintf(demo_save_command,sizeof(demo_save_command),"PRGEDIT 0:C$=\"\":FOR I=0 TO PRGSIZE(0)-1:C$=C$+PRGGET$() :NEXT:SAVEV \"TXT:%s\",C$",save_name);
+    snprintf(start_prefix_text,sizeof(start_prefix_text),"V=START(%d,",start_port);
+    steps[0]=load_command;
+    if (demo_edition) steps[0]=demo_load_command;
     if (gui_save_bootstrap) {
         if (selection_text || start_command || gui_start_prefix || timing_test) {
             fputs("--save-bootstrap cannot be combined with command selection, START options or timing tests.\n",stderr); return 2;
         }
         gui_command_count=1;
-        steps[0]=demo_edition ? "PRGEDIT 0:C$=\"\":FOR I=0 TO PRGSIZE(0)-1:C$=C$+PRGGET$() :NEXT:SAVEV \"TXT:NS2\",C$" : "SAVE \"NS2\"";
+        steps[0]=demo_edition ? demo_save_command : save_command;
     }
     if (selection_text && command_selection(selection_text)<0) {
         fputs("--commands requires a nonempty unique subset in load,run,remove,start order.\n",stderr); return 2;
@@ -492,16 +530,14 @@ int main(int argc, char **argv) {
     fflush(stdout);
 #ifdef MAC2JB_GUI
     if (gui_wait(gui_load_confirm_wait_ms,"LOAD confirmation",1)<0) goto done;
-#else
-    sleep(1); // allow the confirmation dialog to appear before accepting it
 #endif
     if (interrupted || send_stroke(ctx, iface, ep, 0, 40, delay_ms)<0) goto done;
     release_all_keys(ctx, iface, ep);
 #ifdef MAC2JB_GUI
-    if (automatic && gui_wait(gui_load_wait_ms,"LOAD",1)<0) goto done;
+    if (gui_wait(gui_load_wait_ms,"LOAD",1)<0) goto done;
     gui_command_event("command-start",2);
 #else
-    if (automatic) sleep(1);
+    sleep(1);
 #endif
     if (!automatic && !approve("STEP 2/4: Confirm the bootstrap loaded into slot 0. Send RUN?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[1],delay_ms)<0) goto done;
@@ -509,8 +545,6 @@ int main(int argc, char **argv) {
     gui_command_event("command-complete",2);
     if (automatic && gui_wait(gui_run_wait_ms,"RUN",2)<0) goto done;
     gui_command_event("command-start",3);
-#else
-    if (automatic) sleep(1);
 #endif
     if (!automatic && !approve("STEP 3/4: Wait until RUN finishes. Send REMOVE NSR,...?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[2],delay_ms)<0) goto done;
@@ -518,8 +552,6 @@ int main(int argc, char **argv) {
     gui_command_event("command-complete",3);
     if (automatic && gui_wait(gui_remove_wait_ms,"REMOVE",3)<0) goto done;
     gui_command_event("command-start",4);
-#else
-    if (automatic) sleep(1);
 #endif
     if (!automatic && !approve("STEP 4/4: Confirm expected Out of memory, then send V=START?")) goto done;
     if (type_and_submit(ctx,iface,ep,steps[3],delay_ms)<0) goto done;

@@ -1,0 +1,14 @@
+const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto'),builtins=new Set(require('node:module').builtinModules.map(s=>s.replace(/^node:/,'')));
+const root=path.resolve(__dirname,'..');
+async function audit({write=true}={}){
+ const seen=new Map(),pending=['server/streaming/stream.cjs','server/streaming/lib/hl2-stream.cjs','server/streaming/lib/pc-stream-delta.cjs','server/streaming/lib/hl2-frame-worker.cjs','server/streaming/lib/block-delta-worker.cjs','server/streaming/run16/lib/hl2-stream.cjs','server/streaming/run16/lib/pc-stream-delta.cjs','server/streaming/run16/lib/frame-worker.cjs','server/streaming/run16/lib/block-delta-worker.cjs'];
+ while(pending.length){const name=pending.pop();if(seen.has(name))continue;const file=path.resolve(root,name);if(!file.startsWith(root+path.sep))throw Error('Render dependency leaves module: '+name);const bytes=await fs.readFile(file),imports=[];
+  if(/\.[cm]?js$/.test(name))for(const match of bytes.toString().matchAll(/(?<!\.)require\(['"]([^'"]+)['"]\)/g)){const ref=match[1];if(builtins.has(ref.replace(/^node:/,''))){imports.push({reference:ref,kind:'node-builtin'});continue;}if(!ref.startsWith('.'))throw Error('External render dependency: '+ref);const target=path.relative(root,path.resolve(path.dirname(file),ref));await fs.access(path.join(root,target));imports.push({reference:ref,target,kind:'module-local'});pending.push(target);}
+  seen.set(name,{file:name,sha256:crypto.createHash('sha256').update(bytes).digest('hex'),imports});
+ }
+ for(const wasm of ['server/streaming/lib/frame-codec.wasm','server/streaming/run16/lib/frame-codec.wasm','server/streaming/run16/native/build.json','server/streaming/run16/native/compression.c','server/streaming/run16/native/bc1/build.json','server/streaming/run16/native/bc1/encoder.c']){const bytes=await fs.readFile(path.join(root,wasm));seen.set(wasm,{file:wasm,sha256:crypto.createHash('sha256').update(bytes).digest('hex'),imports:[]});}
+ const report={engines:['Classic','Advanced'],externalModules:[],dynamicWorkerEntries:pending,files:[...seen.values()].sort((a,b)=>a.file.localeCompare(b.file))};report.dynamicWorkerEntries=['server/streaming/lib/hl2-frame-worker.cjs','server/streaming/lib/block-delta-worker.cjs','server/streaming/run16/lib/frame-worker.cjs','server/streaming/run16/lib/block-delta-worker.cjs'];report.platformServices=['core/console/abi','core/console/native/client.cjs','core/services/post-menu.cjs','core/build-native.cjs'];
+ if(write)await fs.writeFile(path.join(root,'docs/render-dependencies.json'),JSON.stringify(report,null,2)+'\n');return report;
+}
+if(require.main===module)audit().then(r=>console.log('Verified '+r.files.length+' local render dependencies; no external module imports')).catch(e=>{console.error(e.message);process.exitCode=1});
+module.exports={audit};

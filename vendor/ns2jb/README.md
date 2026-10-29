@@ -6,8 +6,7 @@ Notes:
 the fs exploit won't work as it's very timing sensitive.
 - Keep the game on internal storage of the console, not SD.
 - FS exploit is still very unstable. At best you might get a 20% success rate.
-- This repo isn't intended to use as an API to build other apps on. Use it for
-debugging only.
+- This version supports MacOS, Linux, and Windows
 
 
 
@@ -26,7 +25,7 @@ To save and retrieve your code when using the demo version, use these inputs in 
 
 saving: 
 ```sh 
-PRGEDIT 0:C$="":FOR I=0 TO PRGSIZE(0)-1:C$=C$+PRGGET$( :NEXT:SAVEV "TXT:NS2",C$
+PRGEDIT 0:C$="":FOR I=0 TO PRGSIZE(0)-1:C$=C$+PRGGET$() :NEXT:SAVEV "TXT:NS2",C$
 ```
 loading:
 ```sh 

@@ -2,12 +2,17 @@
 
 **0.16.0-rc.3 · Linux x64 / ARM64 · File Exchange release**
 
-IZ2S Platform runs a control panel on your computer. **IZlauncher** is the menu shown on Switch 2 through SmileBASIC. The PC application, ARM input agent, console bootstrap and modules are installed/started separately.
+IZ2S Platform runs a control panel on your computer. **IZlauncher** and **IZPSlauncher** are the menus shown on Switch 2 through SmileBASIC. The PC application, ARM input agent, console bootstrap and modules are installed/started separately.
 
 **Read the [detailed FAQ and practical guide](../FAQ.md)** for plain-English explanations, folder locations, first setup, backups, Git, safe testing and troubleshooting.
 
 **Host OS:** Linux only. Windows and macOS are unsupported; ARM64 remains a declared target with incomplete hardware validation. [Support details](../SUPPORT.md).
 
+## What’s new in 0.16.0-rc.5
+
+- Fix the empty module library in **IZPSlauncher**. The native process previously rejected every package requiring IZlauncher because it compared the module-format name with the new visual shell ID.
+- IZPSlauncher now explicitly declares the IZlauncher module format it implements. The panel, startup selection and native library evaluate the same selected-shell contract; host and console-ABI checks remain enforced.
+- Add regression checks that reproduce the native IZPSlauncher environment, publish a nonempty console picker and complete a browser-queued load through the package/catalog boundary using local mock storage.
 ## What is included?
 
 - **File Exchange**, for SmileBASIC title-owned file browsing and FTP.

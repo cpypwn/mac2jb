@@ -1,0 +1,18 @@
+{
+  "upstream": "https://github.com/byizmysh/VacooTube",
+  "tag": "v1.4.1",
+  "commit": "f28e762a085c4a4adcd655f12b40f4a68d646a4f",
+  "upstreamInventory": "UPSTREAM-SHA256SUMS",
+  "upstreamInventorySha256": "0fd54ec5e75978a54de6a70bdbf2472164f8187df0f603de73851fb85ff43ac8",
+  "appPackageLockSha256": "1591b7219b83241a0f84ceec2d81e89bf627b7ea3d040566f8713e9aa3b12ad2",
+  "sourceLicense": "GPL-2.0-or-later",
+  "appSourceLicense": "MIT",
+  "macAdaptation": "overlay/",
+  "electron": {
+    "version": "44.5.1",
+    "url": "https://github.com/electron/electron/releases/download/v44.5.1/electron-v44.5.1-darwin-arm64.zip",
+    "sha256": "1d75703019bb16461ae65f3081d7e6f5c0b11e901d0ccb5c343bcf7bcdd6435c",
+    "licensesInArchive": ["LICENSE", "LICENSES.chromium.html"]
+  },
+  "audio": "CoreAudio process tap; macOS 14.2 or later; requires System Audio Recording permission; on-console audio unverified"
+}
