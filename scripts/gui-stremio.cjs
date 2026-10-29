@@ -23,7 +23,7 @@ async function checkRuntime(root=path.resolve(__dirname,'..')){
   await fs.access(python,constants.X_OK);
   await fs.access(env.MAC2JB_HBLAUNCHER_FONT,constants.R_OK);
   await fs.access(path.join(env.PYTHONPATH,'sitecustomize.py'),constants.R_OK);
- }catch{throw Error('The app is missing a bundled Stremio tool. Extract a fresh copy of the test build.');}
+ }catch{throw Error('The app is missing a bundled Stremio tool. Extract a fresh copy of the app.');}
  const app=await require(path.join(root,'vendor/GPUBrewLauncher/homebrew-launcher/app-catalog.cjs'))
   .readApp(path.join(root,'stremio/app'));
  check(app.id==='stremio-experimental'&&app.files.memory?.allocationBytes===require('../stremio/protocol.cjs').MEMORY_BYTES,

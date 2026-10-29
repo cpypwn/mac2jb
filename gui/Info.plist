@@ -11,7 +11,7 @@
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.6.0</string>
     <key>CFBundleVersion</key><string>520</string>
-    <key>MAC2JBTestBuild</key><true/>
+    <key>MAC2JBTestBuild</key><false/>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSLocalNetworkUsageDescription</key><string>mac2jb connects to your Switch 2 over your local network for the ns2jb host session.</string>
