@@ -17,8 +17,7 @@ an all-in-one ns2 jailbreaking tool for Mac.
 
 the bundled driver is unsigned. Mac startup security and sip must permit unsigned
 kernel extensions. if the driver already works with your partial/custom sip
-configuration, keep that setup. otherwise, follow these steps from the
-[published readme](https://github.com/cpypwn/mac2jb/blob/main/README.md).
+configuration, keep that setup.
 
 ### 1. configure macOS recovery
 
