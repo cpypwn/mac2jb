@@ -6,6 +6,7 @@ const path = require('node:path');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const {selectedProfile, profileById, validStartCommand, incompatibleLegacyStartHint} = require('./host-profiles.cjs');
+const {autoControllers} = require('./usb-controllers.cjs');
 const root = path.resolve(__dirname, '..');
 const timingDefaults = Object.freeze({delay: 10, enumerationTimeout: 4, loadWaitMs: 1000,
   runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0});
@@ -205,7 +206,7 @@ async function hid(kind, controller, settings = timingDefaults) {
   if (controller !== 'auto' && !/^usb-drd(?:[0-9]|1[0-5])$/.test(controller)) throw Error('Choose a controller from 0 to 15.');
   if(controller!=='auto'&&settings.preferredController!==undefined)throw Error('A preferred controller is only available in Automatic mode.');
   const {delay, enumerationTimeout, loadWaitMs, runWaitMs, removeWaitMs, loadConfirmWaitMs} = settings;
-  const candidates = controller === 'auto' ? [...new Set([...(settings.preferredController?[settings.preferredController]:[]),'usb-drd0','usb-drd1','usb-drd3'])] : [controller];
+  const candidates = controller === 'auto' ? autoControllers(settings.preferredController) : [controller];
   let safeFailures=0;
   const saveBootstrap = kind === 'save-bootstrap';
   const textTransfer = kind === 'bootstrap';

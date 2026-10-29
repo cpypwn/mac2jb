@@ -10,6 +10,10 @@ const {validStart, verifiedResult, hidSettings,commandsOnlySettings, networkBind
 function command(address = '192.0.2.1') {
   return 'V=START(' + [39380, ...address.split('.')].join(',') + ')';
 }
+function fixedControllers(directory) {
+  fs.writeFileSync(path.join(directory, 'usb-controllers.cjs'), `const real=require(${JSON.stringify(path.join(__dirname, 'usb-controllers.cjs'))});
+module.exports={...real,autoControllers:preferred=>real.autoControllers(preferred,()=>[...real.fallbackControllers])};\n`);
+}
 function fixture(t, sender, host) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-gui-test-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
@@ -18,6 +22,7 @@ function fixture(t, sender, host) {
   fs.mkdirSync(path.join(root, 'vendor/ns2jb'), {recursive: true});
   fs.copyFileSync(path.join(__dirname, 'gui-host.cjs'), path.join(root, 'scripts/gui-host.cjs'));
   fs.copyFileSync(path.join(__dirname, 'host-profiles.cjs'), path.join(root, 'scripts/host-profiles.cjs'));
+  fixedControllers(path.join(root, 'scripts'));
   fs.mkdirSync(path.join(root, 'packaging'));
   fs.copyFileSync(path.join(__dirname, '../packaging/host-profiles.json'), path.join(root, 'packaging/host-profiles.json'));
   fs.writeFileSync(path.join(root, 'assets/bootstrap.bas'), 'PRINT 1\n');
@@ -643,3 +648,33 @@ for (const kind of ['commands', 'commands-only']) for (const demo of [false, tru
     assert.equal(forwarded.includes('--demo'),demo);
   });
 }
+test('automatic mode only tries controllers with the usbgadget driver attached',()=>{
+  const {parseGadgetControllers,gadgetControllers,autoControllers,fallbackControllers}=require('./usb-controllers.cjs');
+  // Trimmed ioreg output from an M5 Pro, whose USB-C ports use usb-drd0 to usb-drd2.
+  const registry=[
+    '+-o atc-phy0@A2C00000  <class AppleARMIODevice>',
+    '  +-o AppleT8142ATCDPXBAR(atc0-dpxbar)  <class AppleT8142ATCDPXBAR>',
+    '+-o usb-drd2@82280000  <class AppleARMIODevice>',
+    '  +-o AppleT8142USBXHCI@02000000  <class AppleT8142USBXHCI>',
+    '  | +-o usb-drd2-port-hs@02100000  <class AppleUSB20XHCIARMPort>',
+    '  +-o AppleT8142USBXDCI@2  <class AppleT8142USBXDCI>',
+    '    +-o AppleUSBNCMControl@0  <class IOUSBDeviceInterface>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+    '+-o usb-drd0@A2280000  <class AppleARMIODevice>',
+    '  +-o AppleT8142USBXDCI@0  <class AppleT8142USBXDCI>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+    '+-o usb-drd1@AA280000  <class AppleARMIODevice>',
+    '  +-o AppleT8142USBXDCI@1  <class AppleT8142USBXDCI>',
+    '+-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+    '+-o usb-drd12@C2280000  <class AppleARMIODevice>',
+    '  +-o AppleT8142USBXDCI@12  <class AppleT8142USBXDCI>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+  ].join('\n');
+  assert.deepEqual(parseGadgetControllers(registry),['usb-drd0','usb-drd2','usb-drd12']);
+  assert.deepEqual(gadgetControllers(()=>registry),['usb-drd0','usb-drd2','usb-drd12']);
+  assert.deepEqual(autoControllers('usb-drd2',()=>['usb-drd0','usb-drd2']),['usb-drd2','usb-drd0']);
+  assert.deepEqual(autoControllers(undefined,()=>['usb-drd0','usb-drd2']),['usb-drd0','usb-drd2']);
+  assert.deepEqual(gadgetControllers(()=>''),[...fallbackControllers]);
+  assert.deepEqual(gadgetControllers(()=>{throw Error('ioreg unavailable');}),[...fallbackControllers]);
+  assert.deepEqual(fallbackControllers,['usb-drd0','usb-drd1','usb-drd3']);
+});

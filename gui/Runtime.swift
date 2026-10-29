@@ -104,7 +104,7 @@ struct BundledRuntime {
                 }
             }
             for path in ["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "vendor/libusbd/libusbd.dylib",
-                         "scripts/gui-keyboard.cjs",
+                         "scripts/gui-keyboard.cjs", "scripts/usb-controllers.cjs",
                          "scripts/gui-host.cjs", "scripts/gui-session.cjs", "scripts/gui-dump.cjs",
                          "scripts/gui-attach.cjs", "scripts/rpc-attachment.cjs",
                          "scripts/host-profiles.cjs", "scripts/prepare-host-profiles.cjs", "packaging/host-profiles.json",
