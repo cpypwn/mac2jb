@@ -6,7 +6,7 @@ enum AppBuildIdentity {
     }
 
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.7.0"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.7.1"
     }
 
     static var versionLabel: String {

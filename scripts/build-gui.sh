@@ -77,6 +77,8 @@ bash scripts/test-webkit-staging.sh
 osacompile -o "$BUILD/dnswitch.scpt" scripts/dnswitch-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
 "$NODE_BINARY" --test integrations/civswitch/probe.test.cjs integrations/civswitch/send-hello.test.cjs scripts/test-civswitch-hid.cjs
+"$BUILD/homebrew/python/bin/python3" integrations/civswitch-control-center/verify-source.py
+PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" integrations/civswitch-control-center/test_mac_host.py
 "$NODE_BINARY" --test scripts/test-cli-usb-fallback.cjs
 "$NODE_BINARY" --test scripts/test-gui-discover-rpc.cjs
 "$NODE_BINARY" --test scripts/test-homebrew-reentry.cjs scripts/test-gui-session.cjs scripts/test-gui-attach.cjs
@@ -156,6 +158,7 @@ python3 scripts/package-gui-payload.py stage "$ROOT" "$PAYLOAD" "$NODE_BINARY"
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-bundled-browser-probes.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/check-webkit-research.cjs"
 "$NODE_BINARY" "$PAYLOAD/integrations/civswitch/verify.cjs" --runtime
+PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" "$PAYLOAD/integrations/civswitch-control-center/verify-source.py"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-hello.cjs"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/hello.js"
 "$PAYLOAD/mac2jb-civswitch-hid" --payload "$PAYLOAD/integrations/civswitch/payload.txt" --dry-run

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 private let ink = Mac2jbTheme.ink
 private let teal = Mac2jbTheme.mint
@@ -18,6 +19,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var account = StremioAccount()
     @StateObject private var civSwitch = CivSwitchModel()
+    @StateObject private var civSwitchControlCenter = CivSwitchControlCenterModel()
     @StateObject private var dnsSwitch = DNSwitchModel()
     @StateObject private var webKitResearch = WebKitResearchModel()
     @StateObject private var artemisUpdates = ArtemisUpdateChecker()
@@ -52,7 +54,7 @@ struct ContentView: View {
         [.ready, .failed, .cancelled].contains(model.phase) &&
         !(model.phase == .failed && model.seedsowInstallStarted)
     }
-    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning || model.sessionCleanupRunning || civSwitch.isRunning || !canConfigure }
+    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning || model.sessionCleanupRunning || civSwitch.isRunning || civSwitchControlCenter.isRunning || !canConfigure }
     private var civSwitchAddressValid: Bool {
         let parts = civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: ".", omittingEmptySubsequences: false)
@@ -163,6 +165,7 @@ struct ContentView: View {
             model.accountProgressHandler = nil
             account.cancelSignIn()
             civSwitch.cancel()
+            civSwitchControlCenter.stop()
             dnsSwitch.stopForTermination()
             webKitResearch.stopForTermination()
         }
@@ -173,6 +176,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             dnsSwitch.stopForTermination()
             webKitResearch.stopForTermination()
+            civSwitchControlCenter.stop()
         }
         .onChange(of: model.phase) { _, phase in
             readyConfirmed = false; setupReady = false; developerReady = false; savedConfirmed = false; saveDirectModeReady = false
@@ -203,7 +207,7 @@ struct ContentView: View {
             else { ns2jbSetup }
         }
         .sheet(isPresented: $showCivSwitchSetup) {
-            civSwitchSetup.interactiveDismissDisabled(civSwitch.isRunning)
+            civSwitchSetup.interactiveDismissDisabled(civSwitch.isRunning || civSwitchControlCenter.isRunning)
         }
         .alert("The session needs attention", isPresented: $showFailure) {
             if model.diagnosticLogURL != nil { Button("Open logs") { model.revealSessionFolder() } }
@@ -437,7 +441,8 @@ struct ContentView: View {
                             .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                     }
                     Spacer(minLength: 8)
-                    Button("Done") { showCivSwitchSetup = false }.disabled(civSwitch.isRunning)
+                    Button("Done") { showCivSwitchSetup = false }
+                        .disabled(civSwitch.isRunning || civSwitchControlCenter.isRunning)
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Before starting").font(.system(size: 15, weight: .semibold))
@@ -481,13 +486,15 @@ struct ContentView: View {
                         if civSwitch.canShowDemo {
                             Button("Show cpypwn demo") { civSwitch.showDemo() }
                                 .buttonStyle(PrimaryActionStyle())
-                                .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
+                                .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession ||
+                                          civSwitchControlCenter.isRunning)
                         }
                         if civSwitch.canReset {
                             Button("Restart full transfer") {
                                 civSwitch.reset()
                                 civSwitchReady = false
                             }
+                            .disabled(civSwitchControlCenter.isRunning)
                         }
                         if civSwitch.isRunning {
                             Button("Stop CivSwitch") { civSwitch.cancel() }
@@ -511,12 +518,72 @@ struct ContentView: View {
                     .frame(height: 160)
                     .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
                 }
+                if civSwitch.canShowDemo || civSwitchControlCenter.isRunning {
+                    Divider().overlay(.white.opacity(0.04))
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Control Center").font(.system(size: 15, weight: .semibold))
+                        Text("Explore Civilization VII saves and installed content, monitor input, or stage JavaScript through the verified loader.")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                        HStack(spacing: 12) {
+                            if civSwitchControlCenter.isRunning {
+                                Button("Stop Control Center") { civSwitchControlCenter.stop() }
+                                    .disabled(!civSwitchControlCenter.isRunning)
+                            } else {
+                                Button("Open Control Center") {
+                                    civSwitchControlCenter.start(
+                                        address: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+                                        runtimeRoot: model.runtime?.root)
+                                }
+                                .buttonStyle(PrimaryActionStyle())
+                                .disabled(!civSwitch.canShowDemo || model.runtime == nil ||
+                                          updater.blocksNewSession)
+                            }
+                            if civSwitchControlCenter.payloadModeAvailable {
+                                Button("Send JavaScript…") { chooseCivSwitchPayload() }
+                                    .disabled(civSwitchControlCenter.staging)
+                            }
+                            if civSwitchControlCenter.backupFolder != nil {
+                                Button("Open save exports") { civSwitchControlCenter.openBackups() }
+                            }
+                        }
+                        if civSwitchControlCenter.ready {
+                            Text("Enter Payload Mode on the Switch before choosing a JavaScript file. Press A there to run it or B to return.")
+                                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                        }
+                        Text(civSwitchControlCenter.status)
+                            .font(.system(size: 12, weight: .semibold))
+                        if civSwitchControlCenter.isRunning || !civSwitchControlCenter.log.isEmpty {
+                            ScrollView {
+                                Text(civSwitchControlCenter.log.isEmpty ? "Control Center activity will appear here." : civSwitchControlCenter.log)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Mac2jbTheme.muted).textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                            }
+                            .frame(height: 120)
+                            .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
+                }
             }
             .padding(30)
         }
         .frame(width: 720, height: 650)
         .background { Mac2jbBackdrop() }
         .preferredColorScheme(.dark).tint(teal)
+    }
+
+    private func chooseCivSwitchPayload() {
+        let picker = NSOpenPanel()
+        picker.title = "Choose a JavaScript payload for CivSwitch Payload Mode"
+        picker.canChooseDirectories = false
+        picker.canChooseFiles = true
+        picker.allowsMultipleSelection = false
+        if let javaScript = UTType(filenameExtension: "js") {
+            picker.allowedContentTypes = [javaScript]
+        }
+        picker.begin { response in
+            if response == .OK, let url = picker.url { civSwitchControlCenter.stagePayload(url) }
+        }
     }
 
     private var developerOptions: some View {

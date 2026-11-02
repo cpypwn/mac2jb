@@ -24,7 +24,7 @@ SOURCE_FOLDERS = (
 RUNTIME_FOLDERS = (
     'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit', 'vendor/HBLauncher',
     'vendor/GPUBrewLauncher', 'vendor/MintBrew', 'vendor/IZ2S-Platform', 'vendor/IZDOOM',
-    'vendor/BlitBun',
+    'vendor/BlitBun', 'vendor/CivSwitch-ControlCenter',
     'vendor/OunceCake', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
     'integrations',
 )
@@ -69,6 +69,9 @@ RUNTIME_FILES = (
     'packaging/ftpd-sb-v0.1.0-release-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-provenance.json',
     'scripts/gui-ouncecake.cjs', 'packaging/OunceCake-provenance.json',
+    'integrations/civswitch-control-center/mac-host.py',
+    'integrations/civswitch-control-center/verify-source.py',
+    'integrations/civswitch-control-center/provenance.json',
     'packaging/OunceCake-SHA256SUMS', 'packaging/OunceCake-upstream-SHA256SUMS',
     'packaging/stremio-display-SHA256SUMS',
     'packaging/stremio-sample-provenance.json', 'scripts/install-driver.sh',

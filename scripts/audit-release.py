@@ -141,6 +141,7 @@ required = {
     'mac2jb/keyboard.c',
     'mac2jb/civswitch-hid.c',
     'mac2jb/gui/CivSwitchModel.swift',
+    'mac2jb/gui/CivSwitchControlCenterModel.swift',
     'mac2jb/vendor/CivSwitch/LICENSE',
     'mac2jb/vendor/CivSwitch/core.js',
     'mac2jb/vendor/CivSwitch/PicoSwitch/compress.js',
@@ -151,6 +152,18 @@ required = {
     'mac2jb/integrations/civswitch/send-hello.cjs',
     'mac2jb/integrations/civswitch/send-hello.test.cjs',
     'mac2jb/integrations/civswitch/hello.js',
+    'mac2jb/vendor/CivSwitch-ControlCenter/LICENSE',
+    'mac2jb/vendor/CivSwitch-ControlCenter/README.md',
+    'mac2jb/vendor/CivSwitch-ControlCenter/VERSION',
+    'mac2jb/vendor/CivSwitch-ControlCenter/SHA256SUMS',
+    'mac2jb/vendor/CivSwitch-ControlCenter/control_center.js',
+    'mac2jb/vendor/CivSwitch-ControlCenter/send_js.py',
+    'mac2jb/vendor/CivSwitch-ControlCenter/tools/save_dump_receiver.py',
+    'mac2jb/vendor/CivSwitch-ControlCenter/tools/send_staged_payload.py',
+    'mac2jb/integrations/civswitch-control-center/mac-host.py',
+    'mac2jb/integrations/civswitch-control-center/verify-source.py',
+    'mac2jb/integrations/civswitch-control-center/test_mac_host.py',
+    'mac2jb/integrations/civswitch-control-center/provenance.json',
     'mac2jb/gui/PostBootstrapCommand.swift',
     'mac2jb/scripts/gui-keyboard.cjs',
     'mac2jb/scripts/usb-controllers.cjs',
@@ -602,6 +615,33 @@ with zipfile.ZipFile(archive) as z:
                 violations.append('changed CivSwitch upstream source: ' + name)
     except (KeyError, ValueError, TypeError):
         violations.append('missing or malformed CivSwitch source provenance')
+
+    try:
+        control = json.loads(z.read('mac2jb/integrations/civswitch-control-center/provenance.json'))
+        prefix = 'mac2jb/vendor/CivSwitch-ControlCenter/'
+        listing = z.read(prefix + 'SHA256SUMS')
+        files = control['files']
+        if (control.get('upstream') != 'https://github.com/MatthewKuKanich/CivSwitch-ControlCenter' or
+                control.get('commit') != '259cbe5e66f2e649a79a16f06db4cdb012017daa' or
+                control.get('version') != '1.0.0' or control.get('license') != 'MIT' or
+                control.get('sha256sumsSha256') != hashlib.sha256(listing).hexdigest() or
+                not isinstance(files, dict) or len(files) != 9):
+            raise ValueError('changed Control Center provenance')
+        listed = {}
+        for line in listing.decode().splitlines():
+            digest, path = line.split('  ./', 1)
+            if path in listed:
+                raise ValueError('duplicate Control Center source')
+            listed[path] = digest
+        actual = {name[len(prefix):] for name in names if name.startswith(prefix) and not name.endswith('/')}
+        if actual != set(files) | {'SHA256SUMS'} or listed != files:
+            raise ValueError('incomplete Control Center source')
+        for name, digest in files.items():
+            member = prefix + name
+            if hashlib.sha256(z.read(member)).hexdigest() != digest:
+                violations.append('changed Control Center upstream source: ' + name)
+    except (KeyError, ValueError, TypeError, UnicodeError):
+        violations.append('missing or malformed Control Center source provenance')
 
 if violations:
     for v in violations:

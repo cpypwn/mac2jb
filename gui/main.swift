@@ -43,6 +43,7 @@ if CommandLine.arguments.contains("--self-test") {
             ("node", ["--check", "integrations/civswitch/send-hello.cjs"]),
             ("node", ["--check", "integrations/civswitch/hello.js"]),
             ("mac2jb-civswitch-hid", ["--payload", runtime.root.appendingPathComponent("integrations/civswitch/payload.txt").path, "--dry-run"]),
+            ("homebrew/python/bin/python3", ["integrations/civswitch-control-center/verify-source.py"]),
             ("node", ["scripts/gui-savekit.cjs", "--self-test"]),
             ("node", ["scripts/gui-savekit-tools.cjs", "--self-test"]),
             ("node", ["scripts/check-savekit-research.cjs"]),

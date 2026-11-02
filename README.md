@@ -48,7 +48,7 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. download `mac2jb-v0.7.0-macos-arm64.zip`, extract it and open `mac2jb.app`.
+1. download `mac2jb-v0.7.1-macos-arm64.zip`, extract it and open `mac2jb.app`.
 2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
 3. click install & load driver… and approve the administrator prompt.
 4. if prompted, open system settings → privacy & security and allow the driver.
@@ -175,6 +175,23 @@ the CivSwitch loader does not expose ns2jb's held rpc session. MintBrew,
 SaveKit and the other ns2jb homebrew choices do not run through this path in
 this build. use ns2jb to install an Artemis launcher save. the optional
 CivSwitch persistent-save installer is not run.
+
+### CivSwitch Control Center
+
+after the CivSwitch loader is verified, open its Control Center from mac2jb.
+keep Civilization VII and mac2jb open, with the Switch and Mac on the same
+local network while using it.
+
+the save export reads only `save:/saves/Single/XSTRIG.Civ7Save` from
+Civilization VII. it does not write the game save. exported copies are kept
+under `~/Library/Application Support/mac2jb/CivSwitch/Backups` so they remain
+available after the current session. this is a CivSwitch-specific export, not
+the general SaveKit save browser.
+
+the input monitor shows controller input received through the CivSwitch loader.
+to send your own JavaScript, choose **Payload Mode** on the Switch first, then
+choose the `.js` file in mac2jb. after the transfer, press A on the Switch to
+start the payload, or B to return to Control Center without starting it.
 
 ## Artemis launcher saves
 
