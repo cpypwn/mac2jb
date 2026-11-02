@@ -1,34 +1,47 @@
-# OunceCake
+# OunceCake - Cellenseres
 
-(`ozdumptool` if you're ***lame*** and ***boring***) 
+Private variant of [ariankordi/OunceCake](https://github.com/ariankordi/OunceCake), based on [misshexa66/OunceCake](https://github.com/misshexa66/OunceCake). Upstream history, attribution and the GPL-2.0 license are retained.
 
-Tool to dump unencrypted romFS and exeFS for Switch 2 games, updates and DLC.
+The upstream HTTP/WebDAV server exposes game ExeFS and RomFS and supports firmware/system-data exports. This variant adds installed native-title ELicense preparation, base-only views and raw NCA export.
 
-Supports digital games, game cards, Switch 2 Editions, etc.
+## Requirements
 
-## Disclaimer
+Use Node.js 22 or newer and an already held run from [our ns2jb variant](https://github.com/Cellenseres/ns2jb). No npm dependencies are needed. Keep SmileBASIC and the runner open while OunceCake is attached. OunceCake does not start a bootstrap; the upstream ns2jb acquisition uses temporary save files. Review the [console storage policy](docs/CONSOLE-ACCESS.md).
 
-For the love of God, do NOT share any files you rip using this tool. It is to be used with ONLY your own games on your OWN system. This tool doesn't provide system keys or any method to decrypt files. The files are loaded normally by the system, then pulled over FTP.
+## Browse a title
 
-## Usage
-
-0. Take note of your Switch 2's local IP address. It can be found in the network settings.
-
-1. Clone the repo: 
-``` 
-git clone https://github.com/misshexa66/OunceCake.git
+```sh
+node ouncecake.cjs <held-run-directory> [title-id] [--port 8080]
 ```
 
-2. Use kurumuz's fork of the [ns2jb exploit](https://gitlab.com/kurumuz/ns2jb) to get an RPC connection with the system. Use `node run.cjs --rpc`.
+For a native digital base title:
 
-3. Run `node ouncecake.cjs <path-to-ns2jb-run>`. The output from ns2jb will tell you where this path is. (`Run folder: /home/hexa/projects/ns2jb2/runs/switch2-Icu7Jd`)
+```sh
+node ouncecake.cjs <held-run-directory> 040029A01D3E0000 --base-only --port 8080
+```
 
-4. OunceCake will prompt you to pick a game. Pick one, then wait.
+Open the printed HTTP address. `/base/exefs/` contains CodeFS files; `/base/romfs/` contains the RomFS tree. The same paths support read-only WebDAV. `--base-only` omits update and DLC discovery. Without a title ID, the CLI offers title selection.
 
-5. When OunceCake says `FTP up! ftp://<switch 2 ip>:2121`, use an FTP client to connect to your Switch 2's local IP address with port 2121. A username and password is not required. (Make sure your FTP client has its transfer mode set to Binary/Image/TYPE I.)
+ELicense preparation uses the content's FS606 RightsId and installed owner accounts. The rights context stays open throughout serving. No separate registration script or plaintext titlekey is needed. A prior FS206 RomFS read succeeded; complete native-title ExeFS and HTTP serving still require the [manual checks](docs/VALIDATION.md).
 
-## Licensing
+## Export raw NCAs
 
-OunceCake is licensed under the terms of the GPLv2 (because it borrows a tiny bit of code from [Atmosphere](https://github.com/Atmosphere-NX/Atmosphere))
+```sh
+node ouncecake.cjs <held-run-directory> <title-id> --nca --out ./nca-dump
+```
 
-You can find a copy of the license in the LICENSE file.
+Add `--skip-program` to omit the Program NCA. These files remain encrypted. Existing output files are preserved; incomplete captures have a `.partial` suffix. Ctrl-C stops before the next read and releases owned handles.
+
+## Export firmware titles
+
+```sh
+node firmware-dump.cjs <held-run-directory> --out ./firmware-dump
+```
+
+Use `--include-programs`, `--include-data` or `--titles <id,id>` to select content. Outputs and journals are written to the PC.
+
+## Native server build
+
+`npm run build` uses clang and lld. The upstream macOS harness remains under `engine/oz-code/test/` and runs with `npm run test:native`. Local checks stay untracked.
+
+See [provenance](docs/PROVENANCE.md) for source revisions and validation limits.

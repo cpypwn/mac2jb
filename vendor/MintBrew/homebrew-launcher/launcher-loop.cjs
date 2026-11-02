@@ -161,7 +161,7 @@ async function main(directory,attempt='',instance=''){
    if(runtime.active?.app!==previousApp){serviceStartFailure=null;hold.reset();await sdkRuntime.atBoundary(runtime.active?.app);}
    check(commands.length===r.images.length,'App swapchain command count differs');const handles=Buffer.alloc(commands.length*8);commands.forEach((v,i)=>handles.writeBigUInt64LE(BigInt(v),i*8));await rpc.write(control+0x1060,handles);
    lastRefresh=(await rpc.read(prepared.controls.mapped+104,4)).readFloatLE();await prepareFrame();await startWorker();
-   if(runtime.active?.app!==previousApp&&runtime.active?.service){
+   if(runtime.active?.app!==previousApp&&typeof runtime.active?.service?.start==='function'){
     const service=runtime.active.service;
     void service.start().catch(error=>{
      onFatal(error);

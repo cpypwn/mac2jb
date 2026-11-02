@@ -20,6 +20,9 @@ struct PostRunSessionState: Equatable {
     var canCheckStatus: Bool { stage == .held && !dumpInProgress && !statusInFlight && homebrewStage == .idle }
     var homebrewAttempted: Bool { homebrewStage != .idle }
     var canLaunchHomebrew: Bool { stage == .held && heldConfirmed && !dumpInProgress && !statusInFlight && !homebrewAttempted }
+    var canStopHomebrew: Bool {
+        stage == .held && heldConfirmed && !cleanupBlocked && [.selecting, .running].contains(homebrewStage)
+    }
     var canDumpSystemCode: Bool {
         stage == .held && heldConfirmed && !dumpRequested && !statusInFlight && !cleanupBlocked &&
         [.idle, .running, .stopped].contains(homebrewStage)
@@ -111,6 +114,9 @@ struct PostRunSessionState: Equatable {
             }
             homebrewStage = event == "homebrew-stopped" ? .stopped : .failed
             if event == "homebrew-failed" { heldConfirmed = false }
+        case "homebrew-ready":
+            guard stage == .held, heldConfirmed, !cleanupBlocked, homebrewStage == .stopped else { return false }
+            homebrewStage = .idle
         case "verified":
             guard isActive, !cleanupBlocked else { return false }
             heldConfirmed = false; statusInFlight = false; stage = .complete

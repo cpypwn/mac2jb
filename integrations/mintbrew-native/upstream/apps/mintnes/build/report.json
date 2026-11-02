@@ -1,0 +1,18 @@
+{
+  "format": "hblauncher-native-app/1",
+  "id": "mintnes",
+  "kind": "native",
+  "abi": 3,
+  "codeBase": "0xc000000",
+  "dataBase": "0xd000000",
+  "entry": "0xc000000",
+  "spawn": "0xc000048",
+  "hbxAppMain": "0xc001060",
+  "codeBytes": 35272,
+  "codePages": 9,
+  "dataBytes": 0,
+  "bssBytes": 505344,
+  "dataRegionBytes": 505344,
+  "codeSha256": "ab437317ed4e2581be04c5e827390114589a7fc066b64fe93725a8b7d61d3495",
+  "dataSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

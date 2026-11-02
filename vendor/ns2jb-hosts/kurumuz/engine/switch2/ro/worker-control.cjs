@@ -83,10 +83,22 @@ async function dispatch(context, request, state, domain) {
         check(state.services.some(x => x.name === 'ro:dmnt' && x.handle === handle), 'Process probe requires the owned RO service');
         check(s.handles.has(target) || target === 0xffff8001, 'Target process handle is not owned');
         check([0x524f0010, 0x524f0011, 0x524f0012, 0x524f0013, 0x524f0014,
-          0x524f0015, 0x524f0016].includes(id), 'Unknown process probe');
+          0x524f0015, 0x524f0016, 0x524f001a, 0x524f001b, 0x524f001c].includes(id),
+        'Unknown process probe');
         const size = id === 0x524f0014 ? 128 : 64;
         check(typeof request.hex === 'string' && request.hex.length === size && /^[0-9a-fA-F]+$/.test(request.hex),
           'Process probe input length differs');
+        if ([0x524f001a, 0x524f001b, 0x524f001c].includes(id)) {
+          check(target === 0xffff8001, 'Native range mapping targets RO only');
+          const input = Buffer.from(request.hex, 'hex');
+          const pid = input.readBigUInt64LE(0), source = input.readBigUInt64LE(8);
+          const destination = input.readBigUInt64LE(16), pages = input.readBigUInt64LE(24);
+          check(pid > 0n && source > 0n && destination > 0n &&
+            !((source | destination) & 0xfffn) && pages > 0n && pages <= 16384n &&
+            source + (pages + 1n) * 0x1000n <= 1n << 39n &&
+            destination + pages * 0x1000n <= 1n << 39n,
+          'Native range mapping exceeds address or page bounds');
+        }
         const receive = [];
         if (id === 0x524f0016) {
           const length = Number(Buffer.from(request.hex, 'hex').readBigUInt64LE(16));

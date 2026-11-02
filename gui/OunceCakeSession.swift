@@ -14,11 +14,11 @@ struct OunceCakeGame: Decodable, Equatable, Identifiable {
 struct OunceCakeEndpoint: Equatable {
     let host: String
     let port: Int
-    var address: String { "ftp://\(host):\(port)" }
+    var address: String { "http://\(host):\(port)/" }
 }
 
-// Only the current verified host can supply a catalog and confirm its endpoint.
-// The user's console address is captured before opening the tool.
+// only the current verified host can supply a catalog and confirm its endpoint.
+// capture the console address before opening the tool.
 struct OunceCakeSession: Equatable {
     enum Stage { case idle, discovering, choosing, preparing, serving, stopped, failed, cleanupBlocked }
     private(set) var stage: Stage = .idle
@@ -73,10 +73,10 @@ struct OunceCakeSession: Equatable {
         return true
     }
 
-    @discardableResult mutating func receiveEndpoint(host: String?, port: Int?, ftpURL: String?) -> Bool {
+    @discardableResult mutating func receiveEndpoint(host: String?, port: Int?, httpURL: String?) -> Bool {
         guard stage == .preparing, let host, host == consoleAddress, port == 2121 else { return false }
         let endpoint = OunceCakeEndpoint(host: host, port: 2121)
-        guard ftpURL == nil || ftpURL == endpoint.address else { return false }
+        guard httpURL == endpoint.address else { return false }
         self.endpoint = endpoint
         stage = .serving
         return true

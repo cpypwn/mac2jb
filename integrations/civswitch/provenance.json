@@ -1,0 +1,15 @@
+{
+  "upstream": "https://github.com/Gezine/CivSwitch",
+  "commit": "10b38e9f5abfd13a4b0bec8af24b026e44567da3",
+  "license": "MIT",
+  "payloadLines": 87,
+  "payloadSha256": "6ea468ca392558ab2f8f2384200745a8619187cebc5357d5e985fd3ffdada37d",
+  "files": {
+    "core.js": "1fe1aaa68dc8c0534d79d65b1dd545f66c6b3fb3d547f01c967cdc5f70e7bdf4",
+    "PicoSwitch/compress.js": "21a22ec0ad8857b1a68a651e29ec996ff03f2a4030fe134169d506715145b524",
+    "PicoSwitch/package.json": "21367741817e6f85e0cd3d2ba578ec01e765d2af61812c5b12497ae061d00879",
+    "PicoSwitch/package-lock.json": "58c599662800bbcccb25261b363c6bde58c72eeb6cc3114c5a4327fc35064f90",
+    "PicoSwitch/tools/payload_to_macro.py": "e041a51c61eae2f5eea2b05a1186ee4dfc21d947051f722c485f960159305b89",
+    "LICENSE": "c0675240c74693e44d256a070ddf59f3d99ce7a87c82f8dfa0dbda53f3647053"
+  }
+}

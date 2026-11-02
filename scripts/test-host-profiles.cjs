@@ -10,10 +10,10 @@ const {profiles,profileById,selectedProfile,sourceDigest,trustedProfileForDigest
 const {verifyProfile,selectHost} = require('./prepare-host-profiles.cjs');
 const root = path.resolve(__dirname,'..');
 
-test('four pinned host sources preserve their original bootstraps and capabilities', async () => {
-  assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','BermTheSequel','IZMYSH']);
-  assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,4);
-  assert.equal(selectedProfile(root).id,'kurumuz');
+test('five pinned host sources preserve their original bootstraps and capabilities', async () => {
+  assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','Cellenseres','BermTheSequel','IZMYSH']);
+  assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,5);
+  assert.equal(selectedProfile(root).id,'cellenseres');
   for (const profile of profiles) {
     const folder=verifyProfile(root,profile);
     assert.equal(sourceDigest(folder,profile),profile.sourceSha256);
@@ -29,6 +29,8 @@ test('four pinned host sources preserve their original bootstraps and capabiliti
   assert.equal(profileById('pepsipu').supportsHeldRPC,false);
   assert.equal(profileById('pepsipu').supportsDemo,false);
   assert.equal(profileById('kurumuz').supportsDemo,true);
+  assert.equal(profileById('cellenseres').supportsDemo,true);
+  assert.equal(profileById('cellenseres').supportsHeldRPC,true);
   assert.equal(profileById('BermTheSequel').supportsDemo,true);
   assert.equal(profileById('izmysh').startPort,39395);
   assert.equal(profileById('izmysh').saveName,'NS2I');

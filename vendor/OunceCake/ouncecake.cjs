@@ -5,15 +5,23 @@ const { titleId, withCleanup } = require('./engine/protocol.cjs');
 const { attachGame } = require('./engine/session.cjs');
 const { discoverGames } = require('./engine/content.cjs');
 const { prepareGame } = require('./engine/mounts.cjs');
-const { deployFtp, readImage } = require('./engine/ftp.cjs');
+const { dumpAllNcas } = require('./engine/nca-dump.cjs');
+const { deployServer, readImage } = require('./engine/server.cjs');
 
-const USAGE = 'Usage: node poundcake.cjs <run-directory> [title-id] [--port 2121]\n' +
+const USAGE = 'Usage: node ouncecake.cjs <run-directory> [title-id] [--port 8080] [--base-only] [--nca [--out dir]]\n' +
               'Use the run dir given by ns2jb (Run folder: <whatever>)\n' +
-              'You can also provide a title ID to skip the selection menu and just mount a specific game\n';
+              'You can also provide a title ID to skip the selection menu and just mount a specific game\n' +
+              '--base-only serves base/exefs and base/romfs without preparing updates or DLC\n' +
+              '--nca dumps the raw (encrypted) NCA file(s) to --out instead of serving romfs/exefs\n' +
+              '--skip-program omits the Program NCA during --nca export\n';
 
 function getArgs(argv) {
   const args = [];
-  let port = 2121;
+  let port = 8080;
+  let nca = false;
+  let skipProgram = false;
+  let baseOnly = false;
+  let out = 'nca-dump';
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -27,6 +35,24 @@ function getArgs(argv) {
       if (!Number.isInteger(port) || port < 1024 || port > 65535) {
         throw new Error('Invalid --port value\n' + USAGE);
       }
+      continue;
+    }
+
+    if (a === '--nca') {
+      nca = true;
+      continue;
+    }
+
+    if (a === '--base-only') {baseOnly = true; continue;}
+
+    if (a === '--skip-program') {
+      skipProgram = true;
+      continue;
+    }
+
+    if (a === '--out') {
+      out = argv[++i];
+      if (!out) throw new Error('--out needs a directory\n' + USAGE);
       continue;
     }
 
@@ -46,7 +72,9 @@ function getArgs(argv) {
   }
 
   const title = args.length === 2 ? titleId(args[1]) : undefined;
-  return { run: path.resolve(args[0]), title, port };
+  if (skipProgram && !nca) throw new Error('--skip-program requires --nca');
+  if (baseOnly && nca) throw new Error('--base-only applies to file serving, not --nca');
+  return { run: path.resolve(args[0]), title, port, nca, skipProgram, baseOnly, out: path.resolve(out) };
 }
 
 const storageNames = { 2: 'Game card', 4: 'Internal', 5: 'SD' };
@@ -133,10 +161,15 @@ async function main(argv = process.argv.slice(2)) {
       if (!selected || shouldStop()) return;
       title = selected.title;
     }
-    const prepared = await prepareGame({ attachment, title, shouldStop });
+    if (options.nca) {
+      const results = await dumpAllNcas({ attachment, title, outDir: options.out, skipProgram: options.skipProgram, shouldStop });
+      for (const r of results) console.log('Dumped: ' + r.name + ' -> ' + r.path + ' (' + r.size + ' bytes)');
+      return;
+    }
+    const prepared = await prepareGame({ attachment, title, baseOnly: options.baseOnly, shouldStop });
     if (shouldStop()) return;
-    server = await deployFtp({ attachment, image, ...prepared, port });
-    console.log('FTP up! ftp://<switch 2 ip>:' + port);
+    server = await deployServer({ attachment, image, ...prepared, port });
+    console.log('Serving on http://' + (server.address || '<console ip>') + ':' + port + '/ (HTTP + read-only WebDAV)');
     console.log('Ctrl-C to stop the server');
     
     while (!shouldStop()) {

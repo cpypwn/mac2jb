@@ -1,6 +1,3 @@
-// mac2jb downstream modification notice, 2026-10-26 (cpypwn integration).
-// Bound program-map traversal to the owned serialization buffer; reject cycles
-// and invalid node addresses before another read. Original GPLv2 source retained.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -287,7 +284,6 @@ async function programMapReader(attachment) {
   const resolver = await memory.pointer(nca + 0x18);
   const manager = await memory.pointer(resolver + 0x58);
   const head = manager + 0x50;
-  // Leave room for the one temporary mapping added by withProgramIndexMap.
   const maximum = Math.min(0x10000, Math.floor((attachment.s.bytes - 0x10000) / 0x20) - 1);
   if (!Number.isSafeInteger(maximum) || maximum < 1)
     throw new Error('Program map does not fit the owned serialization buffer');

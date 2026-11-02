@@ -20,7 +20,7 @@
 static int mac2jb_auto_dispatch(char **argv) {
     const char *override = getenv("MAC2JB_CONTROLLER");
     if (getenv("MAC2JB_AUTO_WORKER") || (override && *override && strcmp(override, "auto") != 0)) return -1;
-    const char *choices[] = {"usb-drd0", "usb-drd1", "usb-drd3"};
+    const char *choices[] = {"usb-drd0", "usb-drd1", "usb-drd2", "usb-drd3"};
     for (size_t i=0; i<sizeof(choices)/sizeof(choices[0]); i++) {
         int fds[2];
         if (pipe(fds) != 0) { perror("pipe"); return 1; }

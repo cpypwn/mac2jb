@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
 const {PassThrough}=require('node:stream');
 const {main,argumentsFor,verifyProcessIdentity,frameProof,stages,owners,FRAME_READY,REVISION}=require('./gui-izlauncher.cjs');
 function fixture(t,options={}) {
@@ -154,6 +154,10 @@ test('base shell attaches once, validates frame evidence and joins only owned wo
   assert.deepEqual(rows.filter(row=>row.event==='joined').map(row=>row.role),roles);assert.equal(rows.at(-1).event,'proxy-close');
   assert.deepEqual(f.requests,[{run:f.directory,body:{command:'status'}}]);
   assert.equal(f.events.at(-1).type,'stopped');assert.ok(f.events.some(row=>row.type==='running'));
+  assert.equal(f.events.at(-1).cleanupVerified,true);
+  assert.deepEqual(f.events.at(-1).attemptMarkers,['.mac2jb-hblauncher-attempt.json']);
+  assert.equal(f.events.at(-1).attemptMarkerSha256,crypto.createHash('sha256').update(
+    fs.readFileSync(path.join(f.directory,'.mac2jb-hblauncher-attempt.json'))).digest('hex'));
   const report=JSON.parse(fs.readFileSync(path.join(result.directory,'mac2jb-homebrew.json')));
   assert.equal(report.source.commit,REVISION);assert.equal(report.shutdown.graphics.threadRunning,false);assert.equal(report.cleanupBlocked,false);
   assert.equal(report.identity.programId,demo?'0100b4b00f9f6000':'0100c9100b06a000');

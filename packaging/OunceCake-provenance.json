@@ -1,25 +1,40 @@
 {
-  "repository": "https://github.com/misshexa66/OunceCake",
-  "commit": "e3bcbd229be2229d44f036455adddda921ade3b2",
+  "repository": "https://github.com/Cellenseres/OunceCake",
+  "commit": "6dfd7750752f8b6c18f2c40b34fdadc628cd9a6e",
   "version": "1.0.0",
   "license": "GPLv2",
   "upstreamManifest": "OunceCake-upstream-SHA256SUMS",
   "distributionManifest": "OunceCake-SHA256SUMS",
   "nativeImage": {
     "path": "engine/oz-code/native.bin",
-    "bytes": 10813,
-    "sha256": "9af1776daae66e5566b9fb52e9017b6b78203e4c93d3b63d7000f0196eb5ff1e"
+    "bytes": 16491,
+    "sha256": "aa2ca4e1351217dbd8d16940672552632d3275f8d313dc4cc0a75e6af534e525"
   },
   "modifications": [
     {
-      "date": "2026-10-26",
-      "file": "engine/ftp.cjs",
+      "date": "2026-10-31",
+      "file": "engine/server.cjs",
       "description": "Qualify fixed native helpers and process replies; require listening, stopped/join proof and complete allocation cleanup; retain uncertain native resources."
     },
     {
-      "date": "2026-10-26",
+      "date": "2026-10-31",
       "file": "engine/fs-context.cjs",
       "description": "Bound program-index traversal to the owned serialization buffer and reject repeated or invalid node addresses."
+    },
+    {
+      "date": "2026-11-01",
+      "file": "engine/zip-download.cjs",
+      "description": "Stream the selected game as a read-only ZIP64 archive through a Mac loopback endpoint with bounded catalog metadata and file buffers."
+    },
+    {
+      "date": "2026-11-01",
+      "file": "engine/oz-code/native.c",
+      "description": "Add a Download all ZIP link to the selected game WebDAV listing when a local archive endpoint is active."
+    },
+    {
+      "date": "2026-11-01",
+      "file": "engine/server.cjs",
+      "description": "Pass the Mac archive endpoint port to the native WebDAV listing without changing the fixed configuration size."
     }
   ]
 }

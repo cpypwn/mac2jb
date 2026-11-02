@@ -5,12 +5,12 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const http = require('node:http');
 const net = require('node:net');
-const {selectedProfile, trustedProfileForDigest} = require('./host-profiles.cjs');
+const {profiles, trustedProfileForDigest} = require('./host-profiles.cjs');
 const {verifiedSession} = require('./gui-dump.cjs');
 const FORMAT = 'mac2jb-local-rpc-attachment-v1';
 const OWNER = '.mac2jb-attachment-owner.json';
 const ATTEMPT = '.mac2jb-hblauncher-attempt.json';
-const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'custom-homebrew', 'izlauncher', 'stremio', 'ouncecake', 'system-code-dump']);
+const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'native-hblauncher', 'custom-homebrew', 'izlauncher', 'stremio', 'ouncecake', 'system-code-dump']);
 const check = (value, message) => {if (!value) throw Error(message);};
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -38,7 +38,7 @@ async function writeJSON(file, value, exclusive = false) {
 
 // do not require code from the selected run until every bundled input matches.
 // generated json/captures may be present, but extra executable modules may not.
-async function verifyCode(directory, source) {
+async function verifyCode(directory, source, replacements = {}) {
   const expected = new Map();
   async function sourceFiles(relative) {
     const folder = path.join(source, 'engine', relative);
@@ -49,7 +49,7 @@ async function verifyCode(directory, source) {
       else {
         const info = await owned(file, 'file', false);
         check(info.size <= 16 * 1024 * 1024, 'Bundled code input exceeds its limit.');
-        expected.set(name, hash(await fs.readFile(file)));
+        expected.set(name, replacements['engine/'+name] ?? hash(await fs.readFile(file)));
       }
     }
   }
@@ -110,6 +110,21 @@ async function verifyCode(directory, source) {
   return hash(JSON.stringify([...expected].sort(([a], [b]) => a.localeCompare(b))));
 }
 
+function trustedSourceForDigest(root, digest) {
+  if (profiles.some(profile => profile.sourceSha256 === digest && profile.supportsHeldRPC))
+    return {...trustedProfileForDigest(root, digest), replacements:{}};
+  const savekit = require('./prepare-seedsow-host.cjs');
+  for (const id of savekit.supported) {
+    try {
+      const trusted = savekit.expectedPatchedSource(root, id);
+      if (trusted.sourceSha256 === digest) return trusted;
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  throw Error('This session was not created by a supported pinned RPC host.');
+}
+
 function statusRequest(port, timeoutMs = 180000, signal) {
   return new Promise((resolve, reject) => {
     const request = http.request({host:'127.0.0.1', port, path:'/', method:'POST', signal,
@@ -152,9 +167,8 @@ function retainedInfo(socketPath, timeoutMs = 60000, signal) {
 
 async function inspect(root, directory, options = {}) {
   await owned(directory, 'directory');
-  check(selectedProfile(root).supportsHeldRPC, 'Select a host profile that supports held RPC.');
   const result = await readJSON(path.join(directory, 'result.json'));
-  const trusted = trustedProfileForDigest(root, result.sourceSha256), profile = trusted.profile;
+  const trusted = trustedSourceForDigest(root, result.sourceSha256), profile = trusted.profile;
   // bounded private reads supplement the ordinary held proof validator.
   const current = await readJSON(path.join(directory, 'switch2/fs-execution-current.json'));
   async function runJSON(file) {
@@ -188,7 +202,7 @@ async function inspect(root, directory, options = {}) {
   await owned(canonicalSocket, 'socket');
   await owned(path.dirname(canonicalSocket), 'directory');
   const connectionSha256 = hash(await fs.readFile(connectionFile));
-  const codeSha256 = await verifyCode(directory, trusted.sourceDirectory);
+  const codeSha256 = await verifyCode(directory, trusted.sourceDirectory, trusted.replacements);
   const status = await (options.statusRequest || statusRequest)(connection.port, options.timeoutMs, options.signal);
   check(status?.ready === true, 'The original native RPC bridge is not ready.');
   let info, busy = false;
@@ -205,7 +219,7 @@ async function inspect(root, directory, options = {}) {
     'The live retained endpoint did not confirm this exact held session.');
   check(hash(await fs.readFile(connectionFile)) === connectionSha256,
     'The original native bridge changed while checking its identity.');
-  return {directory, session:proof.session, profileId:profile.id, sourceSha256:profile.sourceSha256,
+  return {directory, session:proof.session, profileId:profile.id, sourceSha256:result.sourceSha256,
     proofFile:proof.proofFile, reportFile:proof.reportFile, socketPath, connectionSha256, codeSha256,
     description:profile.label+' · '+proof.session, status:{...status, ...(busy ? {retainedBusy:true} : {})}};
 }
@@ -346,7 +360,8 @@ async function prepare(root, config, options = {}) {
     await removeAuthorization();
     // never remove the original attempt/owner markers, stop its host or retire fs.
   }
-  return {directory, sourceSession:initial.session, description:initial.description,
+  return {directory, sourceSession:initial.session, profileId:initial.profileId,
+    description:initial.description,
     manifestPath, verify, abortVerification, claimApplication, releaseApplication, close};
 }
 

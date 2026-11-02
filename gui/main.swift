@@ -37,6 +37,22 @@ if CommandLine.arguments.contains("--self-test") {
             ("node", ["--check", "scripts/host-profiles.cjs"]),
             ("node", ["--check", "scripts/prepare-host-profiles.cjs"]),
             ("node", ["scripts/prepare-host-profiles.cjs", "--check"]),
+            ("node", ["scripts/prepare-seedsow-host.cjs", "--check"]),
+            ("node", ["integrations/civswitch/verify.cjs", "--runtime"]),
+            ("node", ["--check", "integrations/civswitch/probe.cjs"]),
+            ("node", ["--check", "integrations/civswitch/send-hello.cjs"]),
+            ("node", ["--check", "integrations/civswitch/hello.js"]),
+            ("mac2jb-civswitch-hid", ["--payload", runtime.root.appendingPathComponent("integrations/civswitch/payload.txt").path, "--dry-run"]),
+            ("node", ["scripts/gui-savekit.cjs", "--self-test"]),
+            ("node", ["scripts/gui-savekit-tools.cjs", "--self-test"]),
+            ("node", ["scripts/check-savekit-research.cjs"]),
+            ("node", ["--check", "scripts/usb-controllers.cjs"]),
+            ("node", ["scripts/gui-dnswitch.cjs", "--self-test"]),
+            ("node", ["scripts/gui-webkit-research.cjs", "--self-test"]),
+            ("node", ["scripts/gui-bundled-browser-probes.cjs", "--self-test"]),
+            ("node", ["scripts/check-webkit-research.cjs"]),
+            ("homebrew/python/bin/python3", ["integrations/nsp-box/cli.py", "--self-test"]),
+            ("node", ["scripts/gui-nup.cjs", "--self-test", runtime.root.path]),
             ("node", ["--check", "scripts/gui-keyboard.cjs"]),
             ("node", ["scripts/gui-keyboard.cjs", "--self-test"]),
             ("node", ["--check", "scripts/gui-dump.cjs"]),
@@ -63,7 +79,8 @@ if CommandLine.arguments.contains("--self-test") {
                               userInfo: [NSLocalizedDescriptionKey: "Check failed: \(tool)"])
             }
         }
-        for host in HostProfile.allCases where host != .kurumuz {
+        try FileManager.default.removeItem(at: runtime.root)
+        for host in HostProfile.allCases where host != .cellenseres {
             let selected = try BundledRuntime.prepare(sessionParent: testParent, host: host)
             guard selected.host == host else {
                 throw BundledRuntime.RuntimeError.invalid("The prepared host does not match \(host.label).")

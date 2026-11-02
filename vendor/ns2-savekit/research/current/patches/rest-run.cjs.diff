@@ -1,0 +1,14 @@
+diff --git a/run.cjs b/run.cjs
+index aefa643..e772d61 100644
+--- a/run.cjs
++++ b/run.cjs
+@@ -192,7 +192,8 @@ async function main(args = process.argv.slice(2)) {
+   const result = {platform: 2, sourceSha256: await sourceDigest(), started: new Date().toISOString(), verified: false};
+   let native, bridge, engine, failure;
+   try {
+-    const connected = await listen({host, port, onWaiting() {
++    const pairTimeout = Number(process.env.NS2_PAIR_TIMEOUT_MS || 10 * 60 * 1000);
++    const connected = await listen({host, port, timeout: pairTimeout, onWaiting() {
+       console.log(`Waiting for Switch 2 at ${host}:${port}.`);
+       console.log('In a freshly opened SmileBASIC, load the saved bootstrap and enter:');
+       console.log('  RUN\n  REMOVE NSR,&H60000000,&H3FFFFFFF');

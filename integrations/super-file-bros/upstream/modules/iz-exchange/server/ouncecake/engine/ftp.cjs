@@ -1,7 +1,3 @@
-// mac2jb downstream modification notice, 2026-10-26 (cpypwn integration).
-// Qualify fixed native helpers; require positive readiness/stopped/join proof.
-// Uncertain native cleanup retains mapped code, allocations and attachment.
-// Original OunceCake GPLv2 source and license are preserved in this snapshot.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { resultError, cleanup } = require('./protocol.cjs');
@@ -197,14 +193,7 @@ function encodeConfiguration({
   return { config, sources: table };
 }
 
-async function deployFtp({ attachment: a, image, index, sources, port, timing = {} }) {
-  if (!Buffer.isBuffer(image) || !image.length || image.length > 0x10000 ||
-      !Buffer.isBuffer(index) || !index.length || !Array.isArray(sources) || !sources.length ||
-      !Number.isInteger(port) || port < 1024 || port > 65535)
-    throw new Error('Invalid native FTP deployment input');
-  const startupMs = timing.startupMs ?? 10000, stopMs = timing.stopMs ?? 10000;
-  const pause = timing.pause ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const now = timing.now ?? Date.now;
+async function deployFtp({ attachment: a, image, index, sources, port }) {
   const codeBytes = align(image.length);
 
   const indexOffset = 0x20000;
@@ -218,12 +207,9 @@ async function deployFtp({ attachment: a, image, index, sources, port, timing = 
   work.record = async () => {};
 
   let worker;
-  let workerMayRun = false;
   let ro;
   let pid;
   let mappings = [];
-  let mappingPending = false;
-  let closing;
 
   async function roRequest(command, values) {
     const input = Buffer.alloc(32);
@@ -247,59 +233,36 @@ async function deployFtp({ attachment: a, image, index, sources, port, timing = 
     };
   }
 
-  function blocked(error) {
-    error.cleanupBlocked = true;
-    return error;
-  }
-  function close() {
-    if (closing) return closing;
-    closing = (async () => {
-    if (mappingPending)
-      throw blocked(new Error('FTP executable mapping ownership is uncertain; restart the console.'));
-    if (workerMayRun && !worker)
-      throw blocked(new Error('FTP thread ownership is uncertain; restart the console.'));
+  async function close() {
     if (worker) {
-      try {
       await work.write(work.base + 0x400c, Buffer.from([1, 0, 0, 0]));
 
-      const until = now() + stopMs;
+      const until = Date.now() + 10000;
       let stopped = false;
-      while (now() < until) {
+      while (Date.now() < until) {
         const result = await work.rpc.call3(a.live.sdk + threadCode.tryWait.offset, worker, 0, 0);
 
         if (result === 1) { stopped = true; break; }
 
-        if (result !== 0) throw new Error('FTP thread stop status was invalid: ' + result);
-        await pause(50);
+        await new Promise((r) => setTimeout(r, 50));
       }
-      if (!stopped) throw new Error('FTP thread did not confirm stop before its deadline.');
+
       const joined = await work.rpc.call3(a.live.sdk + threadCode.join.offset, worker, work.base + 0xa008, 0);
-      if (joined !== 0) throw new Error('FTP thread did not join successfully: ' + joined);
-      } catch (error) { throw blocked(error); }
       work.threads.delete(worker);
       a.s.threads.delete('standalone-ftp');
       worker = undefined;
-      workerMayRun = false;
     }
 
-    // Never free backing pages unless every executable alias was unmapped.
-    try {
-      for (const mapping of mappings.slice().reverse())
-        await roRequest(0x524f0013, [pid, mapping.source, mapping.destination, 4096]);
-      await work.cleanup();
-      if (work.base !== 0 || work.handles.size !== 0 || work.threads.size !== 0)
-        throw new Error('FTP owned allocation cleanup was deferred.');
-    } catch (error) { throw blocked(error); }
+    await cleanup([
+      ...mappings.slice().reverse().map((mapping) => () =>
+        roRequest(0x524f0013, [pid, mapping.source, mapping.destination, 4096])),
+      () => work.cleanup(),
+    ]);
     mappings = [];
-    return {nativeStopped: true, joined: true, mappingsCleared: true};
-    })();
-    return closing;
   }
 
   try {
     await work.initialize();
-    for (const [name, expected] of Object.entries({...sdk, ...threadCode}))
-      await work.verifyCode(expected, 'OunceCake ' + name);
 
     const symbols = await resolveSdkFunctions({
       read: work.read.bind(work),
@@ -343,28 +306,20 @@ async function deployFtp({ attachment: a, image, index, sources, port, timing = 
       pid: true,
       copies: [0xffff8001],
     });
-    if (reply.result) throw resultError('FTP verify application process', reply.result);
-    if (!Buffer.isBuffer(reply.data) || reply.data.length < 96)
-      throw new Error('FTP application process reply was truncated.');
+
     pid = reply.data.readBigUInt64LE().toString();
 
     const destination = Number(reply.data.readBigUInt64LE(88));
-    if (BigInt(pid) <= 0n || !Number.isSafeInteger(destination) || destination < 4096 ||
-        destination >= 2 ** 39 || destination % 4096 !== 0)
-      throw new Error('FTP application process identity or executable destination is invalid.');
 
     for (let offset = 0; offset < codeBytes; offset += 4096) {
       const source = work.base + 0x10000 + offset;
       const target = destination + offset;
-      mappingPending = true;
       await roRequest(0x524f0012, [pid, source, target, 4096]);
       mappings.push({ source, destination: target });
-      mappingPending = false;
     }
 
     a.s.threads.add('standalone-ftp');
 
-    workerMayRun = true;
     const started = await work.rpc.call4(
       a.live.sdk + threadCode.create.offset,
       work.base + 0xa000,
@@ -374,44 +329,31 @@ async function deployFtp({ attachment: a, image, index, sources, port, timing = 
     );
 
     if (started) {
-      workerMayRun = false;
       a.s.threads.delete('standalone-ftp');
       throw new Error('Could not start FTP thread: ' + started);
     }
 
     worker = Number((await work.readOwned(work.base + 0xa000, 8)).readBigUInt64LE());
-    if (!Number.isSafeInteger(worker) || worker <= 0 || worker >= 2 ** 39) {
-      worker = undefined;
-      throw blocked(new Error('Native FTP did not return a valid owned thread.'));
-    }
     work.threads.add(worker);
 
-    const until = now() + startupMs;
+    const until = Date.now() + 10000;
     let current = { state: 0 };
 
-    while (now() < until) {
+    while (Date.now() < until) {
       current = await status();
 
-      if (current.state === 1 && current.result === 0) break;
+      if (current.state === 1) break;
 
       if (current.state === 3) {
         throw new Error('Native FTP startup failed: 0x' + current.result.toString(16));
       }
 
-      await pause(50);
+      await new Promise((r) => setTimeout(r, 50));
     }
-    if (current.state !== 1 || current.result !== 0)
-      throw new Error('Native FTP did not confirm listening before its deadline.');
 
-    return { close, status };
+    return { close };
   } catch (error) {
-    try { await close(); }
-    catch (cleanupError) {
-      const combined = new AggregateError([error, cleanupError], error.message + '\n' + cleanupError.message);
-      combined.cleanupBlocked = Boolean(cleanupError.cleanupBlocked);
-      throw combined;
-    }
-    throw error;
+    await cleanup([close], error);
   }
 }
 

@@ -12,8 +12,8 @@ struct BundledRuntime {
     var host: HostProfile {
         guard let data = try? Data(contentsOf: root.appendingPathComponent("selected-host.json")),
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = value["id"] as? String else { return .kurumuz }
-        return HostProfile(rawValue: id) ?? .kurumuz
+              let id = value["id"] as? String else { return .cellenseres }
+        return HostProfile(rawValue: id) ?? .cellenseres
     }
 
     enum RuntimeError: LocalizedError {
@@ -25,7 +25,7 @@ struct BundledRuntime {
 
     // Each launch has its own host files and pairing state. A prior session's
     // pairing command can never be consumed by a new GUI launch.
-    static func prepare(sessionParent: URL? = nil, host: HostProfile = .kurumuz) throws -> BundledRuntime {
+    static func prepare(sessionParent: URL? = nil, host: HostProfile = .cellenseres) throws -> BundledRuntime {
         umask(0o077)
         guard let bytes = embeddedPayloadBytes(), embeddedPayloadSize() > 0 else {
             throw RuntimeError.invalid("The offline runtime is missing from this app. Rebuild or download a complete app.")
@@ -81,7 +81,7 @@ struct BundledRuntime {
             _ = try tar(["-xzf", archive.path, "-C", root.path,
                          "--no-same-owner", "--no-same-permissions"])
             try manager.removeItem(at: archive)
-            let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard",
+            let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid",
                                        "homebrew/bin/spirv-val", "homebrew/bin/glslangValidator", "homebrew/python/bin/python3",
                                        "homebrew/python/bin/python3.13"])
             if let walker = manager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
@@ -103,21 +103,87 @@ struct BundledRuntime {
                     try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
                 }
             }
-            for path in ["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "vendor/libusbd/libusbd.dylib",
-                         "scripts/gui-keyboard.cjs",
+            for path in ["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid", "vendor/libusbd/libusbd.dylib",
+                         "integrations/civswitch/payload.txt", "integrations/civswitch/provenance.json",
+                         "integrations/civswitch/verify.cjs", "integrations/civswitch/probe.cjs",
+                         "integrations/civswitch/send-hello.cjs", "integrations/civswitch/hello.js",
+                         "scripts/gui-keyboard.cjs", "scripts/usb-controllers.cjs",
+                         "scripts/gui-dnswitch.cjs", "scripts/gui-webkit-research.cjs",
+                         "scripts/gui-bundled-browser-probes.cjs", "integrations/browser-probes/manifest.json",
+                         "scripts/gui-nup.cjs", "packaging/NUP-source.json",
+                         "integrations/nup-support/site-packages/zstandard/backend_c.cpython-313-darwin.so",
+                         "integrations/nup-support/site-packages/zstandard-0.25.0.dist-info/licenses/LICENSE",
+                         "integrations/browser-probes/index.html", "integrations/browser-probes/probes.js",
+                         "integrations/browser-probes/style.css",
+                         "scripts/check-webkit-research.cjs",
+                         "packaging/switch2-browser-research-provenance.json",
+                         "vendor/switch2-captive-portal-research/serve-switch2-browser-probe.py",
+                         "vendor/switch2-captive-portal-research/switch2-browser-probe.html",
+                         "vendor/switch2-captive-portal-research/switch2-probes-webkit.js",
+                         "vendor/switch2-captive-portal-research/probe-fixtures/probe-h264.mp4",
+                         "integrations/nsp-box/cli.py", "integrations/nsp-box/LICENSE.txt",
+                         "integrations/nsp-box/provenance.json",
+                         "integrations/nsp-box/src/engine.py", "integrations/nsp-box/src/container_format.py",
+                         "integrations/nsp-box/src/verify_format.py", "integrations/nsp-box/src/artwork.py",
+                         "integrations/nsp-box/src/compatibility.py", "integrations/nsp-box/src/dlc.py",
+                         "scripts/dnswitch-launch.applescript",
                          "scripts/gui-host.cjs", "scripts/gui-session.cjs", "scripts/gui-dump.cjs",
-                         "scripts/gui-attach.cjs", "scripts/rpc-attachment.cjs",
+                         "scripts/gui-savekit.cjs", "scripts/gui-savekit-tools.cjs", "scripts/prepare-seedsow-host.cjs",
+                         "packaging/ArtemisLauncher-v1.json",
+                         "packaging/ArtemisLauncher-bundles.json",
+                         "integrations/artemis/seedsowhax-v1-mac2jb.zip",
+                         "integrations/artemis/norahax-v1-mac2jb.zip",
+                         "vendor/ns2-savekit/Seedsow-Lua-Editor-Save.zip",
+                         "vendor/ns2-savekit/overlay/engine/shared/ipc.cjs",
+                         "vendor/ns2-savekit/overlay/engine/switch2/ro/ncm.cjs",
+                         "vendor/ns2-savekit/overlay/engine/switch2/app/mounted-save.cjs",
+                         "vendor/ns2-savekit/tools/save-pull-root.cjs",
+                         "vendor/ns2-savekit/tools/save-write-stage.cjs",
+                         "vendor/ns2-savekit/tools/save-delete-root.cjs",
+                         "vendor/ns2-savekit/tools/list-apps.cjs",
+                         "vendor/ns2-savekit/tools/save-inventory.cjs",
+                         "vendor/ns2-savekit/tools/save-restore.sh",
+                         "vendor/ns2-savekit/tools/lib/save-tree.cjs",
+                         "vendor/ns2-savekit/config/titles.json",
+                         "vendor/ns2-savekit/research/catalog.json",
+                         "vendor/ns2-savekit/research/current/README.md",
+                         "integrations/seedsow-lua/cpypwn.lua",
+                         "integrations/artemis/cpypwn-showcase.lua",
+                         "scripts/gui-attach.cjs", "scripts/gui-discover-rpc.cjs", "scripts/rpc-attachment.cjs",
+                         "scripts/homebrew-reentry.cjs",
                          "scripts/host-profiles.cjs", "scripts/prepare-host-profiles.cjs", "packaging/host-profiles.json",
                          "vendor/ns2jb-hosts/pepsipu/run.cjs", "vendor/ns2jb-hosts/kurumuz/run.cjs",
+                         "vendor/ns2jb-hosts/cellenseres/run.cjs",
                          "scripts/gui-homebrew.cjs", "scripts/gui-stremio.cjs", "stremio/pipeline.cjs", "stremio/source-preferences.cjs", "stremio/app/app.json", "scripts/check-homebrew-runtime.cjs",
                          "scripts/gui-hblauncher.cjs", "vendor/HBLauncher/homebrew-launcher/launcher.cjs",
                          "scripts/gui-mintbrew.cjs", "scripts/prepare-mintbrew.cjs",
+                         "scripts/gui-native-hblauncher.cjs",
+                         "integrations/mintbrew-native/sd-roms.cjs",
+                         "integrations/mintbrew-native/build-report.json",
+                         "integrations/mintbrew-native/verify-native.cjs",
+                         "integrations/mintbrew-native/upstream/host/start.cjs",
+                         "integrations/mintbrew-native/upstream/sdk/abi.json",
+                         "integrations/mintbrew-native/upstream/launcher/build/report.json",
+                         "integrations/mintbrew-native/upstream/launcher/build/code.bin",
+                         "integrations/mintbrew-native/upstream/launcher/build/data.bin",
+                         "integrations/mintbrew-native/upstream/apps/hello-cpu/build/report.json",
+                         "integrations/mintbrew-native/upstream/apps/hello-cpu/build/code.bin",
+                         "integrations/mintbrew-native/upstream/apps/hello-cpu/build/data.bin",
+                         "integrations/mintbrew-native/upstream/apps/gpu-triangle/build/report.json",
+                         "integrations/mintbrew-native/upstream/apps/gpu-triangle/build/code.bin",
+                         "integrations/mintbrew-native/upstream/apps/gpu-triangle/build/data.bin",
+                         "integrations/mintbrew-native/upstream/apps/mintnes/manifest.json",
+                         "integrations/mintbrew-native/upstream/apps/mintnes/build/report.json",
+                         "integrations/mintbrew-native/upstream/apps/mintnes/build/code.bin",
+                         "integrations/mintbrew-native/upstream/apps/mintnes/build/data.bin",
+                         "integrations/mintbrew-native/upstream/apps/mintnes/assets/Diamond Chase.nes",
                          "vendor/MintBrew/manifest.json", "vendor/MintBrew/homebrew-launcher/launcher.cjs", "vendor/MintBrew/apps/hello-world/app.json",
                          "vendor/MintBrew/apps/froggy-road/app.json", "vendor/MintBrew/apps/cpu-gpu-probe/app.json",
                          "vendor/MintBrew/apps/chip8-test/app.json", "vendor/MintBrew/apps/ftpd-sb/app.json",
                          "vendor/MintBrew/apps/izdoom/app.json", "vendor/MintBrew/apps/stremio/app.json",
-                         "vendor/MintBrew/apps/ouncecake/app.json",
+                         "vendor/MintBrew/apps/ouncecake/app.json", "vendor/MintBrew/apps/iz-exchange/app.json",
                          "integrations/mintbrew-stremio/adapter.cjs", "integrations/mintbrew-ouncecake/service.cjs",
+                         "integrations/mintbrew-iz-exchange/service.cjs",
                          "packaging/ftpd-sb-v0.1.0-SHA256SUMS", "packaging/ftpd-sb-v0.1.0-release-SHA256SUMS",
                          "packaging/ftpd-sb-v0.1.0-provenance.json",
                          "vendor/HBLauncher/apps/ftpd-sb/app.json", "packaging/HBLauncher-v0.2.0-SHA256SUMS",
@@ -127,6 +193,7 @@ struct BundledRuntime {
                          "vendor/IZ2S-Platform/engines/izmysh/server/host.cjs",
                          "packaging/IZ2S-Platform-provenance.json", "packaging/runtime-homebrew.json",
                          "scripts/gui-ouncecake.cjs", "vendor/OunceCake/LICENSE", "vendor/OunceCake/engine/oz-code/native.bin",
+                         "vendor/OunceCake/engine/zip-download.cjs",
                          "integrations/izdoom/prepare.cjs", "vendor/IZDOOM/IZDOOM-v0.17.1-IZ2S.izm",
                          "vendor/IZDOOM/IZDOOM-v0.17.1-source.tar.gz", "vendor/IZDOOM/SHA256SUMS",
                          "packaging/OunceCake-provenance.json", "packaging/OunceCake-SHA256SUMS",

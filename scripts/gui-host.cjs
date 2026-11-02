@@ -6,6 +6,7 @@ const path = require('node:path');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const {selectedProfile, profileById, validStartCommand, incompatibleLegacyStartHint} = require('./host-profiles.cjs');
+const {autoControllers} = require('./usb-controllers.cjs');
 const root = path.resolve(__dirname, '..');
 const timingDefaults = Object.freeze({delay: 10, enumerationTimeout: 4, loadWaitMs: 1000,
   runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0});
@@ -37,7 +38,7 @@ function hidSettings(args) {
   }
   return settings;
 }
-function commandsOnlySettings(args, profile = profileById('kurumuz')) {
+function commandsOnlySettings(args, profile = selectedProfile(root)) {
   const timings=[];let csv,startCommand,startPrefix=false;
   for(let index=0;index<args.length;index++) {
     const option=args[index];
@@ -60,6 +61,20 @@ function commandsOnlySettings(args, profile = profileById('kurumuz')) {
     throw Error(`Selected START needs either --start-prefix or the exact ${profile.startArgumentCount}-argument host START command.`);
   return {...hidSettings(timings),commands,startPrefix,...(startCommand===undefined?{}:{startCommand})};
 }
+function heldCommandsSettings(args, profile = selectedProfile(root)) {
+  const timing = [];
+  let startCommand;
+  for (let index = 0; index < args.length; index++) {
+    if (args[index] === '--start-command') {
+      if (startCommand !== undefined || index + 1 >= args.length)
+        throw Error('Missing or duplicate --start-command.');
+      startCommand = args[++index];
+    } else timing.push(args[index]);
+  }
+  if (startCommand !== undefined && !validStartCommand(startCommand, profile))
+    throw Error('The active host START command is invalid for this host.');
+  return {...hidSettings(timing), ...(startCommand === undefined ? {} : {startCommand})};
+}
 function emit(type, fields = {}) { process.stdout.write(JSON.stringify({type, ...fields}) + '\n'); }
 function lines(stream, callback, limit = 65536) {
   let pending = '';
@@ -75,7 +90,7 @@ function lines(stream, callback, limit = 65536) {
   });
   stream.on('end', () => {if (pending) callback(pending);});
 }
-function validStart(line, address, profile = profileById('kurumuz')) {
+function validStart(line, address, profile = selectedProfile(root)) {
   return validStartCommand(line,profile,address);
 }
 function verifiedResult(result) {
@@ -205,8 +220,8 @@ async function hid(kind, controller, settings = timingDefaults) {
   if (controller !== 'auto' && !/^usb-drd(?:[0-9]|1[0-5])$/.test(controller)) throw Error('Choose a controller from 0 to 15.');
   if(controller!=='auto'&&settings.preferredController!==undefined)throw Error('A preferred controller is only available in Automatic mode.');
   const {delay, enumerationTimeout, loadWaitMs, runWaitMs, removeWaitMs, loadConfirmWaitMs} = settings;
-  const candidates = controller === 'auto' ? [...new Set([...(settings.preferredController?[settings.preferredController]:[]),'usb-drd0','usb-drd1','usb-drd3'])] : [controller];
-  let safeFailures=0;
+  const candidates = controller === 'auto' ? autoControllers(settings.preferredController) : [controller];
+  let safeFailures=0, initFailures=0;
   const saveBootstrap = kind === 'save-bootstrap';
   const textTransfer = kind === 'bootstrap';
   const commandNames=saveBootstrap?['SAVE']:kind==='commands-only'?settings.commands.map(name=>name.toUpperCase()):['LOAD','RUN','REMOVE','START'];
@@ -227,6 +242,8 @@ async function hid(kind, controller, settings = timingDefaults) {
       '--load-wait-ms', String(loadWaitMs), '--run-wait-ms', String(runWaitMs),
       '--remove-wait-ms', String(removeWaitMs), '--load-confirm-wait-ms', String(loadConfirmWaitMs),
       ...(saveBootstrap ? ['--save-bootstrap'] : []),
+      ...(kind === 'commands' && settings.startCommand ?
+        ['--commands','load,run,remove,start','--start-command',settings.startCommand] : []),
       ...(kind === 'commands-only' ? ['--commands',settings.commands.join(','),
         ...(settings.startPrefix?['--start-prefix']:settings.startCommand?['--start-command',settings.startCommand]:[])] : [])];
     current = spawn(executable, args, {cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
@@ -385,18 +402,43 @@ async function hid(kind, controller, settings = timingDefaults) {
       emit('failed', {partial: true, message: 'Input may be partial. Automatic retry was stopped. Inspect and clear the Switch input before trying again.'}); return 1;
     }
     const enumerationError = /^USB host did not enumerate a keyboard(?:\.| on selected controller\. Check data role, cable, and host USB descriptors\.)?$/m.test(output);
-    const initializationError=/^(?:libusbd_init failed\b|USB configuration failed\b|USB interface setup failed\b|USB enumeration error(?::|\s)|USB keyboard enumeration failed\b)/m.test(output);
-    const safeEnumerationFailure=!initializationError&&((timedOut&&(['SIGTERM','SIGKILL'].includes(signal)||[1,130].includes(code)))||(!signal&&code===1&&enumerationError));
+    const noGadgetInitialization=/^libusbd_init failed\b/m.test(output);
+    const initializationError=/^(?:USB configuration failed\b|USB interface setup failed\b|USB enumeration error(?::|\s)|USB keyboard enumeration failed\b)/m.test(output);
+    if (/^No active ns2jb command at /m.test(output)) {
+      emit('failed', {message: 'The active host START command was not available to the USB sender. No console command was typed.'});
+      return code || 1;
+    }
+    const safeEnumerationFailure=!initializationError&&((controller==='auto'&&!signal&&code===1&&noGadgetInitialization)||
+      (timedOut&&(['SIGTERM','SIGKILL'].includes(signal)||[1,130].includes(code)))||(!signal&&code===1&&enumerationError));
     if (!safeEnumerationFailure) {
       emit('failed', {message: 'USB initialization failed. Check that the approved usbgadget driver is installed and loaded.'}); return code || 1;
     }
     safeFailures++;
-    emit('log', {message: `${candidate} did not enumerate; no typing was detected.`});
+    if(noGadgetInitialization)initFailures++;
+    emit('log', {message: noGadgetInitialization
+      ? `${candidate} could not initialize its USB gadget; no typing was detected.`
+      : `${candidate} did not enumerate; no typing was detected.`});
   }
   if (stopping) {emit('cancelled', {message: 'Transfer stopped. Inspect the Switch for partial input.'}); return 130;}
-  emit('failed', {...(safeFailures===candidates.length?{retrySafe:true}:{}),message: 'No controller connected. The Mac must NOT be supplying charging power to the Switch. Unplug the USB-C cable from the Switch, wait about one second, then plug it back into the Switch and verify that power is directed toward the Mac. Software cannot force the power role. You can also choose a controller manually.'}); return 1;
+  emit('failed', {...(safeFailures===candidates.length?{retrySafe:true}:{}),message: initFailures===candidates.length
+    ? 'USB initialization failed on every controller. Check that the approved usbgadget driver is installed and loaded.'
+    : 'No controller connected. The Mac must NOT be supplying charging power to the Switch. Unplug the USB-C cable from the Switch, wait about one second, then plug it back into the Switch and verify that power is directed toward the Mac. Software cannot force the power role. You can also choose a controller manually.'}); return 1;
 }
 async function main(args = process.argv.slice(2)) {
+  if (args[0] === 'host' && args.length === 4 && args[2] === '--post-run-options' &&
+      args[3] === '--seedsow-save') {
+    if (!['kurumuz', 'cellenseres'].includes(selectedProfile(root).id))
+      throw Error('Seedsow save installation requires the Kurumuz or Cellenseres host.');
+    return require('./gui-session.cjs').main({root, address: args[1], emit, lines,
+      verifiedResult, seedsowSave: true, savekitTools: true});
+  }
+  if (args[0] === 'host' && args.length === 4 && args[2] === '--post-run-options' &&
+      args[3] === '--savekit-tools') {
+    if (!['kurumuz', 'cellenseres'].includes(selectedProfile(root).id))
+      throw Error('SaveKit tools require the Kurumuz or Cellenseres host.');
+    return require('./gui-session.cjs').main({root, address: args[1], emit, lines,
+      verifiedResult, savekitTools: true});
+  }
   if (args[0] === 'host' && args.length === 3 && args[2] === '--post-run-options') {
     if (!selectedProfile(root).supportsHeldRPC) throw Error('The selected host does not provide held RPC.');
     return require('./gui-session.cjs').main({root, address: args[1], emit, lines, verifiedResult});
@@ -417,10 +459,12 @@ async function main(args = process.argv.slice(2)) {
   if (args[0] === 'host' && args.length === 2) return host(args[1]);
   if (args[0] === 'hid' && args[1] === 'commands-only')
     return hid(args[1], args[2], commandsOnlySettings(args.slice(3),selectedProfile(root)));
+  if (args[0] === 'hid' && args[1] === 'commands')
+    return hid(args[1], args[2], heldCommandsSettings(args.slice(3),selectedProfile(root)));
   if (args[0] === 'hid' && args.length >= 3) return hid(args[1], args[2], hidSettings(args.slice(3)));
   throw Error('Usage: gui-host.cjs host IPv4 | hid bootstrap|commands|save-bootstrap auto|usb-drdN [delay-ms] | hid commands-only auto|usb-drdN [delay-ms] --commands CSV [--start-prefix|--start-command TEXT]');
 }
-module.exports = {validStart, verifiedResult, hidSettings,commandsOnlySettings, lines, main, networkBindFailure, networkUnavailableMessage};
+module.exports = {validStart, verifiedResult, hidSettings,commandsOnlySettings,heldCommandsSettings, lines, main, networkBindFailure, networkUnavailableMessage};
 if (require.main === module) main().then(code => {process.exitCode = code;}).catch(error => {
   signalGroup(current, 'SIGTERM'); emit('failed', {message: error.message}); process.exitCode = 1;
 });

@@ -9,7 +9,9 @@ const layout=require('../vendor/MintBrew/sdk/host/layout.cjs');
 const prepare=require('../integrations/mintbrew-ouncecake/prepare.cjs');
 const protocol=require('../integrations/mintbrew-ouncecake/protocol.cjs');
 const service=require('../integrations/mintbrew-ouncecake/service.cjs');
+const {buildIndex}=require('../vendor/OunceCake/engine/mounts.cjs');
 const root=path.resolve(__dirname,'..');
+const gameIndex=()=>buildIndex([{path:'/game',kind:'storage',entries:[{path:'/file.bin',type:'file',size:1}]}]);
 
 function network(address='192.0.2.20'){
  const bytes=Buffer.alloc(layout.FIELD.network+24);
@@ -45,15 +47,15 @@ test('OunceCake app bundle and title raster stay within its private GPU buffer',
  assert.ok(protocol.HEADER_BYTES+protocol.MAX_GAMES*protocol.TILE_BYTES<protocol.STORAGE_BYTES);
 });
 
-test('console FTP address is taken only from qualified Switch network state',()=>{
+test('console HTTP/WebDAV address is taken only from qualified Switch network state',()=>{
  assert.equal(service.ipv4(network()),'192.0.2.20');
  const absent=network();absent.writeUInt32LE(0,layout.FIELD.flags);
  assert.throws(()=>service.ipv4(absent),/ready IPv4/);
  assert.throws(()=>service.ipv4(network('127.0.0.1')),/unusable IPv4/);
- const value=protocol.header(protocol.STATES.running,2,'ftp://192.0.2.20:2121');
+ const value=protocol.header(protocol.STATES.running,2,'http://192.0.2.20:2121/');
  assert.equal(value.readUInt32LE(0),protocol.MAGIC);
  assert.equal(value.readUInt32LE(4),protocol.STATES.running);
- assert.equal(value.subarray(128,128+value.readUInt32LE(16)).toString(),'ftp://192.0.2.20:2121');
+ assert.equal(value.subarray(128,128+value.readUInt32LE(16)).toString(),'http://192.0.2.20:2121/');
 });
 
 function fixture(t,{serverStopError,handleCloseError,detachError,prepareGame}={}){
@@ -77,13 +79,13 @@ function fixture(t,{serverStopError,handleCloseError,detachError,prepareGame}={}
   content:{async discoverGames(){return [{title:'0100000000000001',name:'Test game',storages:[4]}];}},
   mounts:{async prepareGame(options){if(prepareGame)return prepareGame(options);
    const handle=100+(++events.mounted);options.attachment.s.handles.add(handle);
-   return {index:Buffer.from('index'),sources:[{handle,kind:0,size:1}]};}},
-  ftp:{async deployFtp({attachment}){events.deployed++;attachment.s.handles.add(200+events.deployed);
-   attachment.s.threads.add('ftp');
+   return {index:gameIndex(),sources:[{handle,kind:0,size:1}]};}},
+  server:{async deployServer({attachment}){events.deployed++;attachment.s.handles.add(200+events.deployed);
+   attachment.s.threads.add('server');
    return {async close(){events.stopped++;
    if(serverStopError)throw serverStopError;
-   attachment.s.threads.delete('ftp');events.order.push('ftp-stopped');
-   return {nativeStopped:true,joined:true,mappingsCleared:true};}};}}
+   attachment.s.threads.delete('server');events.order.push('server-stopped');
+   return {nativeStopped:true,joined:true,mappingsCleared:true};},address:'192.0.2.20'};}}
  };
  const instance=service.create({rpc,menu,gpu:{fingerprint:'abc',privateStorage:{mapped,bytes:protocol.STORAGE_BYTES}},
   app:{id:'ouncecake',fingerprint:'abc',manifest:{service:'ouncecake-v1'}},directory,root,
@@ -97,20 +99,20 @@ function fixture(t,{serverStopError,handleCloseError,detachError,prepareGame}={}
  return {instance,events};
 }
 
-test('A selects one game; short B closes FTP and allows another selection',async t=>{
+test('A selects one game; short B closes HTTP/WebDAV and allows another selection',async t=>{
  const {instance,events}=fixture(t);
  await instance.start();await waitFor(()=>instance.report.status,'catalog');
  assert.equal(events.attach,1);assert.equal(events.detach,0);
  await instance.select(0);await waitFor(()=>instance.report.status,'running');
- assert.equal(instance.report.ftpURL,'ftp://192.0.2.20:2121');
+ assert.equal(instance.report.httpURL,'http://192.0.2.20:2121/');
  const running=events.writes.map(row=>row.bytes).findLast(bytes=>bytes.length===protocol.HEADER_BYTES&&
   bytes.readUInt32LE(0)===protocol.MAGIC&&bytes.readUInt32LE(4)===protocol.STATES.running);
- assert.equal(running.subarray(128,128+running.readUInt32LE(16)).toString(),'FTP://192.0.2.20:2121');
+ assert.equal(running.subarray(128,128+running.readUInt32LE(16)).toString(),'http://192.0.2.20:2121/');
  await instance.back();await waitFor(()=>instance.report.status,'catalog');
  assert.equal(events.stopped,1);assert.equal(events.detach,0);
  assert.deepEqual(events.closed.sort((a,b)=>a-b),[101,201]);
- assert.ok(events.order.indexOf('ftp-stopped')<events.order.indexOf('handle:201'));
- assert.ok(events.order.indexOf('ftp-stopped')<events.order.indexOf('handle:101'));
+ assert.ok(events.order.indexOf('server-stopped')<events.order.indexOf('handle:201'));
+ assert.ok(events.order.indexOf('server-stopped')<events.order.indexOf('handle:101'));
  assert.ok(events.order.indexOf('handle:101')<events.order.indexOf('title-ftp-resumed'));
  await instance.select(0);await waitFor(()=>instance.report.status,'running');
  await instance.close();
@@ -119,7 +121,7 @@ test('A selects one game; short B closes FTP and allows another selection',async
  assert.equal(events.fatal.length,0);
 });
 
-test('uncertain FTP shutdown keeps the held session blocked',async t=>{
+test('uncertain HTTP/WebDAV shutdown keeps the held session blocked',async t=>{
  const failure=Object.assign(Error('join did not complete'),{cleanupBlocked:true});
  const {instance,events}=fixture(t,{serverStopError:failure});
  await instance.start();await waitFor(()=>instance.report.status,'catalog');
@@ -183,7 +185,7 @@ test('bad game content releases selected handles and returns to the catalog',asy
  const {instance,events}=fixture(t,{prepareGame:async({attachment})=>{
   const handle=100+(++attempts);attachment.s.handles.add(handle);
   if(attempts===1)throw Error('Invalid RomFS: header size');
-  return {index:Buffer.from('index'),sources:[{handle,kind:0,size:1}]};
+  return {index:gameIndex(),sources:[{handle,kind:0,size:1}]};
  }});
  await instance.start();await waitFor(()=>instance.report.status,'catalog');
  await instance.select(0);await waitFor(()=>instance.report.error,'Invalid RomFS: header size');

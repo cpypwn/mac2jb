@@ -5,15 +5,17 @@ const path = require('node:path');
 const net = require('node:net');
 const {spawn} = require('node:child_process');
 const {networkBindFailure, networkUnavailableMessage} = require('./gui-host.cjs');
-const {incompatibleLegacyStartHint} = require('./host-profiles.cjs');
+const {incompatibleLegacyStartHint, selectedProfile} = require('./host-profiles.cjs');
+const {releaseMarkers} = require('./homebrew-reentry.cjs');
 const heldMessage = '4/4 verified. SmileBASIC RPC and FS memory endpoint remain live while this process and the app stay open.';
 const homebrewScripts = Object.freeze({
   ouncecake: 'scripts/gui-ouncecake.cjs',
   mintbrew: 'scripts/gui-mintbrew.cjs',
+  'native-hblauncher': 'scripts/gui-native-hblauncher.cjs',
   izlauncher: 'scripts/gui-izlauncher.cjs',
   'custom-homebrew': 'scripts/gui-custom-homebrew.cjs'
 });
-const nativeCleanupApps = new Set(['ouncecake', 'izlauncher', 'mintbrew', 'custom-homebrew']);
+const nativeCleanupApps = new Set(['ouncecake', 'izlauncher', 'mintbrew', 'native-hblauncher', 'custom-homebrew']);
 
 function availableHomebrew(root, application) {
   const marker = path.join(root, 'packaging/runtime-homebrew.json');
@@ -58,6 +60,60 @@ function finished(child) {
     child.once('close', (code, signal) => resolve({code, signal}));
   });
 }
+function validSavekitToolEvent(event, action, root) {
+  if (!event || typeof event !== 'object' ||
+      !['progress', 'accounts', 'titles', 'inventory', 'listing', 'backup', 'complete', 'failed'].includes(event.type) ||
+      typeof event.message !== 'string' || Buffer.byteLength(event.message) > 512 ||
+      /[\x00-\x1f\x7f]/.test(event.message)) return false;
+  if (event.unsafe !== undefined && !(event.type === 'failed' && event.unsafe === true)) return false;
+  if (event.safeToContinue !== undefined &&
+      !(event.type === 'failed' && event.safeToContinue === true && event.unsafe !== true)) return false;
+  if (event.type === 'complete' && event.action !== action) return false;
+  if (event.type === 'accounts') return action === 'accounts' && Array.isArray(event.users) &&
+    event.users.length <= 8 && new Set(event.users).size === event.users.length &&
+    event.users.every(uid => typeof uid === 'string' && /^[a-f0-9]{32}$/.test(uid));
+  if (event.type === 'titles') return action === 'titles' && Array.isArray(event.titles) &&
+    event.titles.length <= 2048 && new Set(event.titles).size === event.titles.length &&
+    event.titles.every(id => typeof id === 'string' && /^[a-f0-9]{16}$/.test(id)) &&
+    Array.isArray(event.writable) && event.writable.every(id => event.titles.includes(id)) &&
+    (event.names === undefined || event.names && typeof event.names === 'object' &&
+      !Array.isArray(event.names) && Object.keys(event.names).length <= 2048 &&
+      Object.entries(event.names).every(([id, name]) => event.titles.includes(id) &&
+        typeof name === 'string' && Buffer.byteLength(name) >= 1 &&
+        Buffer.byteLength(name) <= 160 &&
+        !/[\x00-\x1f\x7f-\x9f\u2028-\u202e\u2066-\u2069]/.test(name)));
+  if (event.type === 'inventory') return action === 'inventory' &&
+    Array.isArray(event.inventory) && event.inventory.length <= 256 &&
+    Number.isSafeInteger(event.inventoryTotal) && event.inventoryTotal >= event.inventory.length && event.inventoryTotal <= 32768 &&
+    Number.isSafeInteger(event.failedSpaces) && event.failedSpaces >= 0 && event.failedSpaces <= 8 &&
+    event.truncated === (event.inventoryTotal > event.inventory.length) &&
+    typeof event.reportPath === 'string' &&
+    path.resolve(event.reportPath).startsWith(path.join(root, 'savekit-exports') + path.sep) &&
+    event.inventory.every(entry => entry && typeof entry.id === 'string' && /^\d{1,20}$/.test(entry.id) &&
+      typeof entry.titleId === 'string' && /^[a-f0-9]{16}$/.test(entry.titleId) &&
+      typeof entry.uid === 'string' && /^[a-f0-9]{32}$/.test(entry.uid) &&
+      Number.isInteger(entry.space) && entry.space >= 0 && entry.space <= 255 &&
+      Number.isInteger(entry.type) && entry.type >= 0 && entry.type <= 255 &&
+      Number.isInteger(entry.rank) && entry.rank >= 0 && entry.rank <= 1 &&
+      Number.isSafeInteger(entry.index) && entry.index >= 0 && entry.index <= 65535 &&
+      typeof entry.size === 'string' && /^\d{1,20}$/.test(entry.size));
+  if (event.type === 'listing') return action === 'inspect' &&
+    Array.isArray(event.entries) && event.entries.length <= 256 &&
+    event.entries.every(entry => typeof entry.path === 'string' && entry.path.startsWith('/') &&
+      entry.path.length <= 1024 && !/[\x00-\x1f\x7f]/.test(entry.path) &&
+      (entry.size === null || Number.isSafeInteger(entry.size) && entry.size >= 0)) &&
+    Number.isSafeInteger(event.files) && event.files >= 0 &&
+    Number.isSafeInteger(event.bytes) && event.bytes >= 0;
+  if (event.type === 'backup' || event.backupPath !== undefined) {
+    if (typeof event.backupPath !== 'string' ||
+        !path.resolve(event.backupPath).startsWith(path.join(root, 'savekit-exports') + path.sep)) return false;
+  }
+  if (event.type === 'backup') return Number.isSafeInteger(event.files) && event.files >= 0 &&
+    Number.isSafeInteger(event.bytes) && event.bytes >= 0;
+  if (event.type === 'progress') return typeof event.stage === 'string' &&
+    /^[a-z-]{1,32}$/.test(event.stage);
+  return true;
+}
 function heldSignalGuard(message) {
   // the fork prints its held status just before installing stop handlers.
   // buffer a signal in that short interval without altering the fork source.
@@ -92,9 +148,15 @@ function heldSignalGuard(message) {
 }
 
 async function main({root, address, emit, lines, verifiedResult, input = process.stdin, graceMs = 300000,
+  seedsowSave = false, savekitTools = false,
   preflightCustomApp, listIZlauncherModules}) {
   if (!net.isIPv4(address)) throw Error('Choose the Mac’s LAN IPv4 address.');
-  const folder = path.join(root, 'vendor/ns2jb'), runs = path.join(folder, 'runs');
+  if ((seedsowSave || savekitTools) &&
+      !require('./prepare-seedsow-host.cjs').supported.has(selectedProfile(root).id))
+    throw Error('Seedsow and SaveKit operations require a Kurumuz or Cellenseres host.');
+  const folder = seedsowSave || savekitTools ? require('./prepare-seedsow-host.cjs').prepare(root) :
+    path.join(root, 'vendor/ns2jb');
+  const runs = path.join(folder, 'runs');
   fs.mkdirSync(runs, {recursive: true, mode: 0o700}); fs.chmodSync(runs, 0o700);
   const active = path.join(runs, 'mac2jb-active-connect.txt');
   try {fs.lstatSync(active); throw Error('This session already has a pairing record. Start a fresh session.');}
@@ -112,8 +174,15 @@ async function main({root, address, emit, lines, verifiedResult, input = process
   let finishing = false, closed = false, outputClosed = false, failure, cancelBeforeReady = false;
   let finishTimer, helperTimer, dumpTask, dumpBusy = false, statusBusy = false;
   let rpcHeldConfirmed = false, homebrewAttempted = false, homebrewChild, homebrewTask;
+  let savekitChild, savekitTask, savekitBusy = false, savekitCompleted = false, savekitSkipped = false, savekitStage;
+  let savekitCustom = false, savekitGame, savekitSelected = false, savekitFinishedForHomebrew = false;
+  let savekitUsers = new Set(), savekitFailurePublished = false;
+  let toolChild, toolTask, toolBusy = false, toolAction, savekitSaveTouched = false;
+  let savekitToolFailed = false;
+  let sdChild, sdTask, sdRunning = false, sdReadySeen = false, sdSettled = false, sdStopTimer;
   let preflightBusy = false, preflightTask;
   let homebrewRunning = false, homebrewSettled = false, homebrewStopTimer, homebrewFailurePublished = false;
+  let homebrewStopRequested = false;
   let homebrewApplication, homebrewAdapter, awaitingGame = false, gameTitles = new Set(), cleanupBlocked = false;
   let networkFailure, progressed = false;
   const safeEmit = (type, fields = {}) => {
@@ -141,9 +210,26 @@ async function main({root, address, emit, lines, verifiedResult, input = process
     }, 300000);
     homebrewStopTimer.unref();
   }
+  function stopSDBrowser() {
+    if (!sdChild || sdSettled) return;
+    if (sdChild.stdin?.writable) {
+      try {sdChild.stdin.write('{"action":"stop"}\n');}
+      catch (error) {if (error.code !== 'EPIPE') fail(error.message);}
+    }
+    sdStopTimer ||= setTimeout(() => {
+      if (sdReadySeen && !sdSettled) {
+        cleanupBlocked = true;
+        fail('The SD browser did not confirm shutdown. Restart the console before closing RPC.');
+      }
+      signalGroup(sdChild, 'SIGKILL');
+    }, 30000);
+    sdStopTimer.unref();
+  }
   function finish(reason = 'Finishing the session.') {
     if (closed || finishing) return;
     finishing = true;
+    if (savekitChild && savekitStage !== 'writing') signalGroup(savekitChild, 'SIGTERM');
+    if (toolChild && !['write', 'delete'].includes(toolAction)) signalGroup(toolChild, 'SIGTERM');
     if (statusBusy) fail('The RPC status check was interrupted. Restart the console before another attempt.');
     if (helper) {
       fail('The firmware dump was interrupted. Keep its partial files and restart the console before retrying.');
@@ -170,7 +256,10 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         }, graceMs);
         finishTimer.unref();
       };
-      if (homebrewChild) {stopHomebrew(); homebrewTask.finally(releaseRunner);}
+      if (savekitChild) savekitTask.finally(releaseRunner);
+      else if (toolChild) toolTask.finally(releaseRunner);
+      else if (sdChild) {stopSDBrowser(); sdTask.finally(releaseRunner);}
+      else if (homebrewChild) {stopHomebrew(); homebrewTask.finally(releaseRunner);}
       else if (preflightTask) preflightTask.finally(releaseRunner);
       else releaseRunner();
     } else {
@@ -272,7 +361,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         stopHomebrew();
         await homebrewTask;
         if (finishing || closed) return;
-        if (homebrewChild || !homebrewSettled || cleanupBlocked || failure)
+        if (homebrewChild || homebrewAttempted && !homebrewSettled || cleanupBlocked || failure)
           throw Error('The current app did not confirm safe shutdown. The system-code dump was not started.');
       }
       if (finishing || closed) return;
@@ -281,12 +370,243 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       if (finishing || closed) return;
       await dump(true);
     }
+    async function installSeedsowSave(sourcePath, artemisGame) {
+      savekitBusy = true;
+      const previousSavekitCompleted = savekitCompleted;
+      savekitCompleted = false; savekitSkipped = false; savekitStage = undefined;
+      savekitFailurePublished = false; savekitUsers.clear();
+      let preSaveFailure, absentSaveFailure;
+      savekitChild = spawn(process.execPath,
+        [path.join(root, 'scripts/gui-savekit.cjs'), directory,
+          ...(artemisGame ? ['--artemis', artemisGame] : sourcePath ? [sourcePath] : [])],
+        {cwd: root, detached: true, stdio: ['pipe', 'pipe', 'pipe']});
+      const child = savekitChild, done = finished(child);
+      child.stdin.on('error', error => {if (error.code !== 'EPIPE') fail('Could not select the save user.');});
+      const observe = line => {
+        if (!line.startsWith('MAC2JB_SAVEKIT ')) {safeEmit('log', {message: line}); return;}
+        let event;
+        try {event = JSON.parse(line.slice('MAC2JB_SAVEKIT '.length));}
+        catch {fail('The save worker returned invalid progress.'); return;}
+        if (!event || !['progress','choose-user','backup','complete','skipped','failed'].includes(event.type) ||
+            typeof event.message !== 'string' || Buffer.byteLength(event.message) > 512 ||
+            /[\x00-\x1f\x7f]/.test(event.message) ||
+            artemisGame && event.game !== artemisGame) {
+          fail('The save worker returned invalid progress.'); return;
+        }
+        if (event.type === 'progress') {
+          savekitStage = event.stage;
+          safeEmit('savekit-progress', {game: artemisGame, stage: event.stage, message: event.message});
+        } else if (event.type === 'choose-user') {
+          if (!Array.isArray(event.users) || event.users.length < 2 || event.users.length > 8 ||
+              event.users.some(uid => typeof uid !== 'string' || !/^[a-f0-9]{32}$/.test(uid)) ||
+              new Set(event.users).size !== event.users.length) {
+            fail('The save worker returned an invalid account list.');
+            child.kill('SIGTERM'); return;
+          }
+          savekitUsers = new Set(event.users);
+          savekitStage = 'choose-user';
+          safeEmit('savekit-choose-user', {game: artemisGame, users: event.users, message: event.message});
+        } else if (['backup', 'complete', 'skipped'].includes(event.type)) {
+          const backup = typeof event.backupPath === 'string' && path.resolve(event.backupPath);
+          const backupRoot = path.join(root, artemisGame ? 'artemis-backups' : 'seedsow-backups');
+          if (!backup || !backup.startsWith(backupRoot + path.sep) ||
+              artemisGame && !path.basename(backup).startsWith(artemisGame + '-')) {
+            fail('The save worker reported an invalid backup path.');
+            child.kill('SIGTERM'); return;
+          }
+          if (event.type === 'complete' || event.type === 'skipped') {
+            if (!Number.isSafeInteger(event.files) || event.files < 1 ||
+                event.files > (event.type === 'skipped' ? 2048 : 500)) {
+              fail('The save worker reported an invalid file count.'); return;
+            }
+            savekitCompleted = true;
+            savekitSkipped = event.type === 'skipped';
+            child.stdin.end();
+          }
+          safeEmit('savekit-' + event.type,
+            {game: artemisGame, backupPath: backup, files: event.files, message: event.message});
+        } else {
+          savekitFailurePublished = true;
+          if (event.reason === 'save-absent' && savekitStage === 'backup' && !event.backupPath) {
+            absentSaveFailure = event.message;
+            return;
+          }
+          if (artemisGame && savekitStage === 'checking' && !event.backupPath) {
+            preSaveFailure = event.message;
+            return;
+          }
+          fail(event.message);
+          safeEmit('savekit-failed', {game: artemisGame, backupPath: event.backupPath, message: event.message});
+        }
+      };
+      lines(child.stdout, observe, 1024 * 1024);
+      lines(child.stderr, observe);
+      const outcome = await done;
+      savekitChild = undefined; savekitUsers.clear();
+      if (outcome.error || outcome.code !== 0 || outcome.signal || !savekitCompleted) {
+        if (absentSaveFailure && savekitStage === 'backup' &&
+            !outcome.error && !outcome.signal && outcome.code === 1 && !failure) {
+          savekitBusy = false; savekitTask = undefined; savekitStage = undefined;
+          savekitCompleted = previousSavekitCompleted;
+          savekitFailurePublished = false; savekitGame = undefined; savekitCustom = false;
+          safeEmit('savekit-recoverable', {game: artemisGame, message: absentSaveFailure});
+          return;
+        }
+        if (preSaveFailure && savekitStage === 'checking' &&
+            !outcome.error && !outcome.signal && outcome.code === 1 && !failure) {
+          let rpcReady = false;
+          try {
+            rpcReady = (await require(path.join(folder, 'rpc.cjs')).request(directory,
+              {command: 'status'}))?.ready === true;
+          } catch {}
+          if (rpcReady) {
+            savekitBusy = false; savekitTask = undefined; savekitStage = undefined;
+            savekitCompleted = previousSavekitCompleted;
+            savekitFailurePublished = false; savekitGame = undefined; savekitCustom = false;
+            safeEmit('savekit-recoverable', {game: artemisGame,
+              message: preSaveFailure + ' Held RPC is still ready; choose another action.'});
+            return;
+          }
+        }
+        savekitBusy = false;
+        fail('Save installation did not finish. Keep the backup and restart the console.');
+        if (!savekitFailurePublished) safeEmit('savekit-failed',
+          {game: artemisGame, message: failure + ' This write was not retried.'});
+        finish('Save installation stopped.');
+      } else {
+        savekitBusy = false;
+        savekitFinishedForHomebrew = true;
+        safeEmit('savekit-ready', {game: artemisGame, message: savekitSkipped
+          ? 'Existing save preserved. Held RPC is ready for homebrew or a game save backup.'
+          : `${artemisGame ? 'Artemis launcher' : 'Seedsow'} save installed and verified. Held RPC is ready for homebrew or a game save backup.`});
+      }
+    }
+    async function runSavekitTool(value, rawRequest) {
+      toolBusy = true; toolAction = value.action;
+      let completed = false, failureEvent, completionEvent, invalid = false;
+      toolChild = spawn(process.execPath,
+        [path.join(root, 'scripts/gui-savekit-tools.cjs'), directory],
+        {cwd: root, detached: true, stdio: ['pipe', 'pipe', 'pipe']});
+      const child = toolChild, done = finished(child);
+      child.stdin.on('error', error => {
+        if (error.code !== 'EPIPE') fail('Could not start the save data operation.');
+      });
+      child.stdin.end(JSON.stringify(rawRequest) + '\n');
+      const observe = line => {
+        if (!line.startsWith('MAC2JB_SAVEKIT ')) {safeEmit('log', {message: line}); return;}
+        let event;
+        try {event = JSON.parse(line.slice('MAC2JB_SAVEKIT '.length));}
+        catch {event = undefined;}
+        if (!validSavekitToolEvent(event, value.action, root)) {
+          invalid = true;
+          signalGroup(child, 'SIGTERM');
+          return;
+        }
+        if (event.type === 'complete') {completed = true; completionEvent = event; return;}
+        if (event.type === 'failed') {failureEvent = event; return;}
+        const {type, ...fields} = event;
+        safeEmit('savekit-tool-' + type, fields);
+      };
+      lines(child.stdout, observe, 1024 * 1024);
+      lines(child.stderr, line => safeEmit('log', {message: line}));
+      const outcome = await done;
+      toolChild = undefined; toolBusy = false; toolAction = undefined;
+      if (!outcome.error && outcome.code === 0 && !outcome.signal && completed && !invalid) {
+        const {type, ...fields} = completionEvent;
+        safeEmit('savekit-tool-complete', fields);
+      } else {
+        let safeToContinue = false;
+        if (!invalid && !outcome.error && !outcome.signal && outcome.code === 1 &&
+            !completed && failureEvent?.safeToContinue === true) {
+          try {
+            safeToContinue = (await require(path.join(folder, 'rpc.cjs')).request(directory,
+              {command: 'status'}))?.ready === true;
+          } catch {}
+        }
+        savekitToolFailed = !safeToContinue;
+        const message = invalid ? 'The save data worker returned invalid progress.' :
+          'The save data operation did not finish. Check the log and keep any backup.';
+        if (failureEvent) {
+          const {type, ...fields} = failureEvent;
+          safeEmit('savekit-tool-failed', {...fields, safeToContinue,
+            message: safeToContinue ? fields.message + ' Held RPC is ready; choose another save action or Done.' : fields.message});
+        } else safeEmit('savekit-tool-failed', {action: value.action, message});
+        if (!safeToContinue &&
+            (['write', 'restore', 'delete', 'titles'].includes(value.action) || failureEvent?.unsafe === true)) {
+          cleanupBlocked = true;
+          fail(message + ' Restart the console before another save operation.');
+          finish('Save data operation stopped.');
+        }
+      }
+    }
+    async function runSDBrowser(consoleAddress) {
+      sdRunning = false; sdReadySeen = false; sdSettled = false;
+      let failurePublished = false;
+      sdChild = spawn(process.execPath,
+        [path.join(root, 'integrations/super-file-bros/read-only-export.cjs'), directory, consoleAddress],
+        {cwd: root, detached: true, stdio: ['pipe', 'pipe', 'pipe']});
+      const child = sdChild, done = finished(child);
+      child.stdin.on('error', error => {
+        if (error.code !== 'EPIPE') safeEmit('log', {message: 'SD browser control: ' + error.message});
+      });
+      const observe = line => {
+        if (!line.startsWith('MAC2JB_SDFTP ')) {safeEmit('log', {message: line}); return;}
+        let event;
+        try {event = JSON.parse(line.slice('MAC2JB_SDFTP '.length));}
+        catch {event = undefined;}
+        if (!event || typeof event !== 'object' || Array.isArray(event) ||
+            !['ready', 'stopped', 'failed'].includes(event.type) ||
+            typeof event.message !== 'string' || Buffer.byteLength(event.message) > 512 ||
+            /[\x00-\x1f\x7f]/.test(event.message)) {
+          failurePublished = true;
+          safeEmit('sd-browser-failed', {message: 'The SD browser returned invalid progress'});
+          stopSDBrowser(); return;
+        }
+        if (event.type === 'ready') {
+          let browser;
+          try {browser = new URL(event.browserURL);} catch {}
+          if (sdReadySeen || !Number.isInteger(event.port) || event.port < 2122 || event.port > 2199 ||
+              event.url !== `ftp://${consoleAddress}:${event.port}/sd/` ||
+              browser?.protocol !== 'http:' || browser.hostname !== '127.0.0.1' ||
+              !Number.isInteger(Number(browser.port)) || Number(browser.port) < 1 || Number(browser.port) > 65535 ||
+              !/^#[a-f0-9]{32,128}$/.test(browser.hash) || event.readOnly !== true ||
+              JSON.stringify(event.mounts) !== '["sd"]') {
+            sdReadySeen = true;
+            failurePublished = true;
+            safeEmit('sd-browser-failed', {message: 'The SD browser returned an invalid endpoint'});
+            stopSDBrowser(); return;
+          }
+          sdReadySeen = true; sdRunning = true;
+          safeEmit('sd-browser-ready', {url: event.url, browserURL: event.browserURL,
+            port: event.port, message: event.message});
+        } else if (event.type === 'stopped') {
+          if (!sdReadySeen || sdSettled) return;
+          sdSettled = true; sdRunning = false;
+        } else if (event.type === 'failed') {
+          failurePublished = true;
+          safeEmit('sd-browser-failed', {message: event.message});
+        }
+      };
+      lines(child.stdout, observe, 4096);
+      lines(child.stderr, line => safeEmit('log', {message: line}), 4096);
+      const outcome = await done;
+      clearTimeout(sdStopTimer); sdStopTimer = undefined;
+      if (sdReadySeen && (!sdSettled || outcome.error || outcome.code !== 0 || outcome.signal)) {
+        cleanupBlocked = true;
+        fail('The read-only SD browser did not confirm safe shutdown. Restart the console before closing RPC.');
+        safeEmit('cleanup-blocked', {message: failure});
+      } else if (!sdReadySeen && !failurePublished) {
+        safeEmit('sd-browser-failed', {message: 'The SD browser did not confirm readiness. Check the console log and retry in this held session.'});
+      } else if (sdSettled) safeEmit('sd-browser-stopped', {message: 'Read-only SD browser stopped'});
+      sdChild = undefined; sdRunning = false;
+    }
     async function homebrew(application, config = {}) {
       homebrewApplication = application;
       homebrewAdapter = config.adapter;
+      homebrewStopRequested = false;
       const ouncecakeMode = application === 'ouncecake' ||
         application === 'custom-homebrew' && config.customHomebrewKind === 'rpc-app' && config.adapter === 'ouncecake';
-      let retrySafeFailure;
+      let retrySafeFailure, cleanStopProof;
       const script = homebrewScripts[application];
       const configurable = application === 'mintbrew' || application === 'ouncecake' || application === 'izlauncher' ||
         application === 'custom-homebrew' && config.customHomebrewKind === 'rpc-app';
@@ -294,6 +614,9 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         ? require('./izlauncher-modules.cjs').withDefaults(config.moduleIds) : undefined;
       homebrewChild = spawn(process.execPath, [path.join(root, script), directory,
         ...(moduleIds ? ['--modules',JSON.stringify(moduleIds)] : []),
+        ...(application === 'native-hblauncher' ? ['--sd-rom-folder', config.sdRomFolder] : []),
+        ...(application === 'native-hblauncher' && config.nativeAppFolder ?
+          ['--app-folder', config.nativeAppFolder] : []),
         ...(application === 'custom-homebrew' ? [
           config.customHomebrewKind==='launcher'?'--launcher-folder':
             config.customHomebrewKind==='rpc-app'?'--rpc-folder':'--app-folder', config.customHomebrewPath] : [])], {
@@ -349,8 +672,8 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         if (!['started','progress','running','stopped','failed'].includes(event.type)) return;
         if (ouncecakeMode && event.type === 'running' &&
             (awaitingGame || gameTitles.size === 0 || event.host !== config.consoleAddress || event.port !== 2121 ||
-             event.ftpURL !== `ftp://${config.consoleAddress}:2121`)) {
-          fail('OunceCake did not confirm the selected FTP endpoint.'); stopHomebrew(); return;
+             event.httpURL !== `http://${config.consoleAddress}:2121/`)) {
+          fail('OunceCake did not confirm the selected WebDAV endpoint.'); stopHomebrew(); return;
         }
         if (nativeCleanupApps.has(application) && event.cleanupBlocked === true) {
           cleanupBlocked = true; fail('The selected app could not confirm native shutdown. Restart the console before stopping this session.');
@@ -358,19 +681,20 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         const wasRunning = homebrewRunning;
         if (event.type === 'running') homebrewRunning = true;
         if (event.type === 'stopped' || event.type === 'failed') {homebrewRunning = false; homebrewSettled = true;}
+        if (event.type === 'stopped') cleanStopProof = event;
         if (event.type === 'failed') {
           if (event.retrySafe === true && !wasRunning && !cleanupBlocked && !finishing) retrySafeFailure = event;
           else {fail(event.message || 'The selected homebrew app failed. Restart the console.'); homebrewFailurePublished = true;}
         }
         if (retrySafeFailure) return;
         safeEmit('homebrew-' + event.type, {path: event.path || directory, message: event.message,
-          ...(['izlauncher','mintbrew'].includes(application) ? {cleanupBlocked} : {}),
-          ...(ouncecakeMode ? {host:event.host,port:event.port,ftpURL:event.ftpURL,cleanupBlocked} : {})});
+          ...(['izlauncher','mintbrew','native-hblauncher'].includes(application) ? {cleanupBlocked} : {}),
+          ...(ouncecakeMode ? {host:event.host,port:event.port,httpURL:event.httpURL,cleanupBlocked} : {})});
       };
       lines(child.stdout, observe, 1024 * 1024); lines(child.stderr, observe);
       const outcome = await done;
       clearTimeout(homebrewStopTimer); homebrewStopTimer = undefined;
-      homebrewChild = undefined; homebrewRunning = false;
+      homebrewChild = undefined; homebrewRunning = false; homebrewStopRequested = false;
       if (retrySafeFailure && !outcome.error && outcome.code === 1 && !outcome.signal &&
           homebrewSettled && !cleanupBlocked && !closed && !finishing) {
         try {
@@ -387,6 +711,30 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         fail('The selected app failed or did not confirm shutdown. Restart the console.');
         if (!homebrewFailurePublished) safeEmit('homebrew-failed', {path: directory,
           message: failure + ' This launch was not retried.',cleanupBlocked});
+      } else if (cleanStopProof?.cleanupVerified === true && !failure && !cleanupBlocked && !closed && !finishing) {
+        try {
+          const status = await require(path.join(folder, 'rpc.cjs')).request(directory, {command: 'status'});
+          if (finishing || closed) return;
+          if (status?.ready !== true) throw Error('The held RPC session is no longer ready.');
+        } catch (error) {
+          if (finishing || closed) return;
+          fail(error.message);
+          safeEmit('homebrew-failed', {path: directory, message: error.message});
+          return;
+        }
+        try {
+          releaseMarkers(directory, cleanStopProof, ouncecakeMode);
+        } catch (error) {
+          safeEmit('homebrew-reentry-unavailable', {message: 'Another launch is unavailable: ' + error.message + ' Finish this session before trying another app.'});
+          return;
+        }
+        homebrewAttempted = false; homebrewSettled = false; homebrewApplication = undefined;
+        homebrewAdapter = undefined; homebrewFailurePublished = false;
+        awaitingGame = false; gameTitles.clear();
+        safeEmit('homebrew-ready', {message: 'RPC is ready. Choose another homebrew app.'});
+      } else if (!failure && !cleanupBlocked && !closed && !finishing && homebrewSettled) {
+        safeEmit('homebrew-reentry-unavailable', {
+          message: 'The launcher stopped, but it did not prove cleanup for another launch. Finish this session before trying another app.'});
       }
     }
     async function control(line) {
@@ -396,12 +744,143 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         safeEmit('action-rejected', {message: 'Invalid session action.'}); return;
       }
       if (!ready || closed || finishing) {safeEmit('action-rejected', {message: 'The session is not ready for this action.'}); return;}
+      if (command.action === 'select-seedsow-user') {
+        if (!(seedsowSave || savekitTools) || savekitStage !== 'choose-user' || !savekitChild?.stdin?.writable ||
+            typeof command.uid !== 'string' || !savekitUsers.has(command.uid)) {
+          safeEmit('action-rejected', {message: 'Choose a save user from this session.'}); return;
+        }
+        savekitStage = 'backup';
+        savekitUsers.clear();
+        savekitChild.stdin.write(JSON.stringify({action: 'select-user', uid: command.uid}) + '\n');
+        return;
+      }
       if (command.action === 'finish') {
         if (cleanupBlocked) {safeEmit('action-rejected', {message:'Restart the console, then stop this session. Native shutdown was not confirmed.'}); return;}
-        if (dumpBusy || helper || statusBusy || homebrewChild && !homebrewRunning && !homebrewSettled && !awaitingGame) {
+        if (savekitBusy || toolBusy || dumpBusy || helper || statusBusy ||
+            homebrewChild && !homebrewRunning && !homebrewSettled && !awaitingGame) {
           safeEmit('action-rejected', {message: 'Wait for the current operation to finish.'}); return;
         }
         choiceMade = true; finish(); return;
+      }
+      if (command.action === 'stop-homebrew') {
+        if (!rpcHeldConfirmed || !homebrewChild || homebrewSettled || homebrewStopRequested ||
+            !(homebrewRunning || awaitingGame) || cleanupBlocked || failure || statusBusy ||
+            dumpBusy || savekitBusy || toolBusy || sdChild) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'The current homebrew app is not ready for a controlled stop.'});
+          return;
+        }
+        homebrewStopRequested = true;
+        safeEmit('homebrew-stopping', {message: 'Stopping the current homebrew app and checking RPC.'});
+        stopHomebrew();
+        return;
+      }
+      if (command.action === 'finish-savekit') {
+        if (!savekitTools || !(savekitSelected || savekitCompleted ||
+            savekitSaveTouched) ||
+            savekitFinishedForHomebrew || !rpcHeldConfirmed || savekitBusy || toolBusy ||
+            statusBusy || helper || preflightBusy || dumpBusy || sdChild || homebrewAttempted || failure) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Wait for SaveKit to finish before returning to homebrew.'}); return;
+        }
+        if (savekitToolFailed) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Finish this session and restart the console after a failed save operation.'}); return;
+        }
+        savekitSelected = false;
+        savekitFinishedForHomebrew = true;
+        safeEmit('savekit-done', {message: 'SaveKit finished. Choose another option in this held session.'});
+        return;
+      }
+      if (command.action === 'start-sd-browser') {
+        if (!net.isIPv4(command.consoleAddress)) {
+          safeEmit('action-rejected', {action: command.action, message: 'Enter the Switch IPv4 address.'}); return;
+        }
+        if (!rpcHeldConfirmed || sdChild || homebrewAttempted || savekitSelected || savekitBusy || savekitCompleted ||
+            toolBusy || savekitSaveTouched || helper || statusBusy || preflightBusy || dumpBusy || failure) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'The read-only SD browser needs a free, verified held FS RPC session.'}); return;
+        }
+        sdTask = runSDBrowser(command.consoleAddress).catch(error => {
+          safeEmit('sd-browser-failed', {message: error.message});
+        });
+        safeEmit('sd-browser-started', {message: 'Opening the read-only SD browser'});
+        return;
+      }
+      if (command.action === 'stop-sd-browser') {
+        if (!sdChild) {
+          safeEmit('action-rejected', {action: command.action, message: 'The SD browser is not running.'}); return;
+        }
+        stopSDBrowser();
+        return;
+      }
+      if (command.action === 'start-savekit') {
+        if (!savekitTools || !rpcHeldConfirmed || savekitSelected || savekitToolFailed ||
+            savekitBusy || toolBusy ||
+            homebrewAttempted || sdChild || helper || statusBusy || preflightBusy || dumpBusy || failure) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'SaveKit needs a free, verified held RPC session.'}); return;
+        }
+        savekitFinishedForHomebrew = false;
+        savekitSelected = true;
+        safeEmit('savekit-selected', {message: 'SaveKit is ready in this held RPC session'});
+        return;
+      }
+      if (command.action === 'install-seedsow-save' || command.action === 'install-artemis-save') {
+        if (!(seedsowSave || savekitTools) || !rpcHeldConfirmed || sdChild || savekitSelected ||
+            savekitBusy || savekitToolFailed || toolBusy ||
+            cleanupBlocked || failure || homebrewAttempted ||
+            helper || statusBusy || preflightBusy || dumpBusy) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Save installation needs this session’s verified held RPC.'});
+          return;
+        }
+        const artemisGame = command.action === 'install-artemis-save' ? command.game : undefined;
+        if (command.action === 'install-artemis-save' &&
+            (!['seedsow', 'nora'].includes(artemisGame) || command.sourcePath !== undefined)) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Choose Seedsow or Nora for the Artemis launcher.'}); return;
+        }
+        if (command.sourcePath !== undefined &&
+            (typeof command.sourcePath !== 'string' || !path.isAbsolute(command.sourcePath) ||
+             command.sourcePath.length > 4096 || /[\x00\r\n]/.test(command.sourcePath))) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Choose a local Seedsow editor ZIP or folder.'}); return;
+        }
+        savekitCustom = command.sourcePath !== undefined;
+        savekitGame = artemisGame;
+        savekitTask = installSeedsowSave(command.sourcePath, artemisGame).catch(error => {
+          fail(error.message);
+          safeEmit('savekit-failed', {game: artemisGame, message: error.message});
+          finish('Save installation stopped.');
+        });
+        return;
+      }
+      if (command.action === 'savekit-tool') {
+        if (!savekitTools || !rpcHeldConfirmed || sdChild || toolBusy || savekitBusy ||
+            homebrewAttempted || helper || statusBusy || preflightBusy || dumpBusy || failure ||
+            seedsowSave && !savekitCompleted && !savekitSelected) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Save data tools need this session’s verified held RPC.'}); return;
+        }
+        let value;
+        try {value = require('./gui-savekit-tools.cjs').request(command.request);}
+        catch (error) {
+          safeEmit('action-rejected', {action: command.action, message: error.message}); return;
+        }
+        if (!['accounts', 'titles', 'inventory'].includes(value.action)) {
+          savekitSaveTouched = true;
+          savekitFinishedForHomebrew = false;
+        }
+        toolTask = runSavekitTool(value, command.request).catch(error => {
+          const message = 'Save data operation stopped: ' + error.message;
+          safeEmit('savekit-tool-failed', {action: value.action, message});
+          if (['write', 'restore', 'delete'].includes(value.action)) {
+            cleanupBlocked = true;
+            fail(message); finish('Save data operation stopped.');
+          }
+        });
+        return;
       }
       if (command.action === 'select-ouncecake-game') {
         if (!(homebrewApplication === 'ouncecake' || homebrewApplication === 'custom-homebrew' && homebrewAdapter === 'ouncecake') ||
@@ -414,6 +893,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       }
       if (command.action === 'dump-system-code') {
         if (!rpcHeldConfirmed || dumpTask || dumpBusy || helper || statusBusy || preflightBusy || cleanupBlocked ||
+            sdChild || savekitBusy || savekitCompleted || toolBusy ||
             failure || homebrewChild && (!homebrewRunning || homebrewSettled)) {
           safeEmit('action-rejected', {action:'dump-system-code',
             message:'Wait for a verified held RPC session and a safely running or stopped app before dumping system code.'});
@@ -444,7 +924,12 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         }
         homebrewChild.stdin.write(JSON.stringify({action:'load-modules',ids:command.ids})+'\n');return;
       }
-      if (['launch-ouncecake','launch-mintbrew','launch-izlauncher','launch-custom-homebrew'].includes(command.action)) {
+      if (['launch-ouncecake','launch-mintbrew','launch-native-hblauncher','launch-izlauncher','launch-custom-homebrew'].includes(command.action)) {
+        if (sdChild || savekitSelected || savekitBusy || toolBusy ||
+            savekitSaveTouched && !savekitFinishedForHomebrew) {
+          safeEmit('action-rejected', {action: command.action,
+            message: 'Wait for the save operation to finish, or start a fresh session after another save operation.'}); return;
+        }
         if (!availableHomebrew(root, command.action.slice('launch-'.length))) {
           safeEmit('action-rejected',{action:command.action,message:'This homebrew option is unavailable in this build.'}); return;
         }
@@ -463,7 +948,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
           safeEmit('action-rejected', {message:'Choose a valid local custom homebrew folder.'}); return;
         }
         if (command.action === 'launch-ouncecake' && !net.isIPv4(command.consoleAddress)) {
-          safeEmit('action-rejected', {message:'Enter the Switch’s IPv4 address for OunceCake FTP.'}); return;
+          safeEmit('action-rejected', {message:'Enter the Switch’s IPv4 address for OunceCake WebDAV.'}); return;
         }
         if (command.action === 'launch-mintbrew' && (command.addonUrls !== undefined &&
             (!Array.isArray(command.addonUrls) || command.addonUrls.length > 32 ||
@@ -475,6 +960,12 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         if (command.action === 'launch-mintbrew' && command.quality !== undefined &&
             !['720p','540p','360p','180p'].includes(command.quality)) {
           safeEmit('action-rejected', {message:'Choose a supported Stremio quality.'}); return;
+        }
+        let sdRomFolder;
+        if (command.action === 'launch-native-hblauncher') {
+          try {sdRomFolder = require('../integrations/mintbrew-native/sd-roms.cjs')
+            .validSDRomFolder(command.sdRomFolder);}
+          catch (error) {safeEmit('action-rejected', {action:command.action,message:error.message}); return;}
         }
         if (!rpcHeldConfirmed || homebrewAttempted || helper || statusBusy || preflightBusy || dumpBusy) {
           safeEmit('action-rejected', {message: 'Homebrew requires this session’s held RPC and can be launched only once.'}); return;
@@ -489,18 +980,40 @@ async function main({root, address, emit, lines, verifiedResult, input = process
                 homebrewModule.preflightCustomApp)(root,command.customHomebrewPath);
               if (finishing || closed) return;
               if (prepared.kind === 'rpc-app' && prepared.adapter === 'ouncecake' && !net.isIPv4(command.consoleAddress))
-                throw Error('Enter the Switch’s IPv4 address for OunceCake-compatible FTP.');
+                throw Error('Enter the Switch’s IPv4 address for OunceCake-compatible WebDAV.');
+              const target = prepared.kind === 'iz-module' ? 'izlauncher' :
+                prepared.kind === 'native-app' ? 'native-hblauncher' : 'custom-homebrew';
+              if (!availableHomebrew(root, target))
+                throw Error('The selected homebrew runtime is unavailable in this build.');
+              if (target === 'native-hblauncher') {
+                const report = privateJSON(path.join(directory, 'result.json'));
+                const {profileById} = require('./host-profiles.cjs');
+                const nativeProfiles = ['kurumuz', 'cellenseres'].map(profileById);
+                if (!nativeProfiles.some(profile => report.sourceSha256 === profile.sourceSha256)) {
+                  const run = await require('./gui-homebrew.cjs').validateRun(root, directory,
+                    require('./gui-dump.cjs').verifiedSession);
+                  if (!nativeProfiles.some(profile => run.trustedSource?.profileId === profile.id &&
+                      run.trustedSource.sourceSha256 === report.sourceSha256))
+                    throw Error('Native HBLauncher apps require a held Kurumuz or Cellenseres RPC session.');
+                }
+              }
+              const staged = prepared;
+              const config = target === 'izlauncher' ? {moduleIds:[staged.moduleId]} :
+                target === 'native-hblauncher' ? {nativeAppFolder:staged.packageFolder,
+                  sdRomFolder:require('../integrations/mintbrew-native/sd-roms.cjs').DEFAULT_SD_ROM_FOLDER} : {
+                  customHomebrewPath:staged.kind==='launcher'?staged.launcherFolder:
+                    staged.kind==='rpc-app'?staged.packageFolder:staged.appFolder,
+                  customHomebrewKind:staged.kind||'gpu-app',adapter:staged.adapter,
+                  ...(staged.adapter==='ouncecake'?{consoleAddress:command.consoleAddress,port:2121}:{})};
               homebrewAttempted = true;
               safeEmit('homebrew-accepted', {action:'launch-custom-homebrew',
-                customHomebrewKind:prepared.kind||'gpu-app',adapter:prepared.adapter,
-                message:'Validated '+prepared.app.name+'. Opening the selected app.'});
-              const staged = prepared;
-              prepared = null;
-              homebrewTask = homebrew('custom-homebrew',{
-                customHomebrewPath:staged.kind==='launcher'?staged.launcherFolder:
-                  staged.kind==='rpc-app'?staged.packageFolder:staged.appFolder,
                 customHomebrewKind:staged.kind||'gpu-app',adapter:staged.adapter,
-                ...(staged.adapter==='ouncecake'?{consoleAddress:command.consoleAddress,port:2121}:{})}).catch(error => {
+                message:target==='native-hblauncher' ?
+                  'Validated '+staged.app.name+'. Select it in HBLauncher on your Switch.' :
+                  target==='izlauncher' ? 'Validated '+staged.app.name+'. Opening IZlauncher with this module.' :
+                    'Validated '+staged.app.name+'. Opening the selected app.'});
+              prepared = null;
+              homebrewTask = homebrew(target,config).catch(error => {
                 fail(error.message);safeEmit('homebrew-failed', {path:directory,
                   message:error.message+' Finish RPC and restart the console. This launch was not retried.',cleanupBlocked});
               }).finally(async () => {await staged.cleanup();});
@@ -546,6 +1059,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         homebrewTask = homebrew(application, application === 'ouncecake' ? {consoleAddress:command.consoleAddress,port:2121} :
           {addonUrls: command.addonUrls || [], libraryItems: command.libraryItems || [],
             ...(application === 'mintbrew' ? {quality:command.quality ?? '720p'} : {}),
+            ...(application === 'native-hblauncher' ? {sdRomFolder} : {}),
             ...(command.action === 'launch-izlauncher' && Array.isArray(command.moduleIds) ? {moduleIds:command.moduleIds} : {}),
             ...(command.action === 'launch-custom-homebrew' ? {customHomebrewPath:command.customHomebrewPath} : {})}).catch(error => {
           if (nativeCleanupApps.has(application)) cleanupBlocked = true;
@@ -555,7 +1069,9 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         return;
       }
       if (command.action === 'rpc-status') {
-        if (statusBusy || helper || homebrewAttempted || preflightBusy || dumpBusy) {safeEmit('action-rejected', {message: 'Wait for the current operation to finish.'}); return;}
+        if (statusBusy || helper || homebrewAttempted || preflightBusy || dumpBusy || sdChild || savekitBusy || toolBusy) {
+          safeEmit('action-rejected', {message: 'Wait for the current operation to finish.'}); return;
+        }
         statusBusy = true; safeEmit('rpc-status-started', {message: 'Checking the held RPC connection.'});
         try {
           const result = await require(path.join(folder, 'rpc.cjs')).request(directory, {command: 'status'});
@@ -587,6 +1103,20 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       if (nativeCleanupApps.has(homebrewApplication)) cleanupBlocked = true;
       stopHomebrew(); await homebrewTask;
     }
+    if (savekitChild) {
+      fail('The original RPC session ended during the save operation. Keep the backup and restart the console.');
+      signalGroup(savekitChild, 'SIGTERM');
+      await savekitTask;
+    }
+    if (toolChild) {
+      fail('The original RPC session ended during the save data operation. Keep any backup and restart the console.');
+      signalGroup(toolChild, 'SIGTERM');
+      await toolTask;
+    }
+    if (sdChild) {
+      fail('The original RPC session ended while the SD browser was active. Restart the console.');
+      stopSDBrowser(); await sdTask;
+    }
     if (helper) {
       fail('The host ended during the firmware dump. Restart the console before retrying.');
       signalGroup(helper, 'SIGTERM');
@@ -607,7 +1137,11 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         verifiedResult(result) && result.rpc?.mode === 'held' && result.rpc?.state === 'closed' &&
         typeof result.completed === 'string' && !result.error &&
         (!result.cleanupErrors || result.cleanupErrors.length === 0)) {
-      safeEmit('verified', {message: homebrewAttempted ?
+      safeEmit('verified', {message: savekitCompleted ?
+        savekitSkipped ? 'Existing save preserved, backup verified, and RPC cleanup confirmed.' :
+          savekitGame ? `${savekitGame === 'nora' ? 'Nora' : 'Seedsow'} Artemis launcher installed and verified. Close SmileBASIC, then open the demo.` :
+          savekitCustom ? 'Selected Seedsow editor save installed and verified. Close SmileBASIC, then open the demo.' :
+            'Seedsow Lua Editor v0.1.3 and cpypwn showcase installed and verified. Close SmileBASIC, open the demo, then load editor slot 1. The showcase is in slot 6.' : homebrewAttempted ?
         'FS execution and fork cleanup verified; Homebrew workers stopped. Restart the console to release retained graphics allocations.' :
         'FS execution verified; held RPC closed and all resources cleaned up.'});
       return 0;
@@ -619,7 +1153,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       'The host ended without verified cleanup. Restart the console before retrying.'});
     return outcome.code || 1;
   } finally {
-    clearTimeout(finishTimer); clearTimeout(helperTimer); clearTimeout(homebrewStopTimer);
+    clearTimeout(finishTimer); clearTimeout(helperTimer); clearTimeout(homebrewStopTimer); clearTimeout(sdStopTimer);
     process.removeListener('SIGTERM', stop); process.removeListener('SIGINT', stop);
     // keep the stdout error listener through process exit so a late epipe cannot
     // interrupt cleanup or turn a clean shutdown into an uncaught exception.
@@ -629,7 +1163,10 @@ async function main({root, address, emit, lines, verifiedResult, input = process
     if (!closed && runner?.pid) signalGroup(runner, 'SIGKILL');
     if (helper?.pid) signalGroup(helper, 'SIGKILL');
     if (homebrewChild?.pid) signalGroup(homebrewChild, 'SIGKILL');
+    if (savekitChild?.pid) signalGroup(savekitChild, 'SIGKILL');
+    if (toolChild?.pid) signalGroup(toolChild, 'SIGKILL');
+    if (sdChild?.pid) signalGroup(sdChild, 'SIGKILL');
     fs.rmSync(controls, {recursive: true, force: true});
   }
 }
-module.exports = {main, heldResult, heldMessage};
+module.exports = {main, heldResult, heldMessage, validSavekitToolEvent};

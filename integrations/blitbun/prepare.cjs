@@ -96,6 +96,8 @@ function overlay(source,root){
     "if(next.source&&next.source!==source){const wasDoom=source==='doom';await stream.invalidate?.('source-changed');source=next.source;");
   replaceOnce(out,'server/application-host.cjs',"await browserPending?.catch(()=>{});await stopPump();}\n   if(next.controller",
     "await browserPending?.catch(()=>{});await stopPump();if(wasDoom){await remote?.close();remote=null;}}\n   if(next.controller");
+  replaceOnce(out,'server/application-host.cjs',"if(next.controller!==options.controller",
+    "if(source==='browser')next.controller='off';if(next.controller!==options.controller");
   replaceOnce(out,'server/application-host.cjs',"await stopPump();source='browser';await stream.close?.();",
     "await stopPump();await remote?.close();remote=null;source='browser';await stream.close?.();");
   replaceOnce(out,'server/application-host.cjs',"if((action===1||action===3||action===5)",

@@ -3,6 +3,7 @@ const path = require('node:path');
 const { idBytes, fixedOutput, pathRequest, resultError, success, withCleanup, closeHandles } = require('./protocol.cjs');
 const { findOriginalContent, isInstalledUpdate, programMatchesApplication } = require('./content.cjs');
 const { withProgramIndexMap, openProgramRomfs } = require('./fs-context.cjs');
+const { prepareNativeInstalledLicense } = require('./native-license.cjs');
 
 // if license on most recent account doesn't work, try other ones on the system
 async function linkedAccounts(s, domain, service) {
@@ -75,6 +76,14 @@ async function prepareInstalledLicense({ s, root, domain, service, title, source
     source.metaType === 0x82 &&
     source.contentType === 2;
 
+  // Prefer installed ELicense rights for base content.
+  if (!installedPatch && !installedDlc) {
+    const required = contentProgramId.startsWith('04');
+    const prepared = await prepareNativeInstalledLicense({s, root, domain, service,
+      programId: contentProgramId, storage: source.storage, optional: !required});
+    if (prepared || required) return prepared;
+  }
+
   const ncm = await service('ncm');
   const opened = await s.ipc('Open installed license content storage', ncm, 4, Buffer.from([source.storage]));
 
@@ -132,6 +141,17 @@ async function prepareInstalledLicense({ s, root, domain, service, title, source
     let owned = s.installedLicenseContext;
 
     if (!owned || !s.handles.has(owned.handle)) {
+      const native = s.nativeInstalledLicenseContext;
+      if (native && s.handles.has(native.handle)) {
+        owned = s.installedLicenseContext = {
+          handle: native.handle,
+          applications: new Set(native.applications.keys()),
+          accountSelected: true,
+        };
+      }
+    }
+
+    if (!owned || !s.handles.has(owned.handle)) {
       const opened = await s.ipc('Create export rights context', es, 2001);
 
       if (opened.result) throw resultError('Create export rights context', opened.result);
@@ -151,7 +171,7 @@ async function prepareInstalledLicense({ s, root, domain, service, title, source
         send: [{ address: s.base + 0x3200, size: 8, mode: 0 }],
       });
 
-      if (selected.result) throw resultError('Select export title rights', selected.result);
+      if (selected.result) throw resultError('Select export title rights for ' + rightsApplication, selected.result);
 
       owned.applications.add(rightsApplication);
     }
@@ -199,7 +219,8 @@ async function prepareInstalledLicense({ s, root, domain, service, title, source
     }
   }
 
-  if (result.result) throw resultError('ES prepare installed title license', result.result);
+  if (result.result) throw resultError('ES prepare installed title license for ' + rights.toString('hex') +
+    ' (generation ' + generation + ')', result.result);
 
   return true;
 }

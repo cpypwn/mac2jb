@@ -1,0 +1,16 @@
+* text=auto eol=lf
+*.cjs text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.bas text eol=lf
+*.bin -text
+engine/switch2/ro/payload/main -text
+*.c text eol=lf
+*.h text eol=lf
+*.S text eol=lf
+*.ld text eol=lf
+*.py text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+SHA256SUMS text eol=lf

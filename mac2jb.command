@@ -79,7 +79,7 @@ choose_controller() {
   echo 'If the Switch is charging from the Mac, unplug and replug the cable.'
   echo 'Make sure SmileBASIC is open on the correct input screen.'
   while :; do
-    printf '\n  1) Retry automatic detection (usb-drd0, 1, 3)\n  2) Select USB controller manually (0-15)\n  3) Cancel\n\n'
+    printf '\n  1) Retry automatic detection (usb-drd0, 1, 2, 3)\n  2) Select USB controller manually (0-15)\n  3) Cancel\n\n'
     read -r -p '  Select: ' choice
     case "$choice" in
       1) controller=auto; return 0 ;;
@@ -122,7 +122,7 @@ run_hid() {
       # Explicit per-controller attempts are required here. The CLI's
       # built-in auto-dispatch is intentionally bypassed for noninteractive
       # MAC2JB_AUTO_WORKER runs, so simply unsetting the variable is not enough.
-      candidates=(usb-drd0 usb-drd1 usb-drd3)
+      candidates=(usb-drd0 usb-drd1 usb-drd2 usb-drd3)
     else
       candidates=("$controller")
     fi
@@ -224,7 +224,7 @@ run_hid() {
         echo "$candidate: enumeration timed out after ${timeout_seconds}s."
         continue
       fi
-      if grep -Eiq 'USB host did not enumerate|USB enumeration error|selected controller|device did not enumerate|not enumerated|Waiting for USB host enumeration|USB host enumeration failed' "$attempt_log"; then
+      if grep -Eiq 'libusbd_init failed|USB host did not enumerate|USB enumeration error|selected controller|device did not enumerate|not enumerated|Waiting for USB host enumeration|USB host enumeration failed' "$attempt_log"; then
         echo "$candidate: no USB enumeration."
         continue
       fi

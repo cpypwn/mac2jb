@@ -1,11 +1,14 @@
 {
-  "name": "OunceCake",
+  "name": "ouncecake-cellenseres",
   "version": "1.0.0",
   "private": true,
   "description": "Tool to dump unencrypted romFS and exeFS for Switch 2 games",
-  "engines": {"node": ">=22"},
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node ouncecake.cjs",
-    "build": "node engine/build-ftp.cjs"
+    "build": "node engine/build-native.cjs",
+    "test:native": "engine/oz-code/test/run.sh"
   }
 }

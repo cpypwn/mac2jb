@@ -3,6 +3,7 @@
 process.umask(0o077);
 const fs = require('node:fs/promises'), sync = require('node:fs'), path = require('node:path');
 const {spawn} = require('node:child_process');
+const crypto = require('node:crypto');
 const {validateRun, serveProxy} = require('./gui-homebrew.cjs');
 const modules = require('./izlauncher-modules.cjs');
 const {readPanel} = require('./izlauncher-panel.cjs');
@@ -104,9 +105,10 @@ async function main(args=process.argv.slice(2), options={}) {
   if(selected!==null)await (options.validateModules||modules.validate)(root,selected);
   const request=options.request||require(path.join(root,'vendor/ns2jb/rpc.cjs')).request;
   check((await request(run.directory,{command:'status'}))?.ready===true,'The existing native RPC connection is not ready.');
-  await writeJSON(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'),{
+  const attempt={
     application:'izlauncher',source:'IZ2S Platform',commit:REVISION,started:new Date().toISOString(),
-  },true);
+  };
+  await writeJSON(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'),attempt,true);
   const parent=path.join(root,'runs');await fs.mkdir(parent,{recursive:true,mode:0o700});await privatePath(parent,true);
   const directory=await fs.mkdtemp(path.join(await fs.realpath(parent),'izlauncher-'));
   const report={session:path.basename(directory),sourceSession:run.proof.session,sourceDirectory:run.directory,
@@ -242,12 +244,23 @@ async function main(args=process.argv.slice(2), options={}) {
       check(outcomes.every(outcome=>outcome.status==='fulfilled'),'IZlauncher RPC shutdown could not be confirmed.');}
     catch(error){cleanupBlocked ||= nativeTouched;failure ||= error;}
     try{await proxy?.close();}catch(error){failure ||= error;}
+    let attemptProof;
+    if(!failure&&!cleanupBlocked&&nativeTouched&&report.status==='running'){
+      try{
+        check(live(),'The held RPC session ended before IZlauncher shutdown was verified.');
+        const marker=await fs.readFile(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'));
+        check(JSON.stringify(JSON.parse(marker))===JSON.stringify(attempt),'The IZlauncher attempt marker changed.');
+        attemptProof={cleanupVerified:true,attemptMarkerSha256:crypto.createHash('sha256').update(marker).digest('hex'),
+          attemptMarkers:['.mac2jb-hblauncher-attempt.json']};
+      }catch(error){failure ||= error;}
+    }
     report.completed=new Date().toISOString();report.status=failure?'failed':'stopped';report.cleanupBlocked=cleanupBlocked;
     if(failure)report.error=failure.message;
     try{
       await save();
       if(failure)safeEmit('failed',{message:failure.message+' This launch was not retried.'+(cleanupBlocked?' Restart the console before releasing its retained resources.':''),cleanupBlocked});
-      else safeEmit('stopped',{message:'IZlauncher stopped. Graphics allocations remain owned by this console session.'});
+      else safeEmit('stopped',{message:'IZlauncher stopped. Graphics allocations remain owned by this console session.',
+        ...attemptProof});
       if(!options.emit)await new Promise(resolve=>process.stdout.write('',resolve));
     }finally{
       process.removeListener('SIGTERM',stop);process.removeListener('SIGINT',stop);options.signal?.removeEventListener('abort',stop);

@@ -1,0 +1,17 @@
+diff --git a/engine/switch2/retained/find-metadata.cjs b/engine/switch2/retained/find-metadata.cjs
+index 9f827db..2e70af0 100644
+--- a/engine/switch2/retained/find-metadata.cjs
++++ b/engine/switch2/retained/find-metadata.cjs
+@@ -166,7 +166,11 @@ async function main(supervisorFile) {
+         const anchor = Buffer.alloc(16);
+         anchor.writeBigUInt64LE(BigInt(node.address));
+         anchor.writeBigUInt64LE(BigInt(node.address), 8);
+-        for (let attempt = 0; attempt < 6; attempt++) {
++        // The guarded move is timing-sensitive; allow more tries per candidate
++        // before rejecting it (override with NS2_METADATA_ATTEMPTS).
++        const moveAttempts = Number(process.env.NS2_METADATA_ATTEMPTS) > 0
++          ? Number(process.env.NS2_METADATA_ATTEMPTS) : 24;
++        for (let attempt = 0; attempt < moveAttempts; attempt++) {
+           const result = await memory.request(socket, {command: 'retained-bootstrap-move',
+             address: page, length: probeLength, anchorOffset: window.anchorOffset, anchorHex: anchor.toString('hex')});
+           evidence.attempts.push(result);

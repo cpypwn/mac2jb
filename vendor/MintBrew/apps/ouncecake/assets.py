@@ -14,12 +14,12 @@ atlas = Image.new('L', (1024, 1024))
 draw = ImageDraw.Draw(atlas)
 labels = [
     ('TITLE', 'OunceCake', 70),
-    ('SUBTITLE', 'Read-only game files over FTP', 30),
+    ('SUBTITLE', 'cpypwn variant of Cellenseres/OunceCake', 30),
     ('DISCOVER', 'Reading installed games...', 31),
     ('CHOOSE', 'Choose a game', 31),
     ('PREPARING', 'Preparing game files...', 31),
-    ('CLOSING', 'Closing FTP connection...', 31),
-    ('READY', 'FTP ready', 31),
+    ('CLOSING', 'Closing WebDAV connection...', 31),
+    ('READY', 'WebDAV ready', 31),
     ('ERROR', 'OunceCake could not start', 31),
     ('RETURN', 'Hold B or Minus to return to MintBrew', 25),
     ('SELECT', 'A  Select game', 25),

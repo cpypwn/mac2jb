@@ -7,11 +7,12 @@ const {execFileSync} = require('node:child_process');
 const overlays = require('./prepare-homebrew-apps.cjs');
 const izdoom = require('../integrations/izdoom/prepare.cjs');
 const ouncecake = require('../integrations/mintbrew-ouncecake/prepare.cjs');
+const izExchange = require('../integrations/mintbrew-iz-exchange/prepare.cjs');
 
 const repository = path.resolve(__dirname, '..');
 const source = path.join(repository, 'vendor/MintBrew');
 const baseApps = ['hello-world', 'froggy-road', 'cpu-gpu-probe', 'chip8-test'];
-const runtimeApps = [...baseApps, 'ftpd-sb', 'izdoom', 'stremio', 'ouncecake'];
+const runtimeApps = [...baseApps, 'ftpd-sb', 'izdoom', 'stremio', 'ouncecake', 'iz-exchange'];
 const check = (condition, message) => {if (!condition) throw Error(message);};
 
 function locate(input) {
@@ -45,6 +46,7 @@ function inspect(root, prepared) {
     overlays.verifyFiles(path.join(apps, 'ftpd-sb'), overlays.verifyOverlay(repository).manifest);
     izdoom.verifyMintBrew(repository, root);
     ouncecake.verifyMintBrew(repository, root);
+    izExchange.verifyMintBrew(repository, root);
     const stremio = path.join(apps, 'stremio');
     const original = path.join(repository, 'stremio/app');
     for (const name of fs.readdirSync(original))
@@ -88,6 +90,7 @@ function main(args = process.argv.slice(2)) {
     check(args.length === 1, '--check-source takes no runtime path.');
     const result = inspect(source, false);
     ouncecake.verifySource(repository);
+    izExchange.verifySource(repository);
     overlays.verifyOverlay(repository);
     const validator = process.env.SPIRV_VAL || path.join(repository, '.build-gui/homebrew/bin/spirv-val');
     for (const stage of ['vert', 'frag', 'comp'])
@@ -104,6 +107,7 @@ function main(args = process.argv.slice(2)) {
     if (!fs.existsSync(path.join(root, 'apps/ftpd-sb'))) overlays.installOverlays(repository, path.join(root, 'apps'));
     izdoom.prepareMintBrew(repository, root);
     ouncecake.prepareMintBrew(repository, root);
+    izExchange.prepareMintBrew(repository, root);
     const stremio = path.join(root, 'apps/stremio');
     if (!fs.existsSync(stremio)) fs.cpSync(path.join(repository, 'stremio/app'), stremio, {recursive: true});
   }

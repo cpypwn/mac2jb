@@ -1,0 +1,1 @@
+No open-source license has been selected for this repository. Public availability alone does not grant permission to redistribute or reuse the code. Contact the repository owner for permission. Third-party names belong to their respective owners.

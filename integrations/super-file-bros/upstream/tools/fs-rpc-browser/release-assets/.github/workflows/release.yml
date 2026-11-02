@@ -1,0 +1,60 @@
+name: Verify and package Super File Bros.
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          package-manager-cache: false
+      - run: node start.cjs --help
+      - run: npm test
+        env:
+          PYTHON: python
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Check tag matches package version
+        run: node -e "if(process.env.GITHUB_REF_TYPE==='tag' && process.env.GITHUB_REF_NAME!=='v'+require('./package.json').version) throw Error('Tag must match package version')"
+      - run: python3 tools/fs-rpc-browser/release.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: super-file-bros-release
+          if-no-files-found: error
+          path: |
+            dist/super-file-bros/*.zip
+            dist/super-file-bros/*.tar.gz
+            dist/super-file-bros/SHA256SUMS
+            dist/super-file-bros/SOURCE-MANIFEST-*.json
+      - name: Create a draft release for a version tag
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "A release for this tag already exists; leaving its publication state and assets unchanged."
+          else
+            gh release create "$GITHUB_REF_NAME" --verify-tag --draft --title "Super File Bros. $GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md dist/super-file-bros/*.zip dist/super-file-bros/*.tar.gz dist/super-file-bros/SHA256SUMS dist/super-file-bros/SOURCE-MANIFEST-*.json
+          fi

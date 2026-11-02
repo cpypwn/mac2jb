@@ -1,0 +1,16 @@
+{
+  "upstream": "https://github.com/smarkyie/NSP-Box",
+  "revision": "ea25556fdf88f3368d5cadf049a0558afcfaa5a4",
+  "license": "MIT",
+  "adaptation": "Portable packaging modules with exclusive hard-link commits on macOS; Windows emulator patch and Tk GUI excluded",
+  "files": {
+    "LICENSE.txt": "fbff5265ddf4633fff11f4bd9a0cfaa88d49e80aab2434aaceeff9899a4cc626",
+    "cli.py": "f8998129af3bc2f0121318fbbf96b45ee674c99b53826ab39f7c06375b243041",
+    "src/artwork.py": "43cc4307e033a3069ad9e0de3dcfd73483d3a3311d418901bfa3796d3c8d7e88",
+    "src/compatibility.py": "96d0694a36e9c37eb98d2ab3686d4a658c89e141c734f40c40a97a1cf937f6f4",
+    "src/container_format.py": "ebde2424f75278782948676249aaf4c625ac1de66a7f5dc8fe77e7681fa626ae",
+    "src/dlc.py": "e523a94796e7c23bb44903931393d3b46fc98f5360b30074d054ac27089869eb",
+    "src/engine.py": "efc935f55fed18c8fbbf3437a11934f9ab81f72e309944e1086829dad414402e",
+    "src/verify_format.py": "72672ec2ff1c9dfcdf3fa95667737f5ae0be13f8ab463e2b0733462e27d71c7e"
+  }
+}

@@ -9,15 +9,61 @@ struct IZlauncherModule: Decodable, Identifiable, Equatable {
     let version: String
     let description: String
 }
+struct RPCDiscoveryCandidate: Decodable, Identifiable, Sendable {
+    let path: String
+    let description: String
+    let session: String
+    let profileId: String
+    let modified: String?
+    var id: String { path }
+}
+private struct RPCDiscoveryResponse: Decodable, Sendable {
+    let candidates: [RPCDiscoveryCandidate]
+}
+struct SaveKitListedEntry: Decodable, Identifiable {
+    let path: String
+    let size: Int?
+    var id: String { path }
+}
+
+struct SaveKitArchiveEntry: Decodable, Identifiable {
+    let id: String
+    let titleId: String
+    let uid: String
+    let space: Int
+    let type: Int
+    let rank: Int
+    let index: Int
+    let size: String
+}
 
 enum HomebrewAppID: Equatable {
-    case mintBrew, izlauncher, custom
+    case mintBrew, nativeHBLauncher, izlauncher, custom
 
     var title: String {
         switch self {
         case .mintBrew: return "MintBrew"
+        case .nativeHBLauncher: return "HBLauncher"
         case .izlauncher: return "IZlauncher"
         case .custom: return "Custom homebrew"
+        }
+    }
+}
+
+enum ArtemisSaveGame: String {
+    case seedsow, nora
+
+    var title: String {
+        switch self {
+        case .seedsow: return "Seedsow Lullaby"
+        case .nora: return "Nora Princess 2"
+        }
+    }
+
+    var launcher: String {
+        switch self {
+        case .seedsow: return "seedsowhax"
+        case .nora: return "norahax"
         }
     }
 }
@@ -39,12 +85,14 @@ struct IZlauncherPanelAddress {
 private struct GUIEvent: Decodable {
     let type: String
     let action: String?
+    let game: String?
     let customHomebrewKind: String?
     let adapter: String?
     let message: String?
     let kind: String?
     let path: String?
     let url: String?
+    let browserURL: String?
     let rpcCommand: String?
     let startCommand: String?
     let completed: Double?
@@ -61,18 +109,34 @@ private struct GUIEvent: Decodable {
     let modules: [IZlauncherModule]?
     let host: String?
     let port: Int?
-    let ftpURL: String?
+    let httpURL: String?
     let cleanupBlocked: Bool?
     let retrySafe: Bool?
+    let safeToContinue: Bool?
     let startPending: Bool?
     let controller: String?
     let mode: String?
     let stage: String?
     let sourceSession: String?
+    let profileId: String?
+    let users: [String]?
+    let backupPath: String?
+    let files: Int?
+    let bytes: Int?
+    let titles: [String]?
+    let names: [String: String]?
+    let writable: [String]?
+    let entries: [SaveKitListedEntry]?
+    let inventory: [SaveKitArchiveEntry]?
+    let inventoryTotal: Int?
+    let failedSpaces: Int?
+    let reportPath: String?
+    let truncated: Bool?
 }
 
 @MainActor final class SessionModel: ObservableObject {
     @Published var phase: SessionPhase = .preparing
+    @Published private(set) var isInitialPreparation = true
     @Published private(set) var workflowProgress = WorkflowProgress()
     @Published var status = "Preparing the bundled tools"
     @Published var detail = "No system tools or downloads are needed."
@@ -95,9 +159,54 @@ private struct GUIEvent: Decodable {
     @Published private(set) var lastSuccessfulController: String?
     @Published private(set) var runMode: SessionRunMode = .heldRPC
     @Published private(set) var activeRunMode: SessionRunMode = .heldRPC
-    @Published private(set) var selectedHost: HostProfile = .kurumuz
-    @Published private(set) var activeHost: HostProfile = .kurumuz
+    @Published private(set) var seedsowUsers: [String] = []
+    @Published var selectedSeedsowUser = ""
+    @Published private(set) var seedsowBackupFolder: URL?
+    @Published private(set) var seedsowInstallStarted = false
+    @Published private(set) var seedsowInstallCompleted = false
+    @Published private(set) var seedsowInstallSkipped = false
+    @Published private(set) var seedsowSkipMessage = ""
+    @Published private(set) var seedsowCustomSource = false
+    @Published private(set) var activeSaveGame: ArtemisSaveGame?
+    private var legacySeedsowInstall = false
+    var installingSeedsowEditorSave: Bool { legacySeedsowInstall }
+    private var saveInstallName: String {
+        legacySeedsowInstall ? "Seedsow Lua Editor" : (activeSaveGame?.launcher ?? "Artemis launcher")
+    }
+    @Published private(set) var savekitBusy = false
+    @Published private(set) var savekitSaveOperationUsed = false
+    private var savekitPendingOperation = false
+    @Published private(set) var savekitMessage = "Start a SaveKit session to inspect saves"
+    @Published private(set) var savekitAccounts: [String] = []
+    @Published private(set) var savekitTitles: [String] = []
+    @Published private(set) var savekitTitleNames: [String: String] = [:]
+    @Published private(set) var savekitWritableTitles: [String] = []
+    @Published private(set) var savekitEntries: [SaveKitListedEntry] = []
+    @Published private(set) var savekitArchives: [SaveKitArchiveEntry] = []
+    @Published private(set) var savekitArchiveTotal = 0
+    @Published private(set) var savekitInventoryFolder: URL?
+    @Published private(set) var savekitListingTruncated = false
+    @Published private(set) var savekitBackupFolder: URL?
+    @Published private(set) var savekitChoicePending = false
+    @Published private(set) var savekitChoiceStarted = false
+    @Published private(set) var savekitChoiceFinished = false
+    @Published private(set) var savekitReturnPending = false
+    @Published private(set) var savekitReturnBlocked = false
+    @Published var sdConsoleAddress = ""
+    @Published private(set) var sdBrowserURL: URL?
+    @Published private(set) var sdFTPURL = ""
+    @Published private(set) var sdBusy = false
+    @Published private(set) var sdRunning = false
+    @Published private(set) var sdMessage = "Hold RPC to browse the Switch SD card read-only"
+    @Published private(set) var selectedHost: HostProfile = .cellenseres
+    @Published private(set) var activeHost: HostProfile = .cellenseres
     @Published var existingRPCRunPath = ""
+    @Published private(set) var rpcDiscoveryRunning = false
+    @Published private(set) var rpcDiscoveredSessions: [RPCDiscoveryCandidate] = []
+    @Published var selectedDiscoveredRPCPath = ""
+    @Published private(set) var rpcDiscoveryMessage = ""
+    @Published private(set) var sessionCleanupRunning = false
+    @Published private(set) var sessionCleanupMessage = ""
     private var attachedRunDirectory: URL?
     @Published private(set) var activeEdition: SmileBASICEdition = .full
     @Published var selectedEdition: SmileBASICEdition = .full
@@ -126,6 +235,7 @@ private struct GUIEvent: Decodable {
     @Published private(set) var homebrewMessage = ""
     @Published private(set) var homebrewFolder: URL?
     @Published private(set) var homebrewApp: HomebrewAppID = .mintBrew
+    @Published private(set) var homebrewStopPending = false
     var homebrewTitle: String { homebrewApp.title }
     @Published private(set) var izlauncherPanelURL: URL?
     @Published private(set) var izlauncherPanelMessage = ""
@@ -150,7 +260,6 @@ private struct GUIEvent: Decodable {
     @Published var selectedOunceCakeGame = ""
     @Published private(set) var ounceCakeSession = OunceCakeSession()
     var accountProgressHandler: ((StremioWatchProgress) -> Void)?
-    var mintBrewAccountProvider: (() -> (addonURLs: [String], libraryItems: [[String: Any]]))?
     var stremioToolsAvailable: Bool {
         FileManager.default.isExecutableFile(atPath: "/Applications/Stremio.app/Contents/MacOS/ffmpeg") &&
         FileManager.default.isExecutableFile(atPath: "/Applications/Stremio.app/Contents/MacOS/ffprobe")
@@ -211,7 +320,7 @@ private struct GUIEvent: Decodable {
 
     var isBusy: Bool {
         phase == .commandsSent && hasLiveWorkers || [.preparing, .bootstrap, .savingBootstrap, .hostStarting, .rpcAttaching, .commands, .waitingForConsole,
-         .rpcHeld, .dumpingFirmware, .rpcFinishing, .launchingHomebrew, .homebrewRunning, .homebrewStopped,
+         .rpcHeld, .dumpingFirmware, .installingSave, .rpcFinishing, .launchingHomebrew, .homebrewRunning, .homebrewStopped,
          .keyboardConnecting, .keyboardForwarding].contains(phase)
     }
 
@@ -273,22 +382,111 @@ private struct GUIEvent: Decodable {
     }
     var isAttachedRPCSession: Bool { activeRunMode == .existingRPC }
     var canChangeHost: Bool {
-        [.ready, .failed, .cancelled].contains(phase) && !preparing && !hasLiveWorkers && !driverSetupRunning
+        [.ready, .failed, .cancelled].contains(phase) && !preparing && !hasLiveWorkers && !driverSetupRunning &&
+        !rpcDiscoveryRunning && !sessionCleanupRunning
     }
+    var canFindOpenRPC: Bool { canChangeHost && runtime != nil }
     var canAttachExistingRPC: Bool {
-        canChangeHost && runtime != nil && selectedHost.supportsHeldRPC &&
+        canChangeHost && runtime != nil &&
         existingRPCRunPath.hasPrefix("/") && !existingRPCRunPath.contains("\n") && !existingRPCRunPath.contains("\0")
     }
-    var activeSessionSupportsHomebrew: Bool { activeRunMode == .heldRPC || activeRunMode == .hostOnlyHeld || isAttachedRPCSession }
+    var activeSessionSupportsHomebrew: Bool {
+        activeRunMode == .heldRPC || activeRunMode == .hostOnlyHeld ||
+        activeRunMode == .seedsowSave || activeRunMode == .savekitTools || isAttachedRPCSession
+    }
 
     var hasLiveWorkers: Bool { hostProcess != nil || hidProcess != nil }
+    var canClearPastSessionData: Bool {
+        runtime != nil && !preparing && !sessionCleanupRunning && !hasLiveWorkers &&
+        [.ready, .failed, .cancelled].contains(phase)
+    }
+
+    func clearPastSessionData() {
+        guard canClearPastSessionData, let root = runtime?.root else { return }
+        sessionCleanupRunning = true
+        sessionCleanupMessage = "Clearing past session data…"
+        Task {
+            defer { sessionCleanupRunning = false }
+            do {
+                let result = try await Task.detached(priority: .utility) {
+                    try SessionDataCleanup.clearPastSessions(in: root.deletingLastPathComponent(),
+                                                             keeping: root)
+                }.value
+                sessionCleanupMessage = result.sessions == 0
+                    ? "No past session data needed clearing"
+                    : "Cleared data from \(result.sessions) past session\(result.sessions == 1 ? "" : "s"). Save exports, dumps and source snapshots were kept"
+            } catch {
+                sessionCleanupMessage = error.localizedDescription
+            }
+        }
+    }
     var canLaunchHomebrew: Bool {
         phase == .rpcHeld && activeSessionSupportsHomebrew && postRun.canLaunchHomebrew && pendingHomebrewAction == nil &&
-        hostProcess?.isRunning == true && hostInput != nil && runFolder != nil
+        hostProcess?.isRunning == true && hostInput != nil && runFolder != nil &&
+        !savekitBusy && (!savekitSaveOperationUsed || savekitChoiceFinished) &&
+        (!seedsowInstallStarted || seedsowInstallCompleted) && !savekitChoicePending &&
+        (!savekitChoiceStarted || savekitChoiceFinished) && !sdBusy && !sdRunning
+    }
+    var canStopCurrentHomebrew: Bool {
+        postRun.canStopHomebrew && !homebrewStopPending && hostProcess?.isRunning == true && hostInput != nil
+    }
+    var canLaunchNativeHBLauncher: Bool {
+        canLaunchHomebrew && activeHost.supportsNativeHBLauncher && nativeHBLauncherRuntimeAvailable
     }
     var canDumpSystemCode: Bool {
-        activeSessionSupportsHomebrew && postRun.canDumpSystemCode &&
+        activeRunMode != .seedsowSave && activeSessionSupportsHomebrew && postRun.canDumpSystemCode &&
+        hostProcess?.isRunning == true && hostInput != nil && runFolder != nil && !sdBusy && !sdRunning
+    }
+    var saveKitToolsAvailableInRun: Bool {
+        activeRunMode == .savekitTools ||
+        activeRunMode == .hostOnlyHeld && activeHost.supportsSaveKit ||
+        activeRunMode == .seedsowSave && (seedsowInstallCompleted || savekitChoiceStarted)
+    }
+    var canUseSaveKitTools: Bool {
+        saveKitToolsAvailableInRun && !savekitChoiceFinished && phase == .rpcHeld && postRun.stage == .held &&
+        postRun.heldConfirmed && hostProcess?.isRunning == true && hostInput != nil &&
+        runFolder != nil && !postRun.homebrewAttempted && !savekitBusy && !sdBusy && !sdRunning
+    }
+    var canFinishSaveKit: Bool {
+        (savekitChoiceStarted || savekitSaveOperationUsed) && !savekitChoiceFinished &&
+        !savekitReturnPending && !savekitReturnBlocked && canUseSaveKitTools
+    }
+    var canOpenAnotherSave: Bool { canUseSaveKitTools && !savekitReturnBlocked }
+    var canInstallSeedsowSave: Bool {
+        (activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld && activeHost.supportsSaveKit) &&
+        phase == .rpcHeld && postRun.heldConfirmed &&
+        !seedsowInstallStarted && !savekitChoicePending &&
+        (!savekitChoiceStarted || savekitChoiceFinished) &&
+        !postRun.homebrewAttempted && !savekitBusy && !sdBusy && !sdRunning &&
         hostProcess?.isRunning == true && hostInput != nil && runFolder != nil
+    }
+    var canInstallArtemisSave: Bool { canInstallSeedsowSave }
+    var canStartSaveKit: Bool {
+        (activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld && activeHost.supportsSaveKit) &&
+        phase == .rpcHeld && postRun.heldConfirmed &&
+        !savekitChoicePending && (!savekitChoiceStarted || savekitChoiceFinished) &&
+        !seedsowInstallStarted &&
+        !postRun.homebrewAttempted && !savekitBusy && !sdBusy && !sdRunning &&
+        hostProcess?.isRunning == true && hostInput != nil && runFolder != nil
+    }
+    var canStartSDBrowser: Bool {
+        phase == .rpcHeld && postRun.heldConfirmed && !isAttachedRPCSession &&
+        !postRun.homebrewAttempted && !postRun.dumpInProgress && !seedsowInstallStarted &&
+        !savekitChoicePending && !savekitChoiceStarted &&
+        !savekitBusy && !savekitSaveOperationUsed && !sdBusy && !sdRunning &&
+        Self.isIPv4(sdConsoleAddress) && hostProcess?.isRunning == true &&
+        hostInput != nil && runFolder != nil
+    }
+    var canStopSDBrowser: Bool { sdBusy || sdRunning }
+    private var nativeHBLauncherRuntimeAvailable: Bool {
+        guard let root = runtime?.root else { return false }
+        let launcher = root.appendingPathComponent("integrations/mintbrew-native/upstream/launcher/build/report.json")
+        let marker = root.appendingPathComponent("packaging/runtime-homebrew.json")
+        guard FileManager.default.fileExists(atPath: launcher.path),
+              let data = try? Data(contentsOf: marker),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let allowed = value["allowed"] as? [String] else { return false }
+        return allowed.contains("native-hblauncher")
     }
     private var izlauncherRuntimeAvailable: Bool {
         guard let root = runtime?.root else { return false }
@@ -312,7 +510,10 @@ private struct GUIEvent: Decodable {
         postRun.canSelectHomebrew && ounceCakeSession.stage == .choosing &&
         ounceCakeSession.games.contains { $0.titleId == selectedOunceCakeGame } && hostProcess?.isRunning == true
     }
-    var canReturnToStart: Bool { [.verified, .commandsSent, .rpcDetached].contains(phase) && !hasLiveWorkers && !driverSetupRunning }
+    var canReturnToStart: Bool {
+        ([.verified, .commandsSent, .rpcDetached].contains(phase) ||
+         phase == .failed && seedsowInstallStarted) && !hasLiveWorkers && !driverSetupRunning
+    }
 
     func returnToStart() {
         guard canReturnToStart else { return }
@@ -320,18 +521,22 @@ private struct GUIEvent: Decodable {
         phase = .ready; status = "Ready for a fresh session"
         detail = isAttachedRPCSession ? "The original host still owns the RPC session. Choose your next action." : "Restart the console before another exploit attempt, then choose your next run mode."
         progress = nil; progressLabel = ""; error = nil
+        seedsowInstallStarted = false
+        seedsowUsers = []
         izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
     }
 
     func selectRunMode(_ mode: SessionRunMode) {
         guard !isBusy, phase != .awaitingSave, !hasLiveWorkers, !driverSetupRunning else { return }
-        guard selectedHost.supportsHeldRPC || ![.heldRPC, .hostOnlyHeld, .systemCodeDump, .existingRPC].contains(mode) else { return }
+        guard selectedHost.supportsHeldRPC || ![.heldRPC, .seedsowSave, .savekitTools, .hostOnlyHeld, .systemCodeDump].contains(mode) else { return }
+        guard ![SessionRunMode.seedsowSave, .savekitTools].contains(mode) || selectedHost.supportsSaveKit else { return }
         runMode = mode
         workflowProgress.selectMode(fullInstall: mode == .bootstrapOnly)
     }
 
     func selectHost(_ host: HostProfile) {
         guard canChangeHost, host != selectedHost else { return }
+        isInitialPreparation = false
         selectedHost = host
         UserDefaults.standard.set(host.rawValue, forKey: HostProfile.preferenceKey)
         if !host.supportsDemo { selectedEdition = .full }
@@ -341,7 +546,7 @@ private struct GUIEvent: Decodable {
         endSessionActivity()
         runtime = nil; phase = .preparing; error = nil; progress = nil
         status = "Preparing \(host.label)"
-        detail = "Each host uses its own bootstrap and saved program name. Type and save this host’s bootstrap before running it."
+        detail = "Use a matching \(host.startArgumentCount)-argument bootstrap saved as \(host.saveName). Reuse it if already saved; otherwise type and save it first."
         prepare()
     }
 
@@ -446,10 +651,11 @@ private struct GUIEvent: Decodable {
     }
 
     func start(commandSelection: PostBootstrapCommandSelection? = nil) {
-        guard !driverSetupRunning else { return }
+        guard !driverSetupRunning && !rpcDiscoveryRunning && !sessionCleanupRunning else { return }
         guard runMode != .existingRPC,
               selectedHost.supportsDemo || selectedEdition != .demo,
-              selectedHost.supportsHeldRPC || ![.heldRPC, .hostOnlyHeld, .systemCodeDump].contains(runMode) else { return }
+              selectedHost.supportsHeldRPC || ![.heldRPC, .seedsowSave, .savekitTools, .hostOnlyHeld, .systemCodeDump].contains(runMode),
+              ![SessionRunMode.seedsowSave, .savekitTools].contains(runMode) || selectedHost.supportsSaveKit else { return }
         guard !isBusy, phase != .awaitingSave, hostProcess == nil, hidProcess == nil else { return }
         if runMode.requiresNetworkAddress {
             let refresh = refreshNetworkAddresses()
@@ -499,7 +705,22 @@ private struct GUIEvent: Decodable {
         acquisitionLog = "Waiting for acquisition.log"
         exploitLogRefreshDate = .distantPast
         postRun = PostRunSessionState(); rpcCommand = ""; hostStartCommand = ""; rpcStatus = ""; dumpFolder = nil
+        seedsowUsers = []; selectedSeedsowUser = ""; seedsowBackupFolder = nil
+        seedsowInstallStarted = false; seedsowInstallCompleted = false
+        seedsowInstallSkipped = false; seedsowSkipMessage = ""; seedsowCustomSource = false
+        activeSaveGame = nil; legacySeedsowInstall = false
+        savekitBusy = false; savekitSaveOperationUsed = false; savekitPendingOperation = false
+        savekitMessage = "Waiting for verified held RPC"
+        savekitAccounts = []; savekitTitles = []; savekitTitleNames = [:]; savekitWritableTitles = []
+        savekitEntries = []; savekitArchives = []; savekitArchiveTotal = 0
+        savekitInventoryFolder = nil; savekitListingTruncated = false; savekitBackupFolder = nil
+        savekitChoicePending = false; savekitChoiceStarted = false
+        savekitChoiceFinished = false; savekitReturnPending = false; savekitReturnBlocked = false
+        sdConsoleAddress = ""; sdBrowserURL = nil; sdFTPURL = ""
+        sdBusy = false; sdRunning = false
+        sdMessage = "Hold RPC to browse the Switch SD card read-only"
         homebrewMessage = ""; homebrewFolder = nil; homebrewApp = .mintBrew; pendingHomebrewAction = nil
+        homebrewStopPending = false
         pendingCustomConsoleAddress = nil
         izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
         izlauncherModules = []; izlauncherCatalogLoaded = false; selectedIZlauncherModuleIDs = []
@@ -546,6 +767,77 @@ private struct GUIEvent: Decodable {
         launch(arguments: ["attach"], role: "host", root: runtime.root)
         guard hostProcess != nil, phase == .rpcAttaching else { return }
         _ = sendHostControl(["action": "attach", "connection": ["kind": "local", "runDirectory": directory.path]])
+    }
+
+    func findOpenRPC() {
+        guard canFindOpenRPC, let root = runtime?.root else { return }
+        rpcDiscoveryRunning = true
+        rpcDiscoveredSessions = []
+        selectedDiscoveredRPCPath = ""
+        rpcDiscoveryMessage = "Searching for verified open RPC sessions on this Mac…"
+        let attempt = generation
+        Task {
+            do {
+                let candidates = try await Task.detached(priority: .userInitiated) {
+                    try Self.discoverRPCRuns(runtimeRoot: root)
+                }.value
+                rpcDiscoveryRunning = false
+                guard generation == attempt, runtime?.root == root, canChangeHost else { return }
+                rpcDiscoveredSessions = candidates
+                if candidates.count == 1, let candidate = candidates.first {
+                    existingRPCRunPath = candidate.path
+                    rpcDiscoveryMessage = "Found \(candidate.description). Connecting…"
+                    attachExistingRPC()
+                } else if candidates.isEmpty {
+                    rpcDiscoveryMessage = "No verified open RPC session was found. Keep the original host running or choose its run folder manually."
+                } else {
+                    selectedDiscoveredRPCPath = candidates[0].path
+                    rpcDiscoveryMessage = "Choose which verified session to connect."
+                }
+            } catch {
+                rpcDiscoveryRunning = false
+                guard generation == attempt, runtime?.root == root, canChangeHost else { return }
+                rpcDiscoveryMessage = "Could not search for open RPC sessions: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    func connectDiscoveredRPC() {
+        guard canChangeHost, rpcDiscoveredSessions.contains(where: { $0.path == selectedDiscoveredRPCPath }) else { return }
+        existingRPCRunPath = selectedDiscoveredRPCPath
+        attachExistingRPC()
+    }
+
+    nonisolated private static func discoverRPCRuns(runtimeRoot: URL) throws -> [RPCDiscoveryCandidate] {
+        let process = Process()
+        process.executableURL = runtimeRoot.appendingPathComponent("node")
+        process.arguments = [runtimeRoot.appendingPathComponent("scripts/gui-discover-rpc.cjs").path,
+                             runtimeRoot.deletingLastPathComponent().path]
+        process.currentDirectoryURL = runtimeRoot
+        let output = Pipe(), errors = Pipe()
+        process.standardOutput = output; process.standardError = errors
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let stderr = errors.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else {
+            let message = String(decoding: stderr.prefix(1024), as: UTF8.self)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw NSError(domain: "mac2jb.rpcDiscovery", code: Int(process.terminationStatus),
+                          userInfo: [NSLocalizedDescriptionKey: message.isEmpty ? "The search helper failed." : message])
+        }
+        guard data.count <= 128 * 1024 else {
+            throw NSError(domain: "mac2jb.rpcDiscovery", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "The search returned too much data."])
+        }
+        let candidates = try JSONDecoder().decode(RPCDiscoveryResponse.self, from: data).candidates
+        guard candidates.count <= 8, Set(candidates.map(\.path)).count == candidates.count,
+              candidates.allSatisfy({ $0.path.hasPrefix("/") && !$0.path.contains("\n") && !$0.path.contains("\0") &&
+                  !$0.description.isEmpty && $0.description.utf8.count <= 256 }) else {
+            throw NSError(domain: "mac2jb.rpcDiscovery", code: 2,
+                          userInfo: [NSLocalizedDescriptionKey: "The search returned invalid sessions."])
+        }
+        return candidates
     }
 
     func skipBootstrapTyping() {
@@ -762,6 +1054,15 @@ private struct GUIEvent: Decodable {
         presentPostRunState()
     }
 
+    func launchNativeHBLauncher(sdRomFolder: String) {
+        guard canLaunchNativeHBLauncher,
+              sendHostControl(["action": "launch-native-hblauncher", "sdRomFolder": sdRomFolder]) else { return }
+        homebrewApp = .nativeHBLauncher
+        postRun.launchHomebrew()
+        homebrewMessage = "Starting HBLauncher in the current held session…"
+        presentPostRunState()
+    }
+
     func launchIZlauncher() {
         guard canLaunchIZlauncher else { return }
         var control: [String: Any] = ["action": "launch-izlauncher"]
@@ -839,6 +1140,30 @@ private struct GUIEvent: Decodable {
         if !NSWorkspace.shared.open(folder) { detail = "Could not open the MintBrew app folder in Finder." }
     }
 
+    func openNativeAppsFolder() {
+        guard let runtime else { return }
+        let folder = runtime.root.appendingPathComponent("integrations/mintbrew-native/upstream/apps", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: folder.path) else {
+            detail = "The native app folder is unavailable in this session."
+            return
+        }
+        if !NSWorkspace.shared.open(folder) { detail = "Could not open the native app folder in Finder." }
+    }
+
+    func openNativeROMsFolder() {
+        let manager = FileManager.default
+        guard let support = try? manager.url(for: .applicationSupportDirectory, in: .userDomainMask,
+                                             appropriateFor: nil, create: true) else {
+            detail = "The MintNES ROM folder is unavailable on this Mac."
+            return
+        }
+        let folder = support.appendingPathComponent("mac2jb/MintNES/roms", isDirectory: true)
+        do { try manager.createDirectory(at: folder, withIntermediateDirectories: true,
+                                         attributes: [.posixPermissions: 0o700]) }
+        catch { detail = "Could not create the MintNES ROM folder on this Mac."; return }
+        if !NSWorkspace.shared.open(folder) { detail = "Could not open the MintNES ROM folder in Finder." }
+    }
+
     func refreshExploitLogs() {
         guard Date().timeIntervalSince(exploitLogRefreshDate) >= 0.4 else { return }
         exploitLogRefreshDate = Date()
@@ -868,7 +1193,7 @@ private struct GUIEvent: Decodable {
         } catch { return "Could not read log: \(error.localizedDescription)" }
     }
 
-    func startOunceCakeFTP() {
+    func startOunceCakeShare() {
         guard canSelectOunceCakeGame else { return }
         var session = ounceCakeSession
         guard session.select(titleId: selectedOunceCakeGame),
@@ -877,6 +1202,13 @@ private struct GUIEvent: Decodable {
         ounceCakeSession = session
         homebrewMessage = "Preparing the selected game. This can take several minutes."
         presentPostRunState()
+    }
+
+    func stopCurrentHomebrew() {
+        guard canStopCurrentHomebrew, sendHostControl(["action": "stop-homebrew"]) else { return }
+        homebrewStopPending = true
+        homebrewMessage = "Stopping \(homebrewTitle) and checking RPC…"
+        progressLabel = homebrewMessage
     }
 
     func copyOunceCakeAddress() {
@@ -893,7 +1225,8 @@ private struct GUIEvent: Decodable {
     }
 
     func finishPostRun() {
-        guard postRun.canFinish, sendHostControl(["action": "finish"]) else { return }
+        guard !savekitBusy, postRun.canFinish,
+              sendHostControl(["action": "finish"]) else { return }
         postRun.finish()
         izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
         presentPostRunState()
@@ -910,6 +1243,112 @@ private struct GUIEvent: Decodable {
         status = postRun.homebrewStage == .running ? "Stopping \(homebrewTitle) for the system-code dump" : "Preparing system-code dump"
         detail = "Keep SmileBASIC and the held RPC session open. The dump will start after the current app stops safely."
         progress = nil; progressLabel = "Preparing the system-code dump"
+    }
+
+    func installSeedsowSave(source: URL? = nil) {
+        guard canInstallSeedsowSave else { return }
+        if let source {
+            guard source.isFileURL, source.path.hasPrefix("/"),
+                  source.path.utf8.count <= 4096,
+                  !source.path.contains("\n"), !source.path.contains("\r"),
+                  !source.path.contains("\0") else { return }
+        }
+        var control: [String: Any] = ["action": "install-seedsow-save"]
+        if let source { control["sourcePath"] = source.path }
+        guard sendHostControl(control) else { return }
+        seedsowInstallStarted = true
+        seedsowInstallCompleted = false
+        seedsowInstallSkipped = false
+        seedsowBackupFolder = nil
+        seedsowUsers = []
+        seedsowCustomSource = source != nil
+        activeSaveGame = .seedsow
+        legacySeedsowInstall = true
+        phase = .installingSave
+        status = "Preparing the Seedsow Lua Editor save"
+        detail = "Keep the demo fully closed and SmileBASIC open. The original save will be backed up before it is changed."
+        progress = nil; progressLabel = "Checking the selected save"
+    }
+
+    func installArtemisSave(game: ArtemisSaveGame) {
+        guard canInstallArtemisSave,
+              sendHostControl(["action": "install-artemis-save", "game": game.rawValue]) else { return }
+        activeSaveGame = game
+        legacySeedsowInstall = false
+        seedsowInstallStarted = true
+        seedsowInstallCompleted = false
+        seedsowInstallSkipped = false
+        seedsowBackupFolder = nil
+        seedsowUsers = []
+        seedsowCustomSource = false
+        seedsowSkipMessage = ""
+        phase = .installingSave
+        status = "Preparing the \(game.launcher) save"
+        detail = "Keep the \(game.title) demo fully closed and SmileBASIC open. The original save will be backed up before it is changed."
+        progress = nil; progressLabel = "Checking the upstream launcher save"
+    }
+
+    func startSaveKit() {
+        guard canStartSaveKit, sendHostControl(["action": "start-savekit"]) else { return }
+        savekitChoicePending = true
+        status = "Opening SaveKit"
+        detail = "Preparing save data tools in this held RPC session"
+    }
+
+    func finishSaveKit() {
+        guard canFinishSaveKit, sendHostControl(["action": "finish-savekit"]) else { return }
+        savekitReturnPending = true
+        savekitMessage = "Checking held RPC before returning to homebrew"
+    }
+
+    func startSDBrowser() {
+        guard canStartSDBrowser,
+              sendHostControl(["action": "start-sd-browser", "consoleAddress": sdConsoleAddress]) else { return }
+        sdBusy = true
+        sdMessage = "Opening the read-only SD browser"
+    }
+
+    func stopSDBrowser() {
+        guard canStopSDBrowser, sendHostControl(["action": "stop-sd-browser"]) else { return }
+        sdBusy = true
+        sdMessage = "Stopping the read-only SD browser"
+    }
+
+    func openSDBrowser() {
+        if let sdBrowserURL, sdRunning { NSWorkspace.shared.open(sdBrowserURL) }
+    }
+
+    func selectSeedsowUser() {
+        guard activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+              phase == .installingSave,
+              seedsowUsers.contains(selectedSeedsowUser),
+              sendHostControl(["action": "select-seedsow-user", "uid": selectedSeedsowUser]) else { return }
+        seedsowUsers = []
+        status = "Backing up the \(activeSaveGame?.title ?? "Seedsow Lullaby") demo save"
+        progressLabel = "Saving a verified copy before writing"
+    }
+
+    func revealSeedsowBackup() {
+        if let seedsowBackupFolder { NSWorkspace.shared.open(seedsowBackupFolder) }
+    }
+
+    func runSaveKitTool(_ request: [String: Any]) {
+        guard canUseSaveKitTools, let action = request["action"] as? String else { return }
+        guard sendHostControl(["action": "savekit-tool", "request": request]) else { return }
+        savekitBusy = true
+        savekitPendingOperation = !["titles", "accounts", "inventory"].contains(action)
+        if savekitPendingOperation { savekitSaveOperationUsed = true }
+        savekitMessage = "Starting \(action)"
+        progressLabel = savekitMessage
+        if action == "inspect" { savekitEntries = []; savekitListingTruncated = false }
+    }
+
+    func revealSaveKitBackup() {
+        if let savekitBackupFolder { NSWorkspace.shared.open(savekitBackupFolder) }
+    }
+
+    func revealSaveKitInventory() {
+        if let savekitInventoryFolder { NSWorkspace.shared.open(savekitInventoryFolder) }
     }
 
     private func sendHostControl(_ value: [String: Any]) -> Bool {
@@ -939,8 +1378,13 @@ private struct GUIEvent: Decodable {
         case .held:
             switch postRun.homebrewStage {
             case .idle:
-                phase = .rpcHeld; status = "Ready for homebrew"
-                detail = "\(sessionReminder) Choose an app below, then finish the session when you’re done."
+                phase = .rpcHeld
+                status = activeRunMode == .savekitTools ? "Save data tools are ready" : "Ready for homebrew"
+                detail = activeRunMode == .savekitTools
+                    ? "\(sessionReminder) Open Console & Developer Options to list titles or back up a save."
+                    : activeRunMode == .hostOnlyHeld && activeHost.supportsSaveKit
+                    ? "\(sessionReminder) Choose an app or open Save data tools in Console & Developer Options."
+                    : "\(sessionReminder) Choose an app below, then finish the session when you’re done."
                 progress = 1; progressLabel = isAttachedRPCSession ? "Existing RPC connected" : "4/4 complete · Switch connected"
             case .launching:
                 phase = .launchingHomebrew; status = "Starting \(homebrewTitle)"
@@ -950,7 +1394,7 @@ private struct GUIEvent: Decodable {
                 progress = nil; progressLabel = homebrewMessage
             case .selecting:
                 phase = .launchingHomebrew; status = "Choose a game"
-                detail = "Choose a game below, then start its read-only FTP server. \(sessionReminder)"
+                detail = "Choose a game below, then start its read-only WebDAV server. \(sessionReminder)"
                 progress = nil; progressLabel = "Game list ready"
             case .running:
                 phase = .homebrewRunning; status = "\(homebrewTitle) is running"
@@ -960,7 +1404,9 @@ private struct GUIEvent: Decodable {
                 progress = nil; progressLabel = homebrewMessage
             case .stopped, .failed:
                 phase = .homebrewStopped; status = postRun.homebrewStage == .failed ? "\(homebrewTitle) needs attention" : "\(homebrewTitle) stopped"
-                detail = "Keep the logs, finish this session, then restart the console before another attempt. The homebrew app cannot be retried in this session."
+                detail = postRun.homebrewStage == .stopped
+                    ? "Checking that RPC is ready for another homebrew app. Keep mac2jb open."
+                    : "Keep the logs and restart the console before another attempt."
                 progress = nil; progressLabel = homebrewMessage
             }
         case .dumping:
@@ -987,6 +1433,19 @@ private struct GUIEvent: Decodable {
         return url
     }
 
+    private func matchesSaveInstall(_ event: GUIEvent) -> Bool {
+        guard let game = activeSaveGame else { return false }
+        return legacySeedsowInstall ? event.game == nil : event.game == game.rawValue
+    }
+
+    private func saveInstallBackup(_ event: GUIEvent) -> URL? {
+        guard matchesSaveInstall(event), let game = activeSaveGame,
+              let backup = sessionURL(event.backupPath) else { return nil }
+        let marker = legacySeedsowInstall ? "/seedsow-backups/demo-" :
+            "/artemis-backups/\(game.rawValue)-"
+        return backup.path.contains(marker) ? backup : nil
+    }
+
     private static func canonicalSessionURL(_ path: String) -> URL {
         var url = URL(fileURLWithPath: path).standardizedFileURL
         var suffix: [String] = []
@@ -1011,7 +1470,7 @@ private struct GUIEvent: Decodable {
     func recordDiagnostic(_ message: String) { append(message) }
 
     private func startHost(root: URL) {
-        guard let arguments = activeRunMode.hostArguments(address: activeAddress) else {
+        guard let arguments = activeRunMode.hostArguments(address: activeAddress, host: activeHost.rawValue) else {
             fail("Choose an exploit mode to start a host session.")
             return
         }
@@ -1023,6 +1482,13 @@ private struct GUIEvent: Decodable {
     }
 
     private func startHID(_ kind: String, root: URL) {
+        if kind == "commands" {
+            guard !hostStartCommand.isEmpty,
+                  PostBootstrapCommandSelection.validStartCommand(hostStartCommand, host: activeHost) else {
+                fail("The host did not publish a valid START command for this session.")
+                return
+            }
+        }
         phase = kind == "bootstrap" ? .bootstrap : kind == "save-bootstrap" ? .savingBootstrap : .commands
         status = kind == "bootstrap" ? "Connecting the USB keyboard" : "Waiting for USB keyboard…"
         detail = kind == "bootstrap" ? "Keep Make a Program open until the entire bootstrap has finished typing. Using \(keyDelayMs) ms per key." : "Keep the command screen focused. The expected Out of memory message after REMOVE is normal."
@@ -1037,6 +1503,7 @@ private struct GUIEvent: Decodable {
             arguments += selection.arguments
             detail = "Sending only your selected commands. No host will be started or verified."
         }
+        if kind == "commands" { arguments += ["--start-command", hostStartCommand] }
         if kind == "save-bootstrap" {
             detail = "Keep the empty Direct-mode command prompt focused. The app will type the save command and press Enter once."
         }
@@ -1175,8 +1642,11 @@ private struct GUIEvent: Decodable {
         case "rpc-attached":
             guard role == "host", isAttachedRPCSession, phase == .rpcAttaching,
                   let directory = sessionURL(event.path), directory == attachedRunDirectory,
-                  event.sourceSession == directory.lastPathComponent else { return }
+                  event.sourceSession == directory.lastPathComponent,
+                  let profileId = event.profileId, let sourceHost = HostProfile(rawValue: profileId),
+                  sourceHost.supportsHeldRPC else { return }
             guard postRun.ready(), postRun.choose(keepRPC: true, dumpFirmware: false), postRun.receive("rpc-held") else { return }
+            activeHost = sourceHost
             runFolder = directory
             hostReadyReceived = true
             presentPostRunState()
@@ -1264,14 +1734,200 @@ private struct GUIEvent: Decodable {
             if let command = event.rpcCommand { rpcCommand = command }
             runFolder = folder
             presentPostRunState()
-            if activeRunMode == .heldRPC {
-                let account = mintBrewAccountProvider?()
-                launchMintBrew(accountAddons: account?.addonURLs ?? [],
-                               libraryItems: account?.libraryItems ?? [])
-                if !postRun.homebrewAttempted { requestIZlauncherModules() }
-            } else {
+            if saveKitToolsAvailableInRun { savekitMessage = "RPC ready for save data tools" }
+            if activeRunMode == .seedsowSave {
+                status = "Choose what to open"
+                detail = "RPC is held. Open a launcher or install an Artemis launcher save. Close the selected demo before installing its save."
+                progress = nil; progressLabel = "RPC verified · choose the next step"
+                requestIZlauncherModules()
+            } else if activeRunMode == .heldRPC {
+                status = "Choose what to open"
+                detail = "RPC is held. Choose MintBrew or another available app."
+                requestIZlauncherModules()
+            } else if activeRunMode != .savekitTools {
                 requestIZlauncherModules()
             }
+        case "savekit-progress":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  seedsowInstallStarted, matchesSaveInstall(event),
+                  phase == .installingSave, let message = event.message,
+                  let stage = event.stage, ["checking", "finding", "backup", "writing"].contains(stage) else { return }
+            status = message; progressLabel = message
+        case "savekit-choose-user":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  phase == .installingSave, matchesSaveInstall(event),
+                  let users = event.users, (2...8).contains(users.count),
+                  Set(users).count == users.count,
+                  users.allSatisfy({ $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil }) else { return }
+            seedsowUsers = users; selectedSeedsowUser = users[0]
+            status = "Choose a \(activeSaveGame?.title ?? "Seedsow Lullaby") demo save"
+            detail = "Select the console user whose demo save should be backed up and updated."
+            progressLabel = "Waiting for your account selection"
+        case "savekit-backup":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  phase == .installingSave,
+                  let backup = saveInstallBackup(event) else { return }
+            seedsowBackupFolder = backup
+            progressLabel = "Original save backed up"
+        case "savekit-complete":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  phase == .installingSave,
+                  let files = event.files, (1...500).contains(files),
+                  let backup = saveInstallBackup(event) else { return }
+            seedsowBackupFolder = backup; seedsowInstallCompleted = true
+            status = "\(saveInstallName) save files verified"
+            detail = "Finishing the save installation before returning to your options."
+            progress = 1; progressLabel = "\(files) written files verified"
+        case "savekit-skipped":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  phase == .installingSave,
+                  let files = event.files, (1...2048).contains(files),
+                  let backup = saveInstallBackup(event) else { return }
+            seedsowBackupFolder = backup; seedsowInstallCompleted = true
+            seedsowInstallSkipped = true; seedsowSkipMessage = event.message ?? "Existing save files were preserved."
+            status = "\(saveInstallName) save unchanged"
+            detail = seedsowSkipMessage
+            progress = 1; progressLabel = "\(files) existing files backed up and verified"
+        case "savekit-ready":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  seedsowInstallCompleted, matchesSaveInstall(event), phase == .installingSave,
+                  postRun.stage == .held else { return }
+            phase = .rpcHeld
+            seedsowInstallStarted = false
+            let launcher = saveInstallName
+            status = seedsowInstallSkipped ? "\(launcher) save unchanged · RPC held" : "\(launcher) save ready · RPC held"
+            detail = (seedsowInstallSkipped ? seedsowSkipMessage + " " : "The save write was verified. ") +
+                "RPC remains open. Choose a homebrew app or back up another game's save below before finishing the session."
+            savekitMessage = "List titles and accounts, then choose a save to back up"
+            progressLabel = seedsowInstallSkipped ? "Original save verified · RPC held" : "Save write verified · RPC held"
+        case "savekit-failed":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  matchesSaveInstall(event) else { return }
+            if let backup = saveInstallBackup(event) { seedsowBackupFolder = backup }
+            seedsowUsers = []
+            postRun.stop()
+            phase = .failed
+            status = "\(saveInstallName) save installation needs attention"
+            detail = event.message ?? "The save installation stopped. Keep the backup and restart the console before another app attempt."
+            error = detail
+            progress = nil
+            progressLabel = ""
+        case "savekit-recoverable":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  phase == .installingSave, seedsowInstallStarted,
+                  matchesSaveInstall(event) else { return }
+            seedsowInstallStarted = false
+            seedsowUsers = []
+            selectedSeedsowUser = ""
+            phase = .rpcHeld
+            status = "Could not prepare \(saveInstallName)"
+            detail = event.message ?? "The upstream save could not be prepared. RPC remains open."
+            progress = nil
+            progressLabel = "RPC verified · choose another option"
+        case "savekit-tool-progress":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  let message = event.message, message.utf8.count <= 512 else { return }
+            savekitMessage = message; progressLabel = message
+        case "savekit-tool-accounts":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  let users = event.users, users.count <= 8,
+                  users.allSatisfy({ $0.range(of: "^[a-f0-9]{32}$", options: .regularExpression) != nil }) else { return }
+            savekitAccounts = users
+            savekitMessage = event.message ?? "Console accounts listed"
+        case "savekit-tool-titles":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  let titles = event.titles, titles.count <= 2048,
+                  let writable = event.writable, writable.allSatisfy({ titles.contains($0) }) else { return }
+            let names = event.names ?? [:]
+            guard names.count <= titles.count,
+                  names.allSatisfy({ id, name in
+                      titles.contains(id) && !name.isEmpty && name.utf8.count <= 160 &&
+                      !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+                  }) else { return }
+            savekitTitles = titles; savekitTitleNames = names; savekitWritableTitles = writable
+            savekitMessage = event.message ?? "Installed titles listed"
+        case "savekit-tool-inventory":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  let entries = event.inventory, entries.count <= 256,
+                  let total = event.inventoryTotal, total >= entries.count, total <= 32768,
+                  let folder = sessionURL(event.reportPath),
+                  folder.path.contains("/savekit-exports/inventory-") else { return }
+            savekitArchives = entries; savekitArchiveTotal = total
+            savekitInventoryFolder = folder.deletingLastPathComponent()
+            savekitMessage = event.message ?? "Save archives listed"
+        case "savekit-tool-listing":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  let entries = event.entries, entries.count <= 256 else { return }
+            savekitEntries = entries; savekitListingTruncated = event.truncated == true
+            savekitMessage = event.message ?? "Save files listed"
+        case "savekit-tool-backup":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  let backup = sessionURL(event.backupPath),
+                  backup.path.contains("/savekit-exports/") else { return }
+            savekitBackupFolder = backup
+            savekitMessage = event.message ?? "Save backed up"
+        case "savekit-tool-complete":
+            guard role == "host", saveKitToolsAvailableInRun else { return }
+            savekitBusy = false
+            savekitPendingOperation = false
+            if let backup = sessionURL(event.backupPath), backup.path.contains("/savekit-exports/") {
+                savekitBackupFolder = backup
+            }
+            savekitMessage = event.message ?? "Save data operation complete"
+            if savekitSaveOperationUsed {
+                savekitMessage += ". Choose another save action or Done to return to homebrew."
+            }
+            progressLabel = savekitMessage
+        case "savekit-tool-failed":
+            guard role == "host", saveKitToolsAvailableInRun else { return }
+            savekitBusy = false
+            savekitPendingOperation = false
+            savekitReturnBlocked = event.safeToContinue != true
+            if let backup = sessionURL(event.backupPath), backup.path.contains("/savekit-exports/") {
+                savekitBackupFolder = backup
+            }
+            savekitMessage = event.message ?? "Save data operation failed. Check the console log."
+            if savekitSaveOperationUsed && savekitReturnBlocked {
+                savekitMessage += " Finish the session and restart the console before another save operation."
+            }
+            progressLabel = savekitMessage
+        case "savekit-selected":
+            guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld,
+                  savekitChoicePending,
+                  phase == .rpcHeld, postRun.heldConfirmed else { return }
+            savekitChoicePending = false; savekitChoiceStarted = true
+            savekitChoiceFinished = false
+            savekitMessage = event.message ?? "SaveKit is ready"
+            status = "SaveKit tools ready"
+            detail = "Choose a save action below. Keep SmileBASIC open until the session finishes."
+            progressLabel = "RPC verified · SaveKit ready"
+        case "savekit-done":
+            guard role == "host", saveKitToolsAvailableInRun,
+                  (savekitChoiceStarted || savekitSaveOperationUsed),
+                  savekitReturnPending, phase == .rpcHeld, postRun.heldConfirmed else { return }
+            savekitReturnPending = false
+            savekitChoiceFinished = true
+            savekitMessage = event.message ?? "SaveKit finished"
+            status = "Choose a homebrew app"
+            detail = "RPC remains open. Choose one app for this session."
+            progressLabel = "RPC verified · choose an app"
+        case "sd-browser-started":
+            guard role == "host" else { return }
+            sdBusy = true; sdMessage = event.message ?? "Opening the read-only SD browser"
+        case "sd-browser-ready":
+            guard role == "host", let rawURL = event.browserURL, let url = URL(string: rawURL),
+                  url.scheme == "http", url.host == "127.0.0.1", url.fragment != nil,
+                  let ftp = event.url, ftp.hasPrefix("ftp://"), ftp.hasSuffix("/sd/") else { return }
+            sdBrowserURL = url; sdFTPURL = ftp; sdBusy = false; sdRunning = true
+            sdMessage = event.message ?? "SD card browser ready"
+        case "sd-browser-stopped":
+            guard role == "host" else { return }
+            sdBusy = false; sdRunning = false; sdBrowserURL = nil; sdFTPURL = ""
+            sdMessage = event.message ?? "Read-only SD browser stopped"
+        case "sd-browser-failed":
+            guard role == "host" else { return }
+            sdBusy = false; sdRunning = false; sdBrowserURL = nil; sdFTPURL = ""
+            sdMessage = event.message ?? "Read-only SD browser failed. Check the console log."
         case "izlauncher-catalog":
             guard role == "host", postRun.stage == .held,
                   let modules = event.modules, modules.count <= 64,
@@ -1293,6 +1949,10 @@ private struct GUIEvent: Decodable {
             izlauncherPanelChecking = false
         case "homebrew-accepted":
             guard role == "host", let action = event.action, action == pendingHomebrewAction else { return }
+            if action == "launch-custom-homebrew" {
+                if event.customHomebrewKind == "iz-module" { homebrewApp = .izlauncher }
+                else if event.customHomebrewKind == "native-app" { homebrewApp = .nativeHBLauncher }
+            }
             let customOunceCake = action == "launch-custom-homebrew" &&
                 event.customHomebrewKind == "rpc-app" && event.adapter == "ouncecake"
             var compatibleSession: OunceCakeSession?
@@ -1315,14 +1975,30 @@ private struct GUIEvent: Decodable {
             }
             homebrewMessage = event.message ?? "Opening the selected app in the console launcher…"
             presentPostRunState()
+        case "homebrew-stopping":
+            guard role == "host", homebrewStopPending, postRun.canStopHomebrew else { return }
+            homebrewMessage = event.message ?? "Stopping \(homebrewTitle) and checking RPC…"
+            progressLabel = homebrewMessage
+        case "homebrew-ready":
+            guard role == "host", postRun.receive(event.type) else { return }
+            homebrewStopPending = false
+            homebrewMessage = event.message ?? "RPC is ready. Choose another homebrew app."
+            presentPostRunState()
+            detail = homebrewMessage
+        case "homebrew-reentry-unavailable":
+            guard role == "host", postRun.stage == .held, postRun.homebrewStage == .stopped else { return }
+            homebrewStopPending = false
+            homebrewMessage = event.message ?? "Finish this session before trying another app."
+            presentPostRunState()
+            detail = homebrewMessage
         case "homebrew-started", "homebrew-running", "homebrew-stopped", "homebrew-failed":
             let preserveFailure = postRun.homebrewStage == .failed && event.type == "homebrew-stopped"
             if role == "host", event.type == "homebrew-running", ounceCakeSession.hasStarted {
                 guard postRun.stage == .held, postRun.homebrewStage == .launching,
                       ounceCakeSession.stage == .preparing else { return }
-                guard ounceCakeSession.receiveEndpoint(host: event.host, port: event.port, ftpURL: event.ftpURL) else {
+                guard ounceCakeSession.receiveEndpoint(host: event.host, port: event.port, httpURL: event.httpURL) else {
                     postRun.receive("homebrew-failed"); ounceCakeSession.stop(failed: true)
-                    homebrewMessage = "The game server did not confirm a valid FTP address. Finish the session and keep the logs."
+                    homebrewMessage = "The game server did not confirm a valid WebDAV address. Finish the session and keep the logs."
                     presentPostRunState()
                     return
                 }
@@ -1332,6 +2008,7 @@ private struct GUIEvent: Decodable {
             if event.type == "homebrew-stopped" || event.type == "homebrew-failed" {
                 izlauncherPanelURL = nil; izlauncherPanelMessage = ""; izlauncherPanelChecking = false
             }
+            if event.type == "homebrew-failed" { homebrewStopPending = false }
             if !preserveFailure { homebrewMessage = event.message ?? "\(homebrewTitle) session changed." }
             if ounceCakeSession.hasStarted, !preserveFailure, ["homebrew-stopped", "homebrew-failed"].contains(event.type) {
                 ounceCakeSession.stop(failed: event.type == "homebrew-failed")
@@ -1353,7 +2030,7 @@ private struct GUIEvent: Decodable {
             guard postRun.receive(event.type) else { return }
             ounceCakeSession = session; selectedOunceCakeGame = session.games.first?.titleId ?? ""
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
-            homebrewMessage = "Choose a game to make its files available over FTP."
+            homebrewMessage = "Choose a game to make its files available over WebDAV."
             presentPostRunState()
         case "homebrew-progress":
             guard role == "host", phase == .launchingHomebrew || phase == .homebrewRunning else { return }
@@ -1364,6 +2041,44 @@ private struct GUIEvent: Decodable {
                   let message = event.message, !message.isEmpty, message.utf8.count <= 512 else { return }
             izlauncherModuleMessage = message
         case "action-rejected":
+            if role == "host", event.action == "stop-homebrew" {
+                homebrewStopPending = false
+                homebrewMessage = event.message ?? "The current app could not be stopped yet."
+                progressLabel = homebrewMessage
+                return
+            }
+            if role == "host", event.action == "start-savekit" {
+                savekitChoicePending = false
+                status = "Choose what to open"
+                detail = event.message ?? "SaveKit could not start"
+                return
+            }
+            if role == "host", event.action == "finish-savekit" {
+                savekitReturnPending = false
+                savekitMessage = event.message ?? "SaveKit could not return to homebrew"
+                return
+            }
+            if role == "host", ["install-seedsow-save", "install-artemis-save"].contains(event.action ?? "") {
+                seedsowInstallStarted = false
+                phase = .rpcHeld
+                status = "Choose what to open"
+                detail = event.message ?? "The launcher save install could not start"
+                progressLabel = "RPC verified · choose the next step"
+                return
+            }
+            if role == "host", ["start-sd-browser", "stop-sd-browser"].contains(event.action ?? "") {
+                sdBusy = false
+                sdMessage = event.message ?? "The SD browser action was rejected"
+                return
+            }
+            if role == "host", event.action == "savekit-tool" {
+                savekitBusy = false
+                if savekitPendingOperation { savekitSaveOperationUsed = false }
+                savekitPendingOperation = false
+                savekitMessage = event.message ?? "The save data action was rejected"
+                progressLabel = savekitMessage
+                return
+            }
             if role == "host", event.action == "dump-system-code" {
                 postRun.cancelDumpRequest()
                 presentPostRunState()
@@ -1505,6 +2220,9 @@ private struct GUIEvent: Decodable {
             // original line as a log event, which owns the activity/log entry.
             if let done = event.completed, let total = event.total, total > 0 { hostStageProgress = min(1, max(0, done / total)) }
             else { hostStageProgress = nil }
+            if hostIsExploiting && (event.stage == "connected" || event.stage == "pipeline") {
+                detail = "Jailbreak has four steps. Each can take several minutes. Please be patient and keep SmileBASIC and mac2jb open."
+            }
             if phase == .waitingForConsole || phase == .hostStarting {
                 status = hostStageLabel; progressLabel = hostStageLabel; progress = hostStageProgress
             }
@@ -1556,8 +2274,19 @@ private struct GUIEvent: Decodable {
             endSessionActivity()
             workflowProgress.complete()
             hostCompleted = true
+            savekitBusy = false
             phase = .verified
-            if activeHost == .izmysh {
+            if activeRunMode == .seedsowSave && seedsowInstallCompleted {
+                let game = activeSaveGame ?? .seedsow
+                status = seedsowInstallSkipped ? "\(game.title) save unchanged" :
+                    legacySeedsowInstall ? "Seedsow Lua Editor save ready" : "\(game.launcher) ready"
+                detail = seedsowInstallSkipped
+                    ? seedsowSkipMessage + " RPC cleanup was verified."
+                    : legacySeedsowInstall
+                      ? "Close SmileBASIC, then open the Seedsow Lullaby demo and load the installed Lua editor save."
+                      : "Close SmileBASIC, then open the \(game.title) demo and load its Artemis launcher save."
+                progressLabel = seedsowInstallSkipped ? "Original save backup and RPC cleanup verified" : "Save write and RPC cleanup verified"
+            } else if activeHost == .izmysh {
                 status = "IZMYSH native session verified"
                 detail = "IZMYSH verified its native session and restored scratch memory and its import. The app closed RPC. Restart the console when finished."
                 progressLabel = "Native session, scratch and import verified"
@@ -1576,6 +2305,7 @@ private struct GUIEvent: Decodable {
             }
             let safeBootstrapRetry = role == "hid" && event.retrySafe == true && !currentUSBStepHasProof &&
                 activeRunMode == .bootstrapOnly && hidPurpose == "bootstrap"
+            savekitBusy = false
             fail(event.message ?? "The session did not finish. Inspect the Switch before retrying.", safeBootstrapRetry: safeBootstrapRetry)
         case "cancelled":
             hostIsExploiting = false

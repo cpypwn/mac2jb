@@ -17,6 +17,11 @@ struct ContentView: View {
     @ObservedObject var updater: AppUpdater
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var account = StremioAccount()
+    @StateObject private var civSwitch = CivSwitchModel()
+    @StateObject private var dnsSwitch = DNSwitchModel()
+    @StateObject private var webKitResearch = WebKitResearchModel()
+    @StateObject private var artemisUpdates = ArtemisUpdateChecker()
+    @State private var dnsSwitchDestinationURL = ""
     @State private var readyConfirmed = false
     @State private var setupReady = false
     @State private var developerReady = false
@@ -24,21 +29,47 @@ struct ContentView: View {
     @State private var commandsToSend: Set<PostBootstrapCommand> = [.load, .run, .remove]
     @State private var savedConfirmed = false
     @State private var saveDirectModeReady = false
-    @State private var showFirstTimeSetup = false
+    @State private var showNS2JBSetup = false
+    @State private var showBootstrapSetup = false
+    @State private var showCivSwitchSetup = false
+    @State private var civSwitchReady = false
+    @State private var civSwitchConsoleAddress = ""
     @State private var showDeveloperOptions = false
     @State private var toolsContentHeight: CGFloat = 0
     @State private var followConsole = true
     @State private var activityTab = 0
     @State private var driverMessage: String?
     @State private var confirmUpdate = false
+    @State private var confirmClearPastSessions = false
     @State private var showFailure = false
     @State private var failureText = ""
     @State private var showUpdateFailure = false
+    @State private var selectedLuaEditorSave: URL?
+    @State private var luaEditorSelectionMessage: String?
+    @State private var nativeSDRomFolder = "/sd/roms/nes"
 
-    private var canConfigure: Bool { [.ready, .failed, .cancelled].contains(model.phase) }
-    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || !canConfigure }
+    private var canConfigure: Bool {
+        [.ready, .failed, .cancelled].contains(model.phase) &&
+        !(model.phase == .failed && model.seedsowInstallStarted)
+    }
+    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning || model.sessionCleanupRunning || civSwitch.isRunning || !canConfigure }
+    private var civSwitchAddressValid: Bool {
+        let parts = civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+            .split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count == 4 && parts.allSatisfy { part in
+            !part.isEmpty && part.count <= 3 && part.utf8.allSatisfy { (48...57).contains($0) } &&
+            Int(part).map { (0...255).contains($0) && String($0) == String(part) } == true
+        }
+    }
     private var showHostOnlyHomebrew: Bool {
         hostOnlyKeepRPC && (canConfigure || model.activeRunMode == .hostOnlyHeld)
+    }
+    private var nativeSDRomFolderValid: Bool {
+        nativeSDRomFolder.utf8.count <= 240 && nativeSDRomFolder.hasPrefix("/sd/") &&
+        !nativeSDRomFolder.hasSuffix("/") &&
+        !nativeSDRomFolder.contains("//") && !nativeSDRomFolder.contains("\\") &&
+        !nativeSDRomFolder.split(separator: "/").contains(where: { $0 == "." || $0 == ".." }) &&
+        !nativeSDRomFolder.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     }
     private var driverSetupBlocked: Bool { model.runtime == nil || configurationLocked || updater.blocksNewSession }
     private var timingSettingsValid: Bool {
@@ -65,6 +96,7 @@ struct ContentView: View {
         case .commandsSent: return model.keyboardIsLoading ? "Loading…" : "Commands sent"
         case .rpcHeld: return "You’re ready to go"
         case .dumpingFirmware: return "Saving system code"
+        case .installingSave: return "You’re ready to go"
         case .rpcFinishing: return "Finishing up safely"
         case .launchingHomebrew: return model.postRun.homebrewStage == .selecting ? "Choose a game" : "Opening \(model.homebrewTitle)"
         case .homebrewRunning: return "\(model.homebrewTitle) is running"
@@ -94,7 +126,27 @@ struct ContentView: View {
                         .frame(maxWidth: 820).padding(.horizontal, 30).padding(.vertical, 24)
                         .frame(maxWidth: .infinity, minHeight: viewport.size.height)
                     }
-                    .onChange(of: model.phase) { _, _ in scrollToKeyboardIfNeeded(proxy) }
+                    .onChange(of: model.phase) { previous, current in
+                        if previous == .installingSave && current == .rpcHeld && model.seedsowInstallCompleted {
+                            DispatchQueue.main.async {
+                                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                                    proxy.scrollTo(model.activeRunMode == .hostOnlyHeld
+                                                   ? "hostonly-homebrew" : "seedsow-homebrew", anchor: .top)
+                                }
+                            }
+                        } else {
+                            scrollToKeyboardIfNeeded(proxy)
+                        }
+                    }
+                    .onChange(of: model.savekitChoiceFinished) { _, finished in
+                        if finished {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+                                let target = model.activeRunMode == .seedsowSave ? "seedsow-homebrew" :
+                                    model.activeRunMode == .hostOnlyHeld ? "hostonly-homebrew" : "savekit-homebrew"
+                                proxy.scrollTo(target, anchor: .top)
+                            }
+                        }
+                    }
                     .onChange(of: toolsContentHeight) { _, _ in scrollToKeyboardIfNeeded(proxy) }
                 }
             }.ignoresSafeArea(.container, edges: .top)
@@ -103,22 +155,30 @@ struct ContentView: View {
         .preferredColorScheme(.dark).tint(teal)
         .onAppear {
             model.accountProgressHandler = { [weak account] update in account?.handleProgress(update) }
-            model.mintBrewAccountProvider = { [weak account] in
-                (account?.addonURLs ?? [], account?.libraryPayload() ?? [])
-            }
             model.prepare(); updater.start()
+            dnsSwitch.refreshAddresses()
             NSApp.activate(ignoringOtherApps: true)
         }
         .onDisappear {
             model.accountProgressHandler = nil
-            model.mintBrewAccountProvider = nil
             account.cancelSignIn()
+            civSwitch.cancel()
+            dnsSwitch.stopForTermination()
+            webKitResearch.stopForTermination()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshNetworkAddressesIfIdle()
+            dnsSwitch.refreshAddresses()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            dnsSwitch.stopForTermination()
+            webKitResearch.stopForTermination()
         }
         .onChange(of: model.phase) { _, phase in
             readyConfirmed = false; setupReady = false; developerReady = false; savedConfirmed = false; saveDirectModeReady = false
+            if phase == .hostStarting && model.activeRunMode != .hostOnlyHeld {
+                selectedLuaEditorSave = nil; luaEditorSelectionMessage = nil
+            }
             if phase == .failed {
                 let location = model.diagnosticLogURL.map { "Log saved at:\n" + $0.path }
                     ?? "A diagnostic log could not be created. Expand Console & Developer Options to view session activity."
@@ -133,9 +193,18 @@ struct ContentView: View {
         }
         .onChange(of: model.selectedAddress) { _, _ in if canConfigure { readyConfirmed = false } }
         .onChange(of: updater.state) { _, state in if state == .failed { showUpdateFailure = true } }
-        .onChange(of: showFirstTimeSetup) { _, shown in if shown { setupReady = false } }
+        .onChange(of: showNS2JBSetup) { _, shown in
+            if shown { showBootstrapSetup = false; readyConfirmed = false; setupReady = false }
+        }
+        .onChange(of: showCivSwitchSetup) { _, shown in if shown { civSwitchReady = false } }
         .onChange(of: showDeveloperOptions) { _, shown in if shown { developerReady = false } }
-        .sheet(isPresented: $showFirstTimeSetup) { firstTimeSetup }
+        .sheet(isPresented: $showNS2JBSetup) {
+            if showBootstrapSetup { firstTimeSetup }
+            else { ns2jbSetup }
+        }
+        .sheet(isPresented: $showCivSwitchSetup) {
+            civSwitchSetup.interactiveDismissDisabled(civSwitch.isRunning)
+        }
         .alert("The session needs attention", isPresented: $showFailure) {
             if model.diagnosticLogURL != nil { Button("Open logs") { model.revealSessionFolder() } }
             Button("Close", role: .cancel) {}
@@ -147,6 +216,11 @@ struct ContentView: View {
             if updater.diagnosticURL != nil { Button("Open update log") { updater.revealLog() } }
             Button("Close", role: .cancel) {}
         } message: { Text(updater.message + (updater.diagnosticURL.map { "\n\nLog saved at:\n" + $0.path } ?? "")) }
+        .confirmationDialog("Clear past session data?", isPresented: $confirmClearPastSessions) {
+            Button("Clear past session data", role: .destructive) { model.clearPastSessionData() }
+        } message: {
+            Text("This keeps the current session, save exports, dumps and source snapshots.")
+        }
         .confirmationDialog("Restart and update mac2jb?", isPresented: $confirmUpdate) {
             Button("Restart & update") {
                 updater.install(canRestart: model.canRestartForUpdate) {
@@ -165,34 +239,35 @@ struct ContentView: View {
                     Text("Waiting for the previous session to close before starting again.").font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 }
                 if model.dumpFolder != nil { Button("Open dump folder") { model.revealDumpFolder() } }
+                if model.seedsowBackupFolder != nil {
+                    Button("Open original save backup") { model.revealSeedsowBackup() }
+                }
             }
             panel {
                 VStack(alignment: .leading, spacing: 24) {
                     essentials
                     Divider().overlay(.white.opacity(0.04))
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Restart your Switch and open SmileBASIC → Make a Program.")
-                            .font(.system(size: 12))
-                        Text("USB power: Switch → Mac. The Mac must not charge the Switch.")
-                            .font(.system(size: 11))
-                        Text("Connect both devices to the same local network. The Switch must use Ethernet.")
-                            .font(.system(size: 11))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("ns2jb").font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
+                        Text(model.selectedHost.supportsDemo
+                             ? "SmileBASIC 4 full game or demo supported."
+                             : "SmileBASIC 4 full game supported.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     }
-                    .foregroundStyle(Mac2jbTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Button { showNS2JBSetup = true } label: {
+                        HStack(spacing: 14) { Text("Jailbreak with ns2jb"); Image(systemName: "arrow.right") }
+                    }.buttonStyle(PrimaryActionStyle(large: true))
+                        .disabled(configurationLocked || updater.blocksNewSession)
+                    Divider().overlay(.white.opacity(0.04))
                     VStack(alignment: .leading, spacing: 10) {
-                        demoEditionCheckbox.foregroundStyle(Mac2jbTheme.muted)
-                        Toggle("My Switch is ready and connected by USB", isOn: $readyConfirmed).toggleStyle(.checkbox).font(.system(size: 12, weight: .medium))
-                            .fixedSize().disabled(configurationLocked)
-                    }
-                    VStack(alignment: .leading, spacing: 14) {
-                        Button { beginRun(model.selectedHost.supportsHeldRPC ? .heldRPC : .exploitOnly) } label: {
-                            HStack(spacing: 14) { Text("Jailbreak"); Image(systemName: "arrow.right") }
-                        }.buttonStyle(PrimaryActionStyle(large: true))
-                            .disabled(startBlocked || !readyConfirmed || model.selectedAddress.isEmpty)
-                        Button("First time setting up mac2jb?") { showFirstTimeSetup = true }
-                            .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(teal)
-                            .disabled(configurationLocked || updater.blocksNewSession)
+                        Text("CivSwitch").font(.system(size: 15, weight: .semibold))
+                        Text("Use a Civilization VII cartridge and its own setup. For Artemis launcher saves, use ns2jb above.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                        Button { showCivSwitchSetup = true } label: {
+                            HStack(spacing: 14) { Text("Jailbreak with CivSwitch"); Image(systemName: "arrow.right") }
+                        }
+                        .buttonStyle(PrimaryActionStyle(large: true))
+                        .disabled(configurationLocked || updater.blocksNewSession)
                     }
                 }
             }
@@ -205,9 +280,9 @@ struct ContentView: View {
             set: { model.selectedEdition = $0 ? .demo : .full }
         ))
         .toggleStyle(.checkbox)
-        .font(.system(size: 12))
+        .font(.system(size: 12, weight: .medium)).foregroundStyle(ink)
         .disabled(configurationLocked || updater.blocksNewSession || !model.selectedHost.supportsDemo)
-        .help(model.selectedHost.supportsDemo ? "Use the demo LOADV command." : "Choose Kurumuz or BermTheSequel to use the SmileBASIC demo.")
+        .help(model.selectedHost.supportsDemo ? "Use the demo LOADV command." : "Choose Cellenseres, Kurumuz or BermTheSequel to use the SmileBASIC demo.")
     }
 
     private var essentials: some View {
@@ -262,23 +337,82 @@ struct ContentView: View {
     private func beginRun(_ mode: SessionRunMode) {
         guard !startBlocked, mode == .bootstrapOnly || !model.selectedAddress.isEmpty else { return }
         model.selectRunMode(mode)
-        showFirstTimeSetup = false
+        showNS2JBSetup = false
+        showBootstrapSetup = false
         model.start()
     }
 
+    private var ns2jbSetup: some View {
+        sheetFrame(title: "ns2jb setup", subtitle: "Choose your SmileBASIC edition and confirm the Switch is ready.",
+                   close: { showNS2JBSetup = false }) {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("First-time setup")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(ink)
+                    Text("Type and save the bootstrap for \(model.selectedHost.label) once before jailbreaking.")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    Button("Open first-time setup") { showBootstrapSetup = true }
+                        .buttonStyle(.bordered).disabled(configurationLocked)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1))
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Restart your Switch and open SmileBASIC → Make a Program.")
+                    Text("USB power: Switch → Mac. The Mac must not charge the Switch.")
+                    Text("Connect both devices to the same local network. The Switch must use Ethernet.")
+                }
+                .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+                demoEditionCheckbox
+                Toggle("My Switch is ready and connected by USB", isOn: $readyConfirmed)
+                    .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium)).foregroundStyle(ink)
+                    .disabled(configurationLocked)
+                if !model.driverLoaded {
+                    note("Install the USB driver on the main screen before starting ns2jb.",
+                         icon: "cable.connector", color: .orange)
+                }
+                if model.selectedAddress.isEmpty {
+                    note("Choose this Mac’s network connection on the main screen before starting the jailbreak.",
+                         icon: "network", color: .orange)
+                }
+                Button("Start jailbreak") {
+                    beginRun(model.selectedHost.supportsSaveKit ? .seedsowSave :
+                             model.selectedHost.supportsHeldRPC ? .heldRPC : .exploitOnly)
+                }
+                .buttonStyle(PrimaryActionStyle())
+                .disabled(startBlocked || !readyConfirmed || model.selectedAddress.isEmpty)
+            }
+        }
+    }
+
     private var firstTimeSetup: some View {
-        sheetFrame(title: "First-time setup", subtitle: "Save a small program once. After that, use Jailbreak.", compact: true,
-                   close: { showFirstTimeSetup = false }, skip: {
+        sheetFrame(title: "First-time setup", subtitle: "Save a small program once. After that, use Jailbreak with ns2jb.", compact: true,
+                   close: { showNS2JBSetup = false }, skip: {
                        guard model.canSkipBootstrapTyping, !updater.blocksNewSession else { return }
                        model.skipBootstrapTyping()
-                       if model.phase == .awaitingSave { showFirstTimeSetup = false }
+                       if model.phase == .awaitingSave { showNS2JBSetup = false }
                    }, skipDisabled: !model.canSkipBootstrapTyping || updater.blocksNewSession) {
             VStack(alignment: .leading, spacing: 18) {
+                demoEditionCheckbox
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Already saved a compatible bootstrap?")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("9 arguments: pepsipu and IZMYSH share the same program. pepsipu loads NS2; IZMYSH loads NS2I.")
+                    Text("5 arguments: kurumuz and Cellenseres share the same program. BermTheSequel has an extra check, so use its own saved copy.")
+                    Text("If the matching program is already saved as \(model.selectedHost.saveName), you can skip both typing and saving.")
+                    Button("Use saved \(model.selectedHost.saveName) bootstrap") {
+                        showBootstrapSetup = false
+                    }
+                    .buttonStyle(.bordered).foregroundStyle(teal)
+                }
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
                 Label("Open SmileBASIC → Make a Program with an empty editor.", systemImage: "keyboard")
                     .font(.system(size: 13, weight: .medium))
                 Text("Keep the editor open. Your Mac will type the bootstrap, then guide you through saving it as \(model.selectedHost.saveName).")
                     .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
-                demoEditionCheckbox
                 Text("After typing, return to Direct mode so mac2jb can type the save command.")
                     .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
                 if !model.driverLoaded {
@@ -293,6 +427,98 @@ struct ContentView: View {
         }
     }
 
+    private var civSwitchSetup: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Text("CivSwitch setup").font(.system(size: 26, weight: .bold, design: .rounded))
+                        Text("A separate Civilization VII cartridge entry point. SmileBASIC and the selected ns2jb host are not used.")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                    Spacer(minLength: 8)
+                    Button("Done") { showCivSwitchSetup = false }.disabled(civSwitch.isRunning)
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Before starting").font(.system(size: 15, weight: .semibold))
+                    Text("Use a physical Switch 1 Civilization VII cartridge at version 1.0.0, with the Switch system language set to English (US).")
+                    Text("On the Switch, open Multiplayer → Wireless → Create Game → Host Lobby → Chat. In docked mode, focus the chat input.")
+                    Text("Connect the Switch to this Mac by USB and keep both devices on the same network.")
+                    Text("USB power must flow Switch → Mac. If the Mac charges the Switch, unplug at the Switch for a second, then reconnect it.")
+                    Text("The first transfer can take 15–20 minutes.")
+                }
+                .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Switch IPv4 address").font(.system(size: 12, weight: .semibold))
+                    TextField("192.168.1.100", text: $civSwitchConsoleAddress)
+                        .textFieldStyle(.roundedBorder).font(.system(size: 13, design: .monospaced))
+                        .disabled(!civSwitch.canStart)
+                    Toggle("The cartridge, system language and chat screen are ready", isOn: $civSwitchReady)
+                        .toggleStyle(.checkbox).font(.system(size: 12)).disabled(civSwitch.isRunning)
+                    if !model.driverLoaded {
+                        Text("Load the USB driver from the main screen before starting CivSwitch.")
+                            .font(.system(size: 11)).foregroundStyle(.orange)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) {
+                        if civSwitch.canStart {
+                            Button("Start CivSwitch") {
+                                civSwitch.start(consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+                                                runtimeRoot: model.runtime?.root,
+                                                controller: model.controller,
+                                                enumerationTimeoutSeconds: model.enumerationTimeoutSeconds)
+                            }
+                            .buttonStyle(PrimaryActionStyle())
+                            .disabled(!civSwitchReady || !civSwitchAddressValid || model.runtime == nil ||
+                                      !model.driverLoaded || configurationLocked || updater.blocksNewSession)
+                        }
+                        if civSwitch.canRetryProbe {
+                            Button("Check loader again") { civSwitch.retryProbe() }
+                                .buttonStyle(PrimaryActionStyle())
+                                .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
+                        }
+                        if civSwitch.canShowDemo {
+                            Button("Show cpypwn demo") { civSwitch.showDemo() }
+                                .buttonStyle(PrimaryActionStyle())
+                                .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
+                        }
+                        if civSwitch.canReset {
+                            Button("Restart full transfer") {
+                                civSwitch.reset()
+                                civSwitchReady = false
+                            }
+                        }
+                        if civSwitch.isRunning {
+                            Button("Stop CivSwitch") { civSwitch.cancel() }
+                                .disabled(civSwitch.phase == .stopping)
+                        }
+                    }
+                    Text(civSwitch.status).font(.system(size: 13, weight: .semibold))
+                    if !civSwitch.detail.isEmpty {
+                        Text(civSwitch.detail).font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                    if civSwitch.isRunning {
+                        if let progress = civSwitch.progress { ProgressView(value: progress).tint(teal) }
+                        else { ProgressView().progressViewStyle(.linear).tint(teal) }
+                    }
+                    ScrollView {
+                        Text(civSwitch.log.isEmpty ? "Activity will appear here." : civSwitch.log)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Mac2jbTheme.muted).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                    }
+                    .frame(height: 160)
+                    .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                }
+            }
+            .padding(30)
+        }
+        .frame(width: 720, height: 650)
+        .background { Mac2jbBackdrop() }
+        .preferredColorScheme(.dark).tint(teal)
+    }
+
     private var developerOptions: some View {
         VStack(alignment: .leading, spacing: 22) {
             panel {
@@ -305,14 +531,16 @@ struct ContentView: View {
                         .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     if !model.selectedHost.supportsHeldRPC {
                         Text(model.selectedHost == .izmysh
-                             ? "IZMYSH uses its own host and START protocol. This GUI profile currently supports exploit verification only; use Kurumuz or BermTheSequel for held RPC and homebrew."
-                             : "pepsipu closes RPC after verification. Choose kurumuz or BermTheSequel for held RPC and homebrew.")
+                             ? "IZMYSH uses its own host and START protocol. This GUI profile currently supports exploit verification only; use Cellenseres, Kurumuz or BermTheSequel for held RPC and homebrew."
+                             : "pepsipu closes RPC after verification. Choose Cellenseres, Kurumuz or BermTheSequel for held RPC and homebrew.")
                             .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     }
                     if !model.selectedHost.supportsDemo {
                         Text("This host’s bundled version supports the full edition of SmileBASIC.")
                             .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                     }
+                    Toggle("The Switch is ready on the command screen", isOn: $developerReady)
+                        .toggleStyle(.checkbox).font(.system(size: 12))
                 }
             }
             panel {
@@ -326,11 +554,12 @@ struct ContentView: View {
                         Toggle("Hold RPC after success", isOn: $hostOnlyKeepRPC)
                             .toggleStyle(.checkbox).font(.system(size: 12)).disabled(configurationLocked || !model.selectedHost.supportsHeldRPC)
                     }
-                    if showHostOnlyHomebrew && (canConfigure || !model.postRun.dumpInProgress) { homebrewSection }
+                    if showHostOnlyHomebrew && (canConfigure || !model.postRun.dumpInProgress) {
+                        homebrewSection.id("hostonly-homebrew")
+                    }
                     Divider()
                     existingRPCControls
                     Divider()
-                    Toggle("The Switch is ready on the command screen", isOn: $developerReady).toggleStyle(.checkbox).font(.system(size: 12))
                     HStack(spacing: 12) {
                         Button("Run exploit only") { beginRun(.exploitOnly) }
                             .disabled(startBlocked || !developerReady || model.selectedAddress.isEmpty)
@@ -357,6 +586,38 @@ struct ContentView: View {
                     }
                 }
             }
+            panel { ArtemisHTTPView() }
+            panel { dnsSwitchSettings }
+            panel { webKitResearchSettings }
+            panel { NSPBoxToolsView(runtimeRoot: model.runtime?.root) }
+            panel { NUPToolsView(runtimeRoot: model.runtime?.root) }
+            panel {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("SD card files")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Browse or download files from the Switch SD card over a verified held RPC session. This browser is read-only and needs the Switch to remain on the same network.")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 10) {
+                        TextField("Switch IPv4 address", text: $model.sdConsoleAddress)
+                            .textFieldStyle(.roundedBorder).frame(maxWidth: 200)
+                            .disabled(model.sdBusy || model.sdRunning)
+                        Button("Open SD browser") { model.startSDBrowser() }
+                            .disabled(!model.canStartSDBrowser)
+                        if model.canStopSDBrowser {
+                            Button("Stop browser") { model.stopSDBrowser() }
+                                .disabled(model.sdBusy && !model.sdRunning)
+                        }
+                    }
+                    if model.sdRunning {
+                        Button("Open local SD panel ↗") { model.openSDBrowser() }
+                        Text(model.sdFTPURL).font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Mac2jbTheme.muted).textSelection(.enabled)
+                    }
+                    Text(model.sdMessage).font(.system(size: 10))
+                        .foregroundStyle(Mac2jbTheme.muted)
+                }
+            }
             panel { stremioSettings }
             panel { keyboardControls }.id("keyboard-controls")
             panel { usbTimingSettings }
@@ -372,28 +633,218 @@ struct ContentView: View {
                         }.font(.system(size: 11))
                         if !model.rpcStatus.isEmpty { Text(model.rpcStatus).font(.system(size: 11)).textSelection(.enabled) }
                     }
+                    Divider()
+                    Button("Clear past session data…") { confirmClearPastSessions = true }
+                        .disabled(!model.canClearPastSessionData)
+                    Text(model.sessionCleanupMessage.isEmpty
+                         ? "Keeps this session, save exports, dumps and source snapshots"
+                         : model.sessionCleanupMessage)
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                 }
             }
+        }
+    }
+
+    private var dnsSwitchSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("DNSwitch")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Serve a local captive portal page for the Switch browser applet. This research tool runs independently of jailbreak and RPC.")
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                if dnsSwitch.addresses.isEmpty {
+                    Text("No Mac network address found")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                } else {
+                    Picker("Mac network address", selection: $dnsSwitch.selectedAddress) {
+                        ForEach(dnsSwitch.addresses) { address in
+                            Text(address.label).tag(address.address)
+                        }
+                    }
+                    .frame(maxWidth: 300)
+                    .disabled(dnsSwitch.isActive)
+                }
+                Button("Refresh addresses") { dnsSwitch.refreshAddresses() }
+                    .disabled(dnsSwitch.isActive)
+            }
+            TextField("Research page URL (optional; shown as a link on the portal)", text: $dnsSwitchDestinationURL)
+                .textFieldStyle(.roundedBorder)
+                .disabled(dnsSwitch.isActive)
+            Text("Starting the local DNS and HTTP listeners requires a macOS administrator prompt for ports 53 and 80. The service stops after 30 minutes.")
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("Start DNSwitch") {
+                    dnsSwitch.start(destinationURL: dnsSwitchDestinationURL, runtimeRoot: model.runtime?.root)
+                }
+                .disabled(!dnsSwitch.canStart || dnsSwitch.selectedAddress.isEmpty || model.runtime == nil)
+                if dnsSwitch.canStop {
+                    Button("Stop DNSwitch") { dnsSwitch.stop() }
+                }
+            }
+            Text(dnsSwitch.status)
+                .font(.system(size: 11, weight: .semibold))
+            Text(dnsSwitch.detail)
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Text("On your Switch")
+                .font(.system(size: 12, weight: .semibold))
+            Text("1. Keep the Switch and Mac on the same network. Open System Settings → Internet → Internet Settings → your network → Change Settings → DNS Settings → Manual.")
+            Text("2. Set Primary DNS to \(dnsSwitch.isActive ? dnsSwitch.activeAddress : dnsSwitch.selectedAddress). If a Secondary DNS is required, use the same address. Save the settings.")
+            Text("3. Run Test Connection and expect a captive portal error. Confirm it, then open eShop or News to launch the browser page.")
+            Text("4. If you chose a research URL, tap cpypwn on the portal to open it.")
+            Text("5. When finished, stop DNSwitch and restore your DNS settings on the Switch.")
+        }
+        .font(.system(size: 11))
+    }
+
+    private var webKitResearchSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Switch browser research")
+                .font(.system(size: 15, weight: .semibold))
+            Text("Choose a mac2jb probe, the included upstream research page, or a local folder. The page runs on this Mac through the Switch connection screen and does not need RPC.")
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            Picker("Probe source", selection: $webKitResearch.sourceMode) {
+                Text("mac2jb probes").tag(WebKitResearchModel.SourceMode.bundled)
+                Text("Upstream research").tag(WebKitResearchModel.SourceMode.upstream)
+                Text("Local folder").tag(WebKitResearchModel.SourceMode.localFolder)
+            }
+            .pickerStyle(.segmented)
+            .disabled(webKitResearch.isRunning)
+            if webKitResearch.sourceMode == .bundled {
+                Picker("Browser probe", selection: $webKitResearch.selectedProbeID) {
+                    ForEach(webKitResearch.probes) { probe in
+                        Text(probe.title).tag(probe.id)
+                    }
+                }
+                .disabled(webKitResearch.isRunning || webKitResearch.probes.isEmpty)
+                if let probe = webKitResearch.probes.first(where: { $0.id == webKitResearch.selectedProbeID }) {
+                    Text(probe.description)
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if let folder = webKitResearch.storedURL {
+                    Button("Open stored probe files") { NSWorkspace.shared.open(folder) }
+                }
+            } else if webKitResearch.sourceMode == .upstream {
+                Text("The pinned Jmesmykil research scripts include the full browser feature inventory and local test fixtures.")
+                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let folder = webKitResearch.upstreamStoredURL {
+                    Button("Open included research files") { NSWorkspace.shared.open(folder) }
+                }
+            } else {
+                HStack(spacing: 10) {
+                    Button("Choose research folder…") { chooseWebKitResearchFolder() }
+                        .disabled(webKitResearch.isRunning)
+                    Button("Open upstream source") {
+                        if let url = URL(string: "https://github.com/Jmesmykil/switch2-captive-portal-research") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    if let folder = webKitResearch.sourceURL {
+                        Text(folder.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                            .foregroundStyle(Mac2jbTheme.muted)
+                    }
+                }
+            }
+            if !dnsSwitch.addresses.isEmpty {
+                Picker("Mac network address", selection: $dnsSwitch.selectedAddress) {
+                    ForEach(dnsSwitch.addresses) { address in
+                        Text(address.label).tag(address.address)
+                    }
+                }
+                .frame(maxWidth: 300)
+                .disabled(webKitResearch.isRunning || dnsSwitch.isActive)
+            }
+            HStack(spacing: 10) {
+                Button("Start research page") {
+                    webKitResearch.start(runtimeRoot: model.runtime?.root, address: dnsSwitch.selectedAddress)
+                }
+                .disabled(webKitResearch.isRunning ||
+                          (webKitResearch.sourceMode == .bundled ? webKitResearch.probes.isEmpty :
+                           webKitResearch.sourceMode == .upstream ? webKitResearch.upstreamStoredURL == nil :
+                           webKitResearch.sourceURL == nil) ||
+                          dnsSwitch.selectedAddress.isEmpty || model.runtime == nil)
+                if webKitResearch.isRunning {
+                    Button("Stop research page") { webKitResearch.stop() }
+                }
+                if let url = webKitResearch.readyURL {
+                    Button("Open page") { NSWorkspace.shared.open(url) }
+                    Button("Use with DNSwitch") { dnsSwitchDestinationURL = url.absoluteString }
+                        .disabled(dnsSwitch.isActive)
+                }
+            }
+            Text(webKitResearch.status)
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if let reportURL = webKitResearch.reportURL {
+                Button("Open saved reports") { NSWorkspace.shared.open(reportURL) }
+                    .disabled(!FileManager.default.fileExists(atPath: reportURL.path))
+            }
+            Text("Use this page as DNSwitch’s destination, run the Switch connection test, then open eShop or News. Included scripts and reports stay in this Mac’s Application Support folder.")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .font(.system(size: 11))
+        .onAppear { webKitResearch.loadCatalog(runtimeRoot: model.runtime?.root) }
+        .onChange(of: model.runtime?.root.path) { _, _ in
+            webKitResearch.loadCatalog(runtimeRoot: model.runtime?.root)
+        }
+        .onChange(of: webKitResearch.sourceMode) { _, _ in
+            webKitResearch.loadCatalog(runtimeRoot: model.runtime?.root)
+        }
+    }
+
+    private func chooseWebKitResearchFolder() {
+        let picker = NSOpenPanel()
+        picker.title = "Choose the Switch browser research folder"
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = false
+        picker.allowsMultipleSelection = false
+        picker.begin { response in
+            if response == .OK, let url = picker.url { webKitResearch.selectSource(url) }
         }
     }
 
     private var existingRPCControls: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("RPC already held").font(.system(size: 15, weight: .semibold))
-            Text("Use a session that is already jailbroken on this Mac. Select its switch2 run folder and keep the original host and SmileBASIC open.")
+            Text("Find an open session on this Mac or choose its switch2 run folder. Keep the original host and SmileBASIC open.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             TextField("Existing run folder", text: $model.existingRPCRunPath)
                 .textFieldStyle(.roundedBorder).font(.system(size: 11))
                 .disabled(!model.canChangeHost)
-            HStack {
+            HStack(spacing: 12) {
+                Button("Find open RPC") { model.findOpenRPC() }
+                    .disabled(!model.canFindOpenRPC || updater.blocksNewSession)
                 Button("Choose run folder…") { chooseExistingRPCRun() }.disabled(!model.canChangeHost)
                 Spacer()
                 Button("Connect to open RPC") { model.attachExistingRPC() }
                     .disabled(!model.canAttachExistingRPC || updater.blocksNewSession)
             }.font(.system(size: 11))
-            Text(model.selectedHost.supportsHeldRPC
-                 ? "After connecting, choose a homebrew app. Disconnect stops this app’s workers and leaves the original host running."
-                 : "Choose kurumuz or BermTheSequel above to connect to held RPC.")
+            if model.rpcDiscoveryRunning {
+                ProgressView().controlSize(.small)
+            }
+            if model.rpcDiscoveredSessions.count > 1 {
+                HStack(spacing: 12) {
+                    Picker("Verified session", selection: $model.selectedDiscoveredRPCPath) {
+                        ForEach(model.rpcDiscoveredSessions) { candidate in
+                            Text(candidate.description).tag(candidate.path)
+                        }
+                    }
+                    Button("Connect selected session") { model.connectDiscoveredRPC() }
+                        .disabled(!model.canChangeHost || updater.blocksNewSession)
+                }.font(.system(size: 11))
+            }
+            if !model.rpcDiscoveryMessage.isEmpty {
+                Text(model.rpcDiscoveryMessage).font(.system(size: 11))
+                    .foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("After connecting, choose a homebrew app. Disconnect stops this app’s workers and leaves the original host running.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
         }
     }
@@ -518,7 +969,7 @@ struct ContentView: View {
                 Spacer()
                 if let skip {
                     Button("Cancel", action: close)
-                    Button("Skip", action: skip)
+                    Button("Skip typing", action: skip)
                         .disabled(skipDisabled)
                         .help("Continue to saving. The complete current bootstrap must already be in PRG0.")
                 } else {
@@ -548,7 +999,7 @@ struct ContentView: View {
                         Text(model.detail).font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if model.isBusy {
+                if model.isBusy && model.phase != .installingSave {
                     if let progress = model.progress { ProgressView(value: progress).tint(teal) }
                     else { ProgressView().progressViewStyle(.linear).tint(teal) }
                     if !model.progressLabel.isEmpty {
@@ -582,30 +1033,71 @@ struct ContentView: View {
                     }
                 }
                 if model.phase == .awaitingSave { saveSetupControls }
+                if model.activeRunMode == .seedsowSave {
+                    if (model.phase == .rpcHeld || model.phase == .installingSave ||
+                        model.phase == .failed && model.seedsowInstallStarted) &&
+                       !model.postRun.homebrewAttempted &&
+                       (!model.savekitChoiceStarted || model.savekitChoiceFinished) {
+                        postJailbreakChoice.id("seedsow-homebrew")
+                    }
+                    if (model.savekitChoiceStarted || model.seedsowInstallCompleted) &&
+                       !model.savekitChoiceFinished && model.phase == .rpcHeld {
+                        Divider()
+                        if model.savekitChoiceStarted {
+                            SaveKitToolsView(model: model, experimentalTools: true)
+                            SaveKitResearchView(runtimeRoot: model.runtime?.root)
+                        } else {
+                            DisclosureGroup("SaveKit tools") {
+                                SaveKitToolsView(model: model, experimentalTools: true)
+                                SaveKitResearchView(runtimeRoot: model.runtime?.root)
+                            }.font(.system(size: 12, weight: .semibold))
+                        }
+                    }
+                }
                 if model.phase == .verified || model.phase == .commandsSent || model.phase == .rpcDetached {
                     if model.phase == .verified {
-                        Text("The session finished and cleanup was confirmed. Restart the Switch before starting again.")
+                        Text(model.activeRunMode == .seedsowSave && model.seedsowInstallCompleted
+                             ? model.seedsowInstallSkipped
+                               ? "The existing save was preserved and RPC cleanup was verified."
+                               : "Save installation and RPC cleanup were verified. Close SmileBASIC, then open the selected demo."
+                             : "The session finished and cleanup was confirmed. Restart the Switch before starting again.")
                             .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                     }
                     Button("Back to start") { model.returnToStart() }.buttonStyle(PrimaryActionStyle()).disabled(!model.canReturnToStart)
                 }
-                if model.postRun.isActive { postRunControls }
-                if !showHostOnlyHomebrew && model.activeSessionSupportsHomebrew &&
+                if model.phase == .failed && model.seedsowInstallStarted {
+                    Button("Back to start") { model.returnToStart() }
+                        .buttonStyle(PrimaryActionStyle())
+                        .disabled(!model.canReturnToStart)
+                }
+                if model.postRun.isActive && model.phase != .installingSave { postRunControls }
+                if model.activeRunMode == .seedsowSave && model.postRun.homebrewAttempted {
+                    if model.homebrewApp == .mintBrew { mintBrewFolderControls }
+                    else { homebrewSection }
+                }
+                if model.activeRunMode != .seedsowSave && !showHostOnlyHomebrew && model.activeSessionSupportsHomebrew &&
                     model.postRun.stage == .held && !model.postRun.dumpInProgress &&
                     (model.postRun.heldConfirmed || model.postRun.homebrewAttempted) {
                     if model.activeRunMode == .heldRPC && model.postRun.homebrewAttempted &&
                         model.homebrewApp == .mintBrew {
                         mintBrewFolderControls
                     } else {
-                        homebrewSection
+                        homebrewSection.id("savekit-homebrew")
                     }
                 }
                 if model.postRun.dumpCompleted, model.dumpFolder != nil { Button("Open dump folder") { model.revealDumpFolder() } }
-                if model.isBusy || model.phase == .awaitingSave {
+                if (model.isBusy || model.phase == .awaitingSave) && !model.postRun.isActive {
                     HStack {
-                        Text("Keep SmileBASIC open until the session finishes.").font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                        Text(model.phase == .preparing
+                             ? "Preparing bundled tools for \(model.selectedHost.label) and checking this Mac’s USB driver and network."
+                             : "Keep SmileBASIC open until the session finishes.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                         Spacer()
-                        Button("Stop session", role: .destructive) { model.cancel() }
+                        if (!model.isInitialPreparation || model.phase != .preparing) &&
+                            (model.activeRunMode != .seedsowSave || !model.seedsowInstallStarted) {
+                            Button("Stop session", role: .destructive) { model.cancel() }
+                                .disabled(model.savekitBusy)
+                        }
                     }
                 }
             }
@@ -639,7 +1131,9 @@ struct ContentView: View {
             }.font(.system(size: 12))
             Toggle(model.activeEdition.savedConfirmation(for: model.activeHost.saveName), isOn: $savedConfirmed)
                 .toggleStyle(.checkbox).font(.system(size: 12)).disabled(model.hasLiveWorkers)
-            Button("\(model.activeHost.saveName) saved — back to start") { model.finishBootstrapOnly() }
+            Button("\(model.activeHost.saveName) saved — back to start") {
+                model.finishBootstrapOnly()
+            }
                 .buttonStyle(PrimaryActionStyle()).disabled(!savedConfirmed || model.hasLiveWorkers)
         }
     }
@@ -663,8 +1157,19 @@ struct ContentView: View {
                     Button("Dump system code") { model.dumpSystemCode() }
                         .font(.system(size: 11))
                 }
+                if model.postRun.canStopHomebrew {
+                    Button("Stop current homebrew") { model.stopCurrentHomebrew() }
+                        .font(.system(size: 11))
+                        .disabled(!model.canStopCurrentHomebrew)
+                }
                 Spacer()
-                Button(model.isAttachedRPCSession ? "Disconnect" : "Finish session") { model.finishPostRun() }.buttonStyle(PrimaryActionStyle()).disabled(!model.postRun.canFinish)
+                if model.postRun.cleanupBlocked {
+                    Button("Stop session", role: .destructive) { model.cancel() }
+                        .disabled(model.savekitBusy)
+                } else {
+                    Button(model.isAttachedRPCSession ? "Disconnect" : "Finish session") { model.finishPostRun() }
+                        .buttonStyle(PrimaryActionStyle()).disabled(!model.postRun.canFinish || model.savekitBusy)
+                }
             }
         }
     }
@@ -724,16 +1229,233 @@ struct ContentView: View {
         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
     }
 
+    private var nativeRomFolderControl: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Text("SD ROM folder")
+                    .font(.system(size: 11, weight: .medium))
+                TextField("/sd/roms/nes", text: $nativeSDRomFolder)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(maxWidth: 260)
+                    .disabled(!model.canLaunchNativeHBLauncher)
+            }
+            Text(nativeSDRomFolderValid
+                 ? "MintNES imports supported .nes ROMs from this Switch SD folder before launch"
+                 : "Enter an absolute folder under /sd/")
+                .font(.system(size: 10))
+                .foregroundStyle(nativeSDRomFolderValid ? Mac2jbTheme.muted : .orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var postJailbreakChoice: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Choose what to open")
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
+            Text(model.phase == .installingSave
+                 ? "Installing a save. Other options will become available after RPC is verified."
+                 : model.phase == .failed && model.seedsowInstallStarted
+                 ? "RPC is no longer available. Restart the Switch before another app attempt."
+                 : "RPC is held. Choose one path for this session.")
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "square.grid.3x3.fill").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("MintBrew").font(.system(size: 13, weight: .semibold))
+                    Text("Open the homebrew library on your Switch")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                }
+                Spacer(minLength: 8)
+                Button("Open MintBrew") {
+                    model.launchMintBrew(accountAddons: account.addonURLs,
+                                         libraryItems: account.libraryPayload())
+                }.disabled(!model.canLaunchHomebrew)
+            }
+            Divider()
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "cpu").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("HBLauncher").font(.system(size: 13, weight: .semibold))
+                    Text("Open the native app library in this held session")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    HStack(spacing: 10) {
+                        Button("Open native apps folder") { model.openNativeAppsFolder() }
+                        Button("Open MintNES ROM folder") { model.openNativeROMsFolder() }
+                    }.font(.system(size: 11)).disabled(model.phase == .installingSave)
+                    nativeRomFolderControl
+                }
+                Spacer(minLength: 8)
+                Button("Open HBLauncher") { model.launchNativeHBLauncher(sdRomFolder: nativeSDRomFolder) }
+                    .disabled(!model.canLaunchNativeHBLauncher || !nativeSDRomFolderValid)
+            }
+            Divider()
+            artemisInstallerRow
+            Divider()
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "externaldrive.badge.person.crop")
+                    .font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("SaveKit").font(.system(size: 13, weight: .semibold))
+                    Text("Inspect, back up or manage saves in this held RPC session")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                }
+                Spacer(minLength: 8)
+                if !model.seedsowInstallCompleted || model.savekitChoiceFinished {
+                    Button("Start SaveKit") { model.startSaveKit() }
+                        .disabled(!model.canStartSaveKit)
+                }
+            }
+        }
+        .font(.system(size: 11))
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var artemisInstallerRow: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "square.and.arrow.down")
+                .font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Artemis launcher").font(.system(size: 13, weight: .semibold))
+                Text("Install the launcher save for Seedsow Lullaby or Nora Princess 2")
+                    .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    Button("Install seedsowhax") { model.installArtemisSave(game: .seedsow) }
+                    Button("Install norahax") { model.installArtemisSave(game: .nora) }
+                }.disabled(!model.canInstallArtemisSave)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Seedsow Lua Editor save")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("This will overwrite the Artemis launcher")
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Install Lua editor save") { model.installSeedsowSave() }
+                        .disabled(!model.canInstallSeedsowSave)
+                }.padding(.top, 4)
+                HStack(spacing: 10) {
+                    Button("Check for upstream update") {
+                        artemisUpdates.check(runtimeRoot: model.runtime?.root)
+                    }.disabled(artemisUpdates.isChecking || model.runtime == nil || model.phase == .installingSave)
+                    if artemisUpdates.isChecking { ProgressView().controlSize(.small) }
+                    if let page = artemisUpdates.releasePage {
+                        Link("View release ↗", destination: page)
+                    }
+                }.font(.system(size: 10))
+                if !artemisUpdates.message.isEmpty {
+                    Text(artemisUpdates.message)
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                }
+                if model.phase == .installingSave {
+                    VStack(alignment: .leading, spacing: 7) {
+                        if let progress = model.progress { ProgressView(value: progress).tint(teal) }
+                        else { ProgressView().progressViewStyle(.linear).tint(teal) }
+                        Text(model.status)
+                            .font(.system(size: 11, weight: .semibold))
+                        if !model.progressLabel.isEmpty {
+                            Text(model.progressLabel)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(Mac2jbTheme.muted)
+                        }
+                    }.padding(.vertical, 4)
+                }
+                if model.phase == .failed && model.seedsowInstallStarted {
+                    Text(model.detail)
+                        .font(.system(size: 10)).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if !model.seedsowUsers.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Choose the console user whose \(model.activeSaveGame?.title ?? "Seedsow Lullaby") demo save will be updated")
+                            .font(.system(size: 11, weight: .semibold))
+                        Picker("Console user", selection: $model.selectedSeedsowUser) {
+                            ForEach(model.seedsowUsers, id: \.self) { user in Text(user).tag(user) }
+                        }
+                        Button("Back up and install save") { model.selectSeedsowUser() }
+                            .buttonStyle(PrimaryActionStyle())
+                    }
+                }
+                if model.seedsowBackupFolder != nil {
+                    Button("Open original save backup") { model.revealSeedsowBackup() }
+                }
+                if model.seedsowInstallCompleted && model.phase == .rpcHeld {
+                    Text(model.seedsowInstallSkipped
+                         ? "Existing \(model.activeSaveGame?.title ?? "selected") save preserved"
+                         : model.installingSeedsowEditorSave
+                           ? "Seedsow Lua Editor save installed"
+                           : "\(model.activeSaveGame?.launcher ?? "Artemis launcher") save installed")
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                } else {
+                    Text("Close the selected demo before installing. The Artemis launcher downloads a pinned upstream save; the Seedsow Lua Editor is bundled. Installing can replace game progress; the original save is verified and kept as a backup.")
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 8)
+        }
+    }
+
+    private var customSeedsowEditorControl: some View {
+        DisclosureGroup("Custom Seedsow Lua editor save") {
+            VStack(alignment: .leading, spacing: 8) {
+                Button("Choose editor save…") { chooseLuaEditorSave() }
+                    .disabled(!model.canInstallSeedsowSave && !canConfigure)
+                if let selectedLuaEditorSave {
+                    Text(selectedLuaEditorSave.lastPathComponent)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(Mac2jbTheme.muted).textSelection(.enabled)
+                    Button("Install selected save") {
+                        model.installSeedsowSave(source: selectedLuaEditorSave)
+                    }.disabled(!model.canInstallSeedsowSave)
+                }
+                if let luaEditorSelectionMessage {
+                    Text(luaEditorSelectionMessage).font(.system(size: 10)).foregroundStyle(.orange)
+                }
+            }.padding(.top, 6)
+        }
+        .font(.system(size: 11))
+        .padding(.leading, 44)
+    }
+
+    private func chooseLuaEditorSave() {
+        guard model.canInstallSeedsowSave || showHostOnlyHomebrew && canConfigure else { return }
+        let picker = NSOpenPanel()
+        picker.title = "Choose a Seedsow Lua editor save"
+        picker.message = "Select a ZIP archive or a folder containing the editor save files."
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = true
+        picker.allowsMultipleSelection = false
+        picker.begin { response in
+            guard response == .OK, let url = picker.url else { return }
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
+            guard values?.isDirectory == true ||
+                  values?.isRegularFile == true && url.pathExtension.lowercased() == "zip" else {
+                selectedLuaEditorSave = nil
+                luaEditorSelectionMessage = "Choose a ZIP archive or a folder of save files."
+                return
+            }
+            selectedLuaEditorSave = url.standardizedFileURL
+            luaEditorSelectionMessage = nil
+        }
+    }
+
     private var homebrewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Choose an app")
                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-            Text(canConfigure && showHostOnlyHomebrew
+            Text(model.phase == .installingSave
+                 ? "Installing a save. Other options will become available after RPC is verified."
+                 : model.phase == .failed && model.seedsowInstallStarted
+                 ? "RPC is no longer available. Restart the Switch before another app attempt."
+                 : canConfigure && showHostOnlyHomebrew
                  ? "Run host only with Hold RPC after success checked. Choose an app here once the host confirms 4/4 verification and holds RPC open."
                  : model.postRun.cleanupBlocked
                  ? "Restart your Switch before starting another session."
                  : model.postRun.homebrewAttempted
-                    ? "One app per console session. Restart the console and start a fresh host session before choosing another."
+                    ? "Stop the current homebrew app before choosing another."
+                    : model.activeRunMode == .seedsowSave && model.seedsowInstallCompleted
+                        ? "The launcher save is ready. RPC remains open; choose a homebrew app for this session."
                     : model.postRun.heldConfirmed ? "Your Switch is connected. Choose one app for this session." : "Waiting for the host to verify the Switch and hold RPC open.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
             homebrewRow(icon: "square.grid.3x3.fill", title: "MintBrew",
@@ -745,7 +1467,7 @@ struct ContentView: View {
                                                  libraryItems: account.libraryPayload())
                         }) {
                 Button("Open MintBrew apps folder") { model.openMintBrewAppsFolder() }
-                    .font(.system(size: 11)).disabled(model.runtime == nil)
+                    .font(.system(size: 11)).disabled(model.runtime == nil || model.phase == .installingSave)
                     .font(.system(size: 11))
                 Text("Add or remove apps while this session is open. Refresh the list on your Switch.")
                     .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
@@ -754,9 +1476,135 @@ struct ContentView: View {
                         .font(.system(size: 11))
                 }
             }
+            homebrewRow(icon: "cpu", title: "HBLauncher",
+                        description: "Run native AArch64 apps in this held session",
+                        actionTitle: "Launch HBLauncher",
+                        enabled: model.canLaunchNativeHBLauncher && nativeSDRomFolderValid,
+                        action: { model.launchNativeHBLauncher(sdRomFolder: nativeSDRomFolder) }) {
+                HStack(spacing: 10) {
+                    Button("Open native apps folder") { model.openNativeAppsFolder() }
+                    Button("Open MintNES ROM folder") { model.openNativeROMsFolder() }
+                }.font(.system(size: 11)).disabled(model.runtime == nil || model.phase == .installingSave)
+                nativeRomFolderControl
+            }
+            if showHostOnlyHomebrew && model.selectedHost.supportsSaveKit {
+                artemisInstallerRow
+                customSeedsowEditorControl
+                Divider()
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "externaldrive.badge.person.crop")
+                            .font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text("SaveKit").font(.system(size: 13, weight: .semibold))
+                            Text("Inspect, back up or manage game saves in this held RPC session")
+                                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                        }
+                        Spacer(minLength: 8)
+                        if (!model.savekitChoiceStarted || model.savekitChoiceFinished) &&
+                           (!model.seedsowInstallCompleted || model.savekitChoiceFinished) {
+                            Button("Start SaveKit") { model.startSaveKit() }
+                                .disabled(!model.canStartSaveKit)
+                        }
+                    }
+                    if model.activeRunMode == .hostOnlyHeld && model.phase == .rpcHeld &&
+                       !model.savekitChoiceFinished && !model.postRun.homebrewAttempted &&
+                       (model.savekitChoiceStarted || model.seedsowInstallCompleted) {
+                        if model.savekitChoiceStarted {
+                            SaveKitToolsView(model: model, experimentalTools: true)
+                            SaveKitResearchView(runtimeRoot: model.runtime?.root)
+                        } else {
+                            DisclosureGroup("SaveKit tools") {
+                                SaveKitToolsView(model: model, experimentalTools: true)
+                                SaveKitResearchView(runtimeRoot: model.runtime?.root)
+                            }
+                        }
+                    } else if canConfigure {
+                        Text("Available after the host completes 4/4 with RPC held")
+                            .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                            .padding(.leading, 44)
+                    }
+                }
+                Divider()
+            }
+            if showHostOnlyHomebrew {
+                izlauncherRow
+                customHomebrewRow
+            }
         }
         .padding(14).frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private var izlauncherRow: some View {
+        homebrewRow(icon: "square.stack.3d.up", title: "IZlauncher",
+                    description: "Run IZ2S modules in this held RPC session",
+                    actionTitle: "Launch IZlauncher", enabled: model.canLaunchIZlauncher,
+                    action: { model.launchIZlauncher() }) {
+            if model.izlauncherCatalogLoaded {
+                Text("Modules on this Mac").font(.system(size: 11, weight: .semibold))
+                ForEach(model.izlauncherModules) { item in
+                    Toggle("\(item.name) \(item.version)", isOn: Binding(
+                        get: { model.selectedIZlauncherModuleIDs.contains(item.id) },
+                        set: { model.selectIZlauncherModule(item.id, selected: $0) }
+                    )).toggleStyle(.checkbox).font(.system(size: 11))
+                }
+            }
+            Text(model.izlauncherModuleMessage)
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+            HStack(spacing: 10) {
+                Button("Load selected modules") { model.loadIZlauncherModules() }
+                    .disabled(!model.canLoadIZlauncherModules)
+                Button("Add compatible module…") { chooseIZlauncherModule() }
+                    .disabled(!model.canLaunchIZlauncher)
+            }.font(.system(size: 11))
+            if model.izlauncherPanelURL != nil {
+                Button("Open local control panel ↗") { model.openIZlauncherPanel() }
+                    .disabled(!model.canOpenIZlauncherPanel)
+                    .font(.system(size: 11))
+            }
+            if !model.izlauncherPanelMessage.isEmpty {
+                Text(model.izlauncherPanelMessage)
+                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+            }
+        }
+    }
+
+    private func chooseIZlauncherModule() {
+        guard model.canLaunchIZlauncher else { return }
+        let picker = NSOpenPanel()
+        picker.title = "Choose a compatible IZlauncher module"
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = false
+        picker.allowsMultipleSelection = false
+        picker.begin { response in
+            if response == .OK, let url = picker.url { model.launchIZlauncher(moduleFolder: url) }
+        }
+    }
+
+    private var customHomebrewRow: some View {
+        homebrewRow(icon: "folder.fill", title: "Custom homebrew",
+                    description: "Choose a GPU app, native app, IZlauncher module, or RPC package for this held session",
+                    actionTitle: "Choose folder…", enabled: model.canLaunchHomebrew,
+                    action: { chooseCustomHomebrew() }) {
+            TextField("Switch IPv4 address for OunceCake", text: $model.ounceCakeConsoleAddress)
+                .textFieldStyle(.roundedBorder).frame(maxWidth: 240)
+                .font(.system(size: 11)).disabled(!model.canLaunchHomebrew)
+            Text("An IPv4 address is needed for OunceCake-compatible WebDAV packages")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+        }
+    }
+
+    private func chooseCustomHomebrew() {
+        guard model.canLaunchHomebrew else { return }
+        let picker = NSOpenPanel()
+        picker.title = "Choose a built homebrew folder"
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = false
+        picker.allowsMultipleSelection = false
+        picker.begin { response in
+            if response == .OK, let url = picker.url { model.launchCustomHomebrew(folder: url) }
+        }
     }
 
     private func homebrewRow<Details: View>(icon: String, title: String, description: String,
@@ -828,7 +1676,7 @@ struct ContentView: View {
 
     private var homebrewActionTitle: String {
         switch model.postRun.homebrewStage {
-        case .idle: return "Launch GPUBrew"
+        case .idle: return "Launch MintBrew"
         case .launching: return "Starting…"
         case .selecting: return "Choose a game"
         case .running: return "Running"

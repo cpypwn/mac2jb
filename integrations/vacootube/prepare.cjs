@@ -12,7 +12,7 @@ const ELECTRON = 'electron-v44.5.1-darwin-arm64.zip';
 const ELECTRON_SHA256 = '1d75703019bb16461ae65f3081d7e6f5c0b11e901d0ccb5c343bcf7bcdd6435c';
 const UPSTREAM_MANIFEST_SHA256 = '0fd54ec5e75978a54de6a70bdbf2472164f8187df0f603de73851fb85ff43ac8';
 const APP_LOCK_SHA256 = '1591b7219b83241a0f84ceec2d81e89bf627b7ea3d040566f8713e9aa3b12ad2';
-const ADAPTATION_MANIFEST_SHA256 = 'a1c81d55d600d5dbf39b51153d686833b5a1aac209e391f1a4132c465a000061';
+const ADAPTATION_MANIFEST_SHA256 = '63b0c85f150997ca098d63a54190625b63dcddaa74c59c18a1bca87b84e58f16';
 
 async function sha(file) {
   const hash = crypto.createHash('sha256');
@@ -179,7 +179,8 @@ async function copySource(source, overlay, destination) {
   const descriptor = JSON.parse(await fsp.readFile(descriptorFile, 'utf8'));
   descriptor.server.assets.push('server/streaming/lib/mac-stream-host.cjs',
     'server/streaming/run16/lib/mac-stream-host.cjs',
-    'server/streaming/lib/mac-panel.cjs');
+    'server/streaming/lib/mac-panel.cjs',
+    'server/streaming/lib/mac-vacootube-diagnostics.cjs');
   await fsp.writeFile(descriptorFile, JSON.stringify(descriptor, null, 2) + '\n');
   for (const [name, before, after] of [
     ['server/streaming/lib/route-gate.cjs', "mode==='handheld'?'wifi':null", "mode==='handheld'?'ethernet-or-wifi':null"],
@@ -188,6 +189,21 @@ async function copySource(source, overlay, destination) {
     ['server/streaming/application-host.cjs',
       "openWindow=url=>require(require('node:path').join(require('./lib/platform.cjs').root,\"core/services/open-panel.cjs\")).openPanel(url,{env:{...process.env,HB_OPEN_PANEL:'1'}})",
       "openWindow=url=>require('./lib/mac-panel.cjs').openPanel(url)"],
+    ['server/streaming/application-host.cjs',
+      "const emit=()=>{const message='data: '+JSON.stringify(snapshot())+'\\n\\n';",
+      "const diagnostics=require('./lib/mac-vacootube-diagnostics.cjs').create({directory,rpc,mapped,header:HEADER});const emit=()=>{const current=snapshot();diagnostics.observe(current);const message='data: '+JSON.stringify(current)+'\\n\\n';"],
+    ['server/streaming/application-host.cjs',
+      "else if(next.launch==='player'){await stopPump();",
+      "else if(next.launch==='player'){diagnostics.begin(stream.stats);await stopPump();"],
+    ['server/streaming/application-host.cjs',
+      "if(next.source&&next.source!==source){await stream.invalidate?.('source-changed');source=next.source;",
+      "if(next.source&&next.source!==source){await stream.invalidate?.('source-changed');if(source==='player')diagnostics.end('source-changed');source=next.source;"],
+    ['server/streaming/application-host.cjs',
+      "if(closePromise)return closePromise;closing=true;routeGate?.close();",
+      "if(closePromise)return closePromise;if(source==='player')diagnostics.end('session-stopped');closing=true;routeGate?.close();"],
+    ['server/streaming/application-host.cjs',
+      "server.closeIdleConnections();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));",
+      "server.closeIdleConnections();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await diagnostics.flush();"],
     ...['server/streaming/lib/pc-stream-delta.cjs', 'server/streaming/run16/lib/pc-stream-delta.cjs']
       .flatMap(name => [
         [name, "const host=process.env.HB_STREAM_HOST||'10.42.0.1';if(!net.isIPv4(host)||host==='0.0.0.0')throw Error('Invalid PC stream host');", ''],

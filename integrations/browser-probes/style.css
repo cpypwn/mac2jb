@@ -1,0 +1,26 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  background: #071a15;
+  color: #e8fff0;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: linear-gradient(145deg, #143e30, #071a15 64%); }
+main { max-width: 980px; margin: 0 auto; padding: 32px 18px 56px; }
+header { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+h1 { font-size: clamp(30px, 6vw, 48px); margin: 0 0 6px; letter-spacing: -.04em; }
+h2 { margin: 0 0 16px; font-size: 20px; }
+header p { margin: 0; color: #a5c8b3; }
+.badge { border: 1px solid #72dba4; border-radius: 999px; color: #9df4be; padding: 6px 12px; font-weight: 700; }
+.panel { background: #17342c; border: 1px solid #2e5d49; border-radius: 20px; padding: 22px; margin-bottom: 18px; box-shadow: 0 16px 40px #00150d55; }
+.probe-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.probe { border: 1px solid #39705a; color: #d5f5df; background: #102a21; border-radius: 12px; padding: 12px; text-align: left; font: inherit; cursor: pointer; }
+.probe[aria-pressed="true"] { background: #256348; border-color: #9af6bf; color: #fff; box-shadow: 0 0 0 2px #6deba24d; }
+.probe:focus-visible, .actions button:focus-visible { outline: 3px solid #bbffce; outline-offset: 3px; }
+.muted { color: #a9c7b3; line-height: 1.45; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.actions button { border: 1px solid #74deaa; background: #96efba; color: #082017; padding: 11px 16px; border-radius: 11px; font: inherit; font-weight: 700; cursor: pointer; }
+.actions button + button { color: #ceffdf; background: #234b3a; }
+.actions button:disabled { opacity: .45; cursor: default; }
+pre { overflow: auto; min-height: 140px; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.55 ui-monospace, Menlo, monospace; }
+@media (max-width: 560px) { main { padding: 18px 12px 32px; } .panel { padding: 16px; } .badge { display: none; } }

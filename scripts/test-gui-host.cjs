@@ -6,17 +6,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {spawn} = require('node:child_process');
-const {validStart, verifiedResult, hidSettings,commandsOnlySettings, networkBindFailure} = require('./gui-host.cjs');
+const {validStart, verifiedResult, hidSettings,commandsOnlySettings,heldCommandsSettings, networkBindFailure} = require('./gui-host.cjs');
+const {fallbackControllers, parseGadgetControllers, gadgetControllers, autoControllers} = require('./usb-controllers.cjs');
 function command(address = '192.0.2.1') {
   return 'V=START(' + [39380, ...address.split('.')].join(',') + ')';
 }
-function fixture(t, sender, host) {
+function fixture(t, sender, host, discoveredControllers) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-gui-test-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   fs.mkdirSync(path.join(root, 'scripts'));
   fs.mkdirSync(path.join(root, 'assets'));
   fs.mkdirSync(path.join(root, 'vendor/ns2jb'), {recursive: true});
   fs.copyFileSync(path.join(__dirname, 'gui-host.cjs'), path.join(root, 'scripts/gui-host.cjs'));
+  fs.writeFileSync(path.join(root, 'scripts/usb-controllers.cjs'), discoveredControllers
+    ? `module.exports.autoControllers = () => ${JSON.stringify(discoveredControllers)};\n`
+    : "module.exports.autoControllers = preferred => [...new Set([...(preferred ? [preferred] : []), 'usb-drd0', 'usb-drd1', 'usb-drd2', 'usb-drd3'])];\n");
   fs.copyFileSync(path.join(__dirname, 'host-profiles.cjs'), path.join(root, 'scripts/host-profiles.cjs'));
   fs.mkdirSync(path.join(root, 'packaging'));
   fs.copyFileSync(path.join(__dirname, '../packaging/host-profiles.json'), path.join(root, 'packaging/host-profiles.json'));
@@ -45,6 +49,44 @@ async function until(predicate, message) {
     await new Promise(resolve => setTimeout(resolve, 10));
   }
 }
+test('IORegistry discovery selects attached USB gadget controllers in numeric order', () => {
+  const registry = [
+    '+-o usb-drd0@2280000  <class AppleARMIODevice>',
+    '  +-o AppleUSBXHCI  <class AppleUSBXHCI>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+    '+-o usb-drd1@A280000  <class AppleARMIODevice>',
+    '  +-o AppleUSBXHCI  <class AppleUSBXHCI>',
+    '+-o usb-drd12@1A280000  <class AppleARMIODevice>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+    '+-o usb-drd2@1280000  <class AppleARMIODevice>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>',
+    '+-o another-device@1000000  <class AppleARMIODevice>',
+    '    +-o gay_bowser_usbgadget  <class gay_bowser_usbgadget>'
+  ].join('\n');
+  assert.deepEqual(parseGadgetControllers(registry), ['usb-drd0', 'usb-drd2', 'usb-drd12']);
+  assert.deepEqual(gadgetControllers(() => registry), ['usb-drd0', 'usb-drd2', 'usb-drd12']);
+  assert.deepEqual(autoControllers('usb-drd2', () => ['usb-drd0', 'usb-drd2', 'usb-drd12']),
+    ['usb-drd2', 'usb-drd0', 'usb-drd12']);
+  assert.deepEqual(autoControllers('usb-drd3', () => ['usb-drd0', 'usb-drd2']), ['usb-drd0', 'usb-drd2']);
+});
+test('IORegistry failure or missing gadget includes usb-drd2 before usb-drd3', () => {
+  assert.deepEqual(fallbackControllers, ['usb-drd0', 'usb-drd1', 'usb-drd2', 'usb-drd3']);
+  assert.deepEqual(gadgetControllers(() => '+-o usb-drd2@1280000\n  +-o AppleUSBXHCI'), fallbackControllers);
+  assert.deepEqual(gadgetControllers(() => { throw Error('ioreg unavailable'); }), fallbackControllers);
+  assert.deepEqual(autoControllers('usb-drd2', () => gadgetControllers(() => '')),
+    ['usb-drd2', 'usb-drd0', 'usb-drd1', 'usb-drd3']);
+});
+test('automatic HID transfer reaches an attached usb-drd2 controller', async t => {
+  const root = fixture(t, `
+    if (process.env.MAC2JB_CONTROLLER === 'usb-drd0') {
+      console.error('USB host did not enumerate a keyboard'); process.exitCode = 1;
+    } else { console.log('Keyboard enumerated. Sending...'); console.log('Sent line 1'); }
+  `, undefined, ['usb-drd0', 'usb-drd2']);
+  const result = await run(root, ['hid', 'bootstrap', 'auto']).done;
+  assert.equal(result.code, 0, result.error);
+  assert.deepEqual(result.events.filter(event => event.type === 'controller').map(event => event.controller),
+    ['usb-drd0', 'usb-drd2']);
+});
 test('pairing validation requires the expected address and complete command', () => {
   const value = command();
   assert.equal(validStart(value, '192.0.2.1'), true);
@@ -54,6 +96,22 @@ test('pairing validation requires the expected address and complete command', ()
     'V=START(39381,192,0,2,1)', 'V=START(39380,256,0,2,1)', 'V=START(39380,-1,0,2,1)',
     'V=START(39380,192,0,2,1.5)', 'V=START(39380,192,0,2,1);PRINT 1'])
     assert.equal(validStart(invalid, '192.0.2.1'), false, invalid);
+});
+test('normal command transfer uses the current host START without a fixed run folder', async t => {
+  const root = fixture(t, `
+    require('fs').writeFileSync('args.json',JSON.stringify(process.argv.slice(2)));
+    console.log('Keyboard enumerated. Sending...');
+  `);
+  const supplied = command('192.0.2.1');
+  assert.equal(heldCommandsSettings(['--start-command', supplied]).startCommand, supplied);
+  assert.throws(() => heldCommandsSettings(['--start-command', supplied + ',0']), /invalid/);
+  const result = await run(root, ['hid', 'commands', 'usb-drd0', '--start-command', supplied]).done;
+  assert.equal(result.code, 0, result.error);
+  const args = JSON.parse(fs.readFileSync(path.join(root, 'args.json')));
+  assert.deepEqual(args.slice(args.indexOf('--commands'), args.indexOf('--commands') + 4),
+    ['--commands', 'load,run,remove,start', '--start-command', supplied]);
+  assert.equal(fs.existsSync(path.join(root, 'vendor/ns2jb/runs/mac2jb-active-connect.txt')), false);
+  assert.equal(result.events.some(event => event.type === 'transfer-complete' && event.kind === 'commands'), true);
 });
 test('pepsipu selection accepts only its real token-bearing pairing and refuses unsupported operations',async t=>{
   const {profileById}=require('./host-profiles.cjs');
@@ -68,6 +126,23 @@ test('pepsipu selection accepts only its real token-bearing pairing and refuses 
   for(const args of [['host','192.0.2.1','--post-run-options'],['hid','save-bootstrap','auto','--demo']]) {
     const result=await run(root,args).done;
     assert.equal(result.code,1);assert.equal(fs.existsSync(path.join(root,'unexpected-sender.txt')),false);
+  }
+});
+test('Kurumuz and Cellenseres dispatch Seedsow and SaveKit post-run modes', async t => {
+  const {profileById} = require('./host-profiles.cjs');
+  for (const hostId of ['kurumuz', 'cellenseres']) {
+    const root = fixture(t);
+    fs.writeFileSync(path.join(root, 'selected-host.json'), JSON.stringify(profileById(hostId)));
+    fs.writeFileSync(path.join(root, 'scripts/gui-session.cjs'),
+      'module.exports.main = async options => { options.emit("dispatched", {seedsowSave: !!options.seedsowSave, savekitTools: !!options.savekitTools}); return 0; };\n');
+    for (const [option, expected] of [
+      ['--seedsow-save', {seedsowSave: true, savekitTools: true}],
+      ['--savekit-tools', {seedsowSave: false, savekitTools: true}]
+    ]) {
+      const result = await run(root, ['host', '192.0.2.1', '--post-run-options', option]).done;
+      assert.equal(result.code, 0, result.error);
+      assert.deepEqual(result.events, [{type: 'dispatched', ...expected}]);
+    }
   }
 });
 test('success requires independent FS verification, restoration and cleanup', () => {
@@ -306,7 +381,7 @@ for(const kind of ['bootstrap'])test('the last responding controller is preferre
   assert.deepEqual(result.events.filter(event=>event.type==='controller').map(event=>event.controller),['usb-drd13']);
   assert.equal(result.events.find(event=>event.type==='typing').controller,'usb-drd13');
 });
-for(const [preferred,expected] of [['usb-drd1',['usb-drd1','usb-drd0','usb-drd3']],['usb-drd15',['usb-drd15','usb-drd0','usb-drd1','usb-drd3']]])
+for(const [preferred,expected] of [['usb-drd1',['usb-drd1','usb-drd0','usb-drd2','usb-drd3']],['usb-drd15',['usb-drd15','usb-drd0','usb-drd1','usb-drd2','usb-drd3']]])
 test('exhausted non-enumerated HID candidates are deduplicated and conclusively safe: '+preferred,async t=>{
   const root=fixture(t,`console.error('USB host did not enumerate a keyboard on selected controller. Check data role, cable, and host USB descriptors.');process.exitCode=1;`);
   const result=await run(root,['hid','bootstrap','auto','--preferred-controller',preferred]).done;
@@ -327,13 +402,34 @@ test('manual HID controller never falls back or accepts a preferred-controller o
   assert.equal(bad.code,1);assert.equal(bad.events.some(event=>event.type==='controller'),false);assert.equal(bad.events.some(event=>event.retrySafe===true),false);
 });
 for(const diagnostic of ['USB configuration failed on selected controller','USB interface setup failed',
-  'libusbd_init failed; check usbgadget.kext.','USB enumeration error: 0xdeadbeef\nUSB host did not enumerate a keyboard',
+  'USB enumeration error: 0xdeadbeef\nUSB host did not enumerate a keyboard',
   'Waiting for USB host enumeration...'])
 test('HID initialization/error text never authorizes probing or safe Skip: '+diagnostic.split('\n')[0],async t=>{
   const root=fixture(t,`console.error(${JSON.stringify(diagnostic)});process.exitCode=1;`);
   const result=await run(root,['hid','bootstrap','auto','--preferred-controller','usb-drd15']).done;
   assert.equal(result.code,1);assert.equal(result.events.filter(event=>event.type==='controller').length,1);
   assert.equal(result.events.some(event=>event.type==='typing'||event.retrySafe===true),false);
+});
+test('automatic HID skips an absent usb-drd2 before usb-drd3 without sending input',async t=>{
+  const root=fixture(t,`
+    if(process.env.MAC2JB_CONTROLLER==='usb-drd2')console.error('libusbd_init failed; check usbgadget.kext.');
+    else if(process.env.MAC2JB_CONTROLLER==='usb-drd3'){
+      console.log('Keyboard enumerated. Sending...');console.log('Sent line 1');process.exit(0);
+    }else console.error('USB host did not enumerate a keyboard');
+    process.exitCode=1;
+  `);
+  const result=await run(root,['hid','bootstrap','auto']).done;
+  assert.equal(result.code,0,result.error);
+  assert.deepEqual(result.events.filter(event=>event.type==='controller').map(event=>event.controller),
+    ['usb-drd0','usb-drd1','usb-drd2','usb-drd3']);
+  assert.deepEqual(result.events.filter(event=>event.type==='typing').map(event=>event.controller),['usb-drd3']);
+});
+test('manual HID initialization failure does not probe another controller',async t=>{
+  const root=fixture(t,`console.error('libusbd_init failed; check usbgadget.kext.');process.exitCode=1;`);
+  const result=await run(root,['hid','bootstrap','usb-drd2']).done;
+  assert.equal(result.code,1);
+  assert.deepEqual(result.events.filter(event=>event.type==='controller').map(event=>event.controller),['usb-drd2']);
+  assert.equal(result.events.some(event=>event.retrySafe===true),false);
 });
 test('a bounded unresponsive HID worker can fail safely after its only attempt',{timeout:5000},async t=>{
   const root=fixture(t,`console.log('Waiting for USB host enumeration...');setInterval(()=>{},1000);`);

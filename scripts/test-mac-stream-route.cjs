@@ -20,6 +20,10 @@ test('mac stream modules accept connected handheld ethernet in the host and cons
   fs.mkdirSync(path.join(vacooSource,'server/local-package'),{recursive:true});
   fs.mkdirSync(path.join(vacooOverlay,'server/local-package'),{recursive:true});
   fs.writeFileSync(path.join(vacooOverlay,'server/local-package/vacootube-audio'),'fixture');
+  const diagnostics='server/streaming/lib/mac-vacootube-diagnostics.cjs';
+  fs.mkdirSync(path.dirname(path.join(vacooOverlay,diagnostics)),{recursive:true});
+  fs.copyFileSync(path.join(root,'integrations/vacootube/overlay',diagnostics),
+    path.join(vacooOverlay,diagnostics));
   await vacootube.copySource(vacooSource,vacooOverlay,staged);
   const blitRoute=patched.get('server/lib/route-gate.cjs').toString();
   const vacooRoute=fs.readFileSync(path.join(staged,'server/streaming/lib/route-gate.cjs'),'utf8');
@@ -50,6 +54,13 @@ test('mac stream modules accept connected handheld ethernet in the host and cons
   assert.equal(blitShader,vacooShader);
   assert.equal(blitDraw,vacooDraw);
   assert.match(vacooHost,/require\('\.\/lib\/mac-panel\.cjs'\)\.openPanel\(url\)/);
+  assert.match(vacooHost,/diagnostics\.observe\(current\)/);
+  assert.match(vacooHost,/diagnostics\.begin\(stream\.stats\)/);
+  assert.match(vacooHost,/diagnostics\.flush\(\)/);
+  assert.ok(JSON.parse(fs.readFileSync(path.join(staged,'module.json')))
+    .server.assets.includes(diagnostics));
+  require('node:child_process').execFileSync(process.execPath,
+    ['--check',path.join(staged,'server/streaming/application-host.cjs')]);
   assert.match(blitShader,/mode==0u\?\(type==1u\|\|type==2u\)/);
   assert.match(blitDraw,/if\(!displayReady&&menu==0u&&c\.atlas\[SB\+38u\]==0u\)return background/);
   assert.match(blitDraw,/streamStartText\(p,vec2\(860,512\),8\.0,0\)/);

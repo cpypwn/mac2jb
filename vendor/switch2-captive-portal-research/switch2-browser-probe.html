@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Switch browser live tests</title>
+<style>
+body{margin:0;background:#101923;color:#edf4fa;font:18px/1.5 sans-serif}main{max-width:1000px;margin:auto;padding:24px}h1{font-size:30px;margin:0 0 12px}p{margin:12px 0}button{padding:12px 18px;margin:6px 12px 6px 0;background:#16464b;color:white;border:2px solid #80d8c9;border-radius:5px;font:bold 18px sans-serif}button:focus{outline:3px solid white}button:disabled{opacity:.5}#status{padding:16px;background:#1c3440;color:#91e6cc;white-space:pre-wrap}#results{padding:12px;background:#1d2b39;white-space:pre-wrap;font:15px/1.5 monospace}.note{color:#bed0df}
+fieldset{border:1px solid #41616d;border-radius:8px;margin:18px 0;padding:12px}h2{font-size:24px;margin-top:28px}input,select,textarea{font:inherit;background:#142a38;color:#eef4fa;border:1px solid #71939e;padding:8px;border-radius:4px}details{padding:10px 0;border-bottom:1px solid #38505e}summary{cursor:pointer;color:#a1e8dd}details p{font-size:16px;color:#c6d8e5}pre{white-space:pre-wrap;padding:12px;background:#1d2b39}button{cursor:pointer}button:disabled{cursor:default}</style></head><body><main>
+<h1>Switch 2 research bench</h1>
+
+<p>Choose a browser test below. Results can be saved on the computer serving this page. A connection lasts up to 60 minutes; Stop clears its queued tests.</p>
+<p class="note">This checks ordinary browser features. It sends test results to the computer serving this page. It does not read accounts or existing files, or change firmware.</p>
+<button id="connect">Connect / run again</button><button id="stop">Stop live testing</button>
+<fieldset><legend>Browser tests</legend>
+<button class="probe" data-test="network" disabled>Network and input</button>
+<button class="probe" data-test="runtime" disabled>Runtime</button>
+<button class="probe" data-test="media" disabled>Media and graphics</button>
+<button class="probe" data-test="boundaries" disabled>Small boundary checks</button>
+<button class="probe" data-test="fonts" disabled>Fonts and FontFace</button>
+<button class="probe" data-test="webkit" disabled>WebKit features</button>
+<button class="probe" data-test="fontenv" disabled>Font environment</button>
+<button id="baseline" class="probe" disabled>Run baseline set</button>
+</fieldset>
+<p class="note">Boundary checks use 48 fixed cases, at most a 4 KiB buffer, and a two-second deadline checked between cases. They exercise JSON, URI, typed-array, text and URL APIs locally. They make no native or network requests.</p>
+<p id="status" role="status">Connecting to the local server…</p>
+<p>During the input test, move a stick or tap the screen. Only navigation keys and event counts are recorded.</p>
+<div id="results">No live results yet.</div>
+<button id="export">Show report</button>
+<textarea id="report" readonly hidden rows="10" aria-label="Current browser report" style="width:100%;box-sizing:border-box"></textarea>
+<h2>Probe library</h2>
+<p id="library-note" class="note">Loading the recorded probe library…</p>
+<label for="library-filter">View </label><select id="library-filter"><option value="unfinished">Unfinished work</option><option value="history">Historical evidence</option></select>
+<label for="library-search"> Search </label><input id="library-search" type="search" maxlength="80">
+<div id="library"></div>
+<h2>SmileBASIC companion</h2>
+<p>Use a separate program slot after saving your work. Keep NS2/NS2GOOD intact. This small script records a variable in RAM:</p>
+<pre>PORTALMARK=271026
+PRINT "PORTAL BASELINE"
+PRINT PORTALMARK
+END</pre>
+<p>After visiting the portal and returning to Direct mode, enter <code>PRINT PORTALMARK,271027</code>. Record the actual output or error. A retained value is interpreter continuity evidence. This companion has been prepared on the Mac and has not been run on the Switch.</p>
+<p class="note">Feature names, successful tests, and browser hardware hints are separate evidence. A browser connection alone does not establish native code execution.</p>
+<noscript>JavaScript is unavailable.</noscript></main>
+<script>window.SwitchProbeModules = [];</script>
+<script>
+(function () {
+ 'use strict';
+ var status = document.getElementById('status'), results = document.getElementById('results');
+ var session = null, active = false, busy = false, timer = null, generation = 0, started = 0, lines = [], pendingLoad = null;
+ var pendingCount = 0, reports = [], catalog = null;
+ function buttons() {
+  var list = document.querySelectorAll('.probe');
+  for (var i = 0; i < list.length; i++) { list[i].disabled = !active || !session || busy || pendingCount > 0; }
+ }
+ var registry = window.SwitchProbeModules, arrayPush = Array.prototype.push;
+ registry.push = function (module) {
+  var load = pendingLoad;
+  if (!load || load.closed || !active || load.g !== generation || document.currentScript !== load.script ||
+      !module || module.id !== load.test || typeof module.run !== 'function') { return registry.length; }
+  for (var i = registry.length - 1; i >= 0; i -= 1) { if (registry[i].id === module.id) { registry.splice(i,1); } }
+  load.registered = module;
+  return arrayPush.call(registry,module);
+ };
+ function show(text) { status.textContent = text; }
+ function request(path, body, token) {
+  return new Promise(function (resolve, reject) {
+   var xhr = new XMLHttpRequest(); xhr.open('POST', path, true); xhr.timeout = 6000;
+   xhr.setRequestHeader('Content-Type', 'application/json');
+   if (token) { xhr.setRequestHeader('X-Probe-Session', token); }
+   xhr.onload = function () { try { if (xhr.status < 200 || xhr.status >= 300) { throw new Error('HTTP ' + xhr.status); } resolve(JSON.parse(xhr.responseText)); } catch (e) { reject(e); } };
+   xhr.onerror = function () { reject(new Error('Cannot reach the Mac')); }; xhr.ontimeout = function () { reject(new Error('Mac request timed out')); };
+   xhr.send(JSON.stringify(body));
+  });
+ }
+ function schedule(g) { if (active && g === generation) { timer = setTimeout(function () { poll(g); },1000); } }
+ function modulePath(test) {
+  if (test === 'runtime') { return '/switch2-probes-runtime.js'; }
+  if (test === 'media') { return '/switch2-probes-media.js'; }
+  if (test === 'network') { return '/switch2-probes-network.js'; }
+  if (test === 'boundaries') { return '/switch2-probes-boundaries.js'; }
+  if (test === 'fonts') { return '/switch2-probes-fonts.js'; }
+  if (test === 'webkit') { return '/switch2-probes-webkit.js'; }
+  if (test === 'fontenv') { return '/switch2-probes-fontenv.js'; }
+  return null;
+ }
+ function loadModule(job,g) {
+  return new Promise(function (resolve,reject) {
+   var path = modulePath(job.test);
+   if (!path || typeof job.revision !== 'string' || !/^[0-9a-f]{64}$/.test(job.revision)) { reject(new Error('Invalid installed-module revision')); return; }
+   if (!active || g !== generation) { reject(new Error('Stopped')); return; }
+   if (pendingLoad) { pendingLoad.cancel(); }
+   for (var i = registry.length - 1; i >= 0; i -= 1) { if (registry[i].id === job.test) { registry.splice(i,1); } }
+   var script = document.createElement('script');
+   var load = { script:script, test:job.test, g:g, registered:null, closed:false, cancel:null };
+   var deadline;
+   function finish(error) {
+    if (load.closed) { return; }
+    load.closed = true; clearTimeout(deadline); script.onload = null; script.onerror = null;
+    if (script.parentNode) { script.parentNode.removeChild(script); }
+    if (pendingLoad === load) { pendingLoad = null; }
+    if (error) { reject(error); } else { resolve(load.registered); }
+   }
+   load.cancel = function () { finish(new Error('Stopped')); };
+   pendingLoad = load;
+   script.onload = function () {
+    if (!active || g !== generation) { finish(new Error('Stopped')); return; }
+    finish(load.registered ? null : new Error('Matching module did not register'));
+   };
+   script.onerror = function () { finish(new Error('Installed module could not load')); };
+   deadline = setTimeout(function () { finish(new Error('Installed module load timed out')); },2500);
+   script.src = path+'?v='+job.revision;
+   try { (document.head || document.getElementsByTagName('head')[0]).appendChild(script); }
+   catch (error) { finish(error); }
+  });
+ }
+ function execute(job,g) {
+  return new Promise(function (resolve) {
+   var complete = false;
+   var deadline = setTimeout(function () { finish({ checks:[{ id:job.test+'-deadline', status:'timeout', details:{} }] }); },18000);
+   function finish(value) { if (!complete) { complete = true; clearTimeout(deadline); resolve(value); } }
+   loadModule(job,g).then(function (selected) {
+    if (complete || !active || g !== generation) { finish({ checks:[] }); return; }
+    try { Promise.resolve(selected.run({ baseUrl:window.location.origin, isActive:function () { return active && g === generation; } })).then(finish,function (error) { finish({ checks:[{ id:job.test+'-error', status:'failed', details:{ error:error.name } }] }); }); }
+    catch (error) { finish({ checks:[{ id:job.test+'-error', status:'failed', details:{ error:error.name } }] }); }
+   },function (error) { finish({ checks:[{ id:job.test+'-module', status:'not-tested', details:{ reason:error.message } }] }); });
+  });
+ }
+ function poll(g) {
+  if (!active || busy || g !== generation) { return; }
+  if (Date.now()-started > 60*60*1000) { stop(); show('Live session ended after 60 minutes. Choose Connect to continue.'); return; }
+  request('/live/next',{},session).then(function (data) {
+   if (!active || g !== generation) { return; }
+   if (!data.job) { buttons(); show('Connected. Choose a browser test above.'); schedule(g); return; }
+   busy = true; buttons(); var job = data.job, begin = Date.now();
+   show('Running: '+job.test+(job.test === 'network' ? '\nMove a stick, press a D-pad direction, or tap the screen during the input check.' : ''));
+   execute(job,g).then(function (value) {
+    if (!active || g !== generation) { return; }
+    return request('/live/result',{ jobId:job.jobId, test:job.test, revision:job.revision, result:value, elapsedMs:Date.now()-begin, runAt:new Date().toISOString() },session).then(function () {
+     if (!active || g !== generation) { return; }
+     var counts = {}, checks = value.checks || [];
+     for (var i = 0; i < checks.length; i += 1) { counts[checks[i].status] = (counts[checks[i].status] || 0)+1; }
+     lines.push(job.test+': '+JSON.stringify(counts)); lines = lines.slice(-20); results.textContent = lines.join('\n');
+     reports.push({ test:job.test, revision:job.revision, result:value, elapsedMs:Date.now()-begin }); reports = reports.slice(-testButtons.length);
+     pendingCount = Math.max(0,pendingCount-1); busy = false; buttons(); show('Results received by the Mac.'); schedule(g);
+    });
+   }).catch(function (error) { if (g !== generation) { return; } busy = false; active = false; buttons(); show('Stopped: '+error.message+'. Choose Connect to retry.'); });
+  }).catch(function (error) { if (g !== generation) { return; } active = false; buttons(); show(error.message+'. Choose Connect to retry.'); });
+ }
+ function connect() {
+  if (busy) { return; } if (active && session) { request('/live/stop',{},session).catch(function () {}); }
+  generation += 1; var g = generation; clearTimeout(timer); active = true; session = null; pendingCount = 0; started = Date.now(); buttons();
+  show('Connecting to the local server…');
+  request('/live/hello',{ pageBuild:4, browser:{ userAgent:navigator.userAgent.slice(0,2048), platform:(navigator.platform || '').slice(0,256) } }).then(function (data) {
+   if (g !== generation || !active) { return; } session = data.session; buttons(); show('Connected. Choose a browser test.'); poll(g);
+  }).catch(function (error) { if (g !== generation) { return; } active = false; buttons(); show(error.message+'. The Mac server must be running in live mode.'); });
+ }
+ function stop() { if (session) { request('/live/stop',{},session).catch(function () {}); } active = false; generation += 1; busy = false; pendingCount = 0; clearTimeout(timer); if (pendingLoad) { pendingLoad.cancel(); } buttons(); show('Live testing stopped. A currently running small check may finish locally.'); }
+ function queue(tests) {
+  if (!active || !session || busy || pendingCount) { return; }
+  var g = generation; pendingCount = tests.length; buttons();
+  request('/live/queue',{ tests:tests },session).then(function () {
+   if (g === generation && active) { show('Queued '+tests.join(', ')+'.'); }
+  }).catch(function (error) { if (g !== generation) { return; } pendingCount = 0; buttons(); show(error.message); });
+ }
+ function renderLibrary() {
+  if (!catalog) { return; }
+  var list = document.getElementById('library'), search = document.getElementById('library-search').value.toLowerCase();
+  var entries = catalog[document.getElementById('library-filter').value] || [];
+  while (list.firstChild) { list.removeChild(list.firstChild); }
+  for (var i = 0; i < entries.length; i++) {
+   var item = entries[i];
+   if ((item.title+' '+item.status+' '+item.scope).toLowerCase().indexOf(search) < 0) { continue; }
+   var box = document.createElement('details'), title = document.createElement('summary'), text = document.createElement('p');
+   title.textContent = item.title+' — '+item.status; text.textContent = item.scope;
+   box.appendChild(title); box.appendChild(text); list.appendChild(box);
+  }
+  if (!list.firstChild) { list.textContent = 'No matching entries.'; }
+ }
+ function loadLibrary() {
+  var xhr = new XMLHttpRequest(); xhr.open('GET','/research-catalog',true); xhr.timeout = 6000;
+  xhr.onload = function () {
+   try {
+    if (xhr.status !== 200) { throw new Error('Library unavailable'); }
+    var value = JSON.parse(xhr.responseText);
+    if (value.schemaVersion !== 1 || !Array.isArray(value.history) || !Array.isArray(value.unfinished) || value.history.length > 64 || value.unfinished.length > 64) { throw new Error('Invalid library'); }
+    catalog = value;
+    var coverage = value.sourceCoverage;
+    document.getElementById('library-note').textContent = value.history.length+' historical entries and '+value.unfinished.length+' unfinished topics. '+value.snapshotNote+' Snapshot: '+value.generatedAt+(coverage ? '\nHistorical inventory: '+coverage.namespaceGroups+' source namespaces, '+coverage.observedGetInfoTuples+' observed GetInfo tuples. '+coverage.limit : '');
+    renderLibrary();
+   } catch (error) { document.getElementById('library-note').textContent = 'Probe library unavailable. Browser tests remain available.'; }
+  };
+  xhr.onerror = xhr.ontimeout = function () { document.getElementById('library-note').textContent = 'Cannot load the probe library.'; };
+  xhr.send();
+ }
+ document.getElementById('connect').onclick = connect; document.getElementById('stop').onclick = stop;
+ var testButtons = document.querySelectorAll('[data-test]');
+ for (var b = 0; b < testButtons.length; b++) { testButtons[b].onclick = function () { queue([this.getAttribute('data-test')]); }; }
+ document.getElementById('baseline').onclick = function () { queue(['network','runtime','media','boundaries','fonts','webkit','fontenv']); };
+ document.getElementById('library-filter').onchange = renderLibrary;
+ document.getElementById('library-search').oninput = renderLibrary;
+ document.getElementById('export').onclick = function () { var field = document.getElementById('report'); field.hidden = false; field.value = JSON.stringify({ pageBuild:4, exportedAt:new Date().toISOString(), browser:navigator.userAgent, reports:reports },null,2); };
+ loadLibrary(); connect();
+}());
+</script></body></html>

@@ -1,0 +1,15 @@
+{
+  "name": "super-file-bros",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nintendo Switch 2 file manager for held FS RPC sessions",
+  "license": "GPL-2.0-only",
+  "engines": {
+    "node": ">=20.20"
+  },
+  "scripts": {
+    "start": "node start.cjs",
+    "test": "node tools/fs-rpc-browser/test.cjs",
+    "build": "python3 tools/fs-rpc-browser/release.py"
+  }
+}

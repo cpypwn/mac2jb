@@ -1,0 +1,19 @@
+diff --git a/engine/switch2/app/mounted-save.cjs b/engine/switch2/app/mounted-save.cjs
+index 0f00652..ff7b8fc 100644
+--- a/engine/switch2/app/mounted-save.cjs
++++ b/engine/switch2/app/mounted-save.cjs
+@@ -26,7 +26,7 @@ async function inspectMountedFilesystem(s, name = 'save') {
+   const slots = Number(state.readBigUInt64LE(16));
+   const borrowed = (await s.read(slots, 4)).readUInt32LE();
+   check(borrowed > 0 && borrowed < 0xffff8000 && objectId > 0, 'Invalid borrowed save session');
+-  return {name, borrowed, objectId, manager};
++  return {name, borrowed, objectId, manager, serviceAddress: mount.service, implementationAddress: mount.implementation, accessor: mount.accessor, serviceVtable: mount.serviceVtable};
+ }
+ 
+ async function cloneMountedFilesystem(s, name = 'save') {
+@@ -52,4 +52,4 @@ async function cloneMountedRoot(s) {
+   return {owner: {label: 'Owned clone of SDK filesystem domain', handle, root}, filesystemId: mount.objectId};
+ }
+ 
+-module.exports = {cloneMountedSave: s => cloneMountedFilesystem(s, 'save'), cloneMountedFilesystem, cloneMountedRoot};
++module.exports = {cloneMountedSave: s => cloneMountedFilesystem(s, 'save'), cloneMountedFilesystem, cloneMountedRoot, inspectMountedFilesystem};

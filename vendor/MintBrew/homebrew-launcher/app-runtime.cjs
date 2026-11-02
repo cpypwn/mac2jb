@@ -15,7 +15,7 @@ async function dispatchServiceRequest(rpc,mapped,service,request){
  return true;
 }
 async function create({rpc,menu,directory,root=path.resolve(__dirname,'../../..'),config={},
- onProgress=()=>{},onAccountProgress=()=>{},onFatal=()=>{},prepareApp=prepare,createOunceCake,createMintFtp,createMintNes}){
+ onProgress=()=>{},onAccountProgress=()=>{},onFatal=()=>{},prepareApp=prepare,createOunceCake,createMintFtp,createMintNes,createIzExchange}){
  const mapped=menu.controls.mapped,cache=new Map();let generation=0,refreshSeen=0,menuState=await rpc.read(mapped,1024);
  let catalog,menuData,retainedFtp=null;const runtime={active:null,report:{session:rpc.a.session,started:new Date().toISOString(),transitions:[],generation:0,resourcesRetained:true}};
  const save=()=>atomic(path.join(directory,'app-runtime.json'),runtime.report);
@@ -121,6 +121,10 @@ async function create({rpc,menu,directory,root=path.resolve(__dirname,'../../..'
     if(app.id==='mintnes'){
       const nesService=createMintNes||require(path.join(root,'integrations/mintnes/service.cjs')).create;
       runtime.active.service=await nesService({rpc,gpu,app,onProgress});
+    }
+    if(app.id==='iz-exchange'){
+      const exchange=createIzExchange||require(path.join(root,'integrations/mintbrew-iz-exchange/service.cjs')).create;
+      runtime.active.service=await exchange({rpc,menu,directory,root,app});
     }
     runtime.report.active={id:app.id,fingerprint:app.fingerprint};runtime.report.transitions.push({event:'launch',id:app.id,fingerprint:app.fingerprint,time:new Date().toISOString()});await save();
     return gpu.commands[0];

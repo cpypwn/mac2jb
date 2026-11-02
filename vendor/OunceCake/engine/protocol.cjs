@@ -50,6 +50,7 @@ function pathRequest(command, input, address, length = 0x301) {
 // stole these from atmosphere, ty
 // translations for what the damn error codes mean
 const names = new Map([
+  [0x000a05, 'ContentNotFound'],
   [0x000e05, 'ContentMetaNotFound'],
   [0x339a02, 'ProgramInfoNotFound'],
   [0x07d202, 'PartitionNotFound'],
@@ -116,7 +117,7 @@ async function closeHandles(s, handles) {
 }
 
 function throwIfCancelled(shouldStop) {
-  if (shouldStop()) throw Object.assign(new Error('FTP preparation cancelled'), { code: 'FTP_CANCELLED' });
+  if (shouldStop()) throw Object.assign(new Error('Server preparation cancelled'), { code: 'FTP_CANCELLED' });
 }
 
 module.exports = {
