@@ -46,6 +46,8 @@ apps/*/code.bin
 apps/*/data.bin
 apps/*/assets/
 *.nes
+!apps/mintnes/assets/
+!apps/mintnes/assets/Diamond Chase.nes
 *.z64
 *.nsp
 *.xci

@@ -693,8 +693,8 @@ struct ContentView: View {
                 .font(.system(size: 12, weight: .semibold))
             Text("1. Keep the Switch and Mac on the same network. Open System Settings → Internet → Internet Settings → your network → Change Settings → DNS Settings → Manual.")
             Text("2. Set Primary DNS to \(dnsSwitch.isActive ? dnsSwitch.activeAddress : dnsSwitch.selectedAddress). If a Secondary DNS is required, use the same address. Save the settings.")
-            Text("3. Run Test Connection and expect a captive portal error. Confirm it, then open eShop or News to launch the browser page.")
-            Text("4. If you chose a research URL, tap cpypwn on the portal to open it.")
+            Text("3. Run Test Connection. The portal may loop or fail to open; if it does, stop DNSwitch and restore your DNS settings.")
+            Text("4. If the portal stays open and you chose a research URL, tap cpypwn to open it.")
             Text("5. When finished, stop DNSwitch and restore your DNS settings on the Switch.")
         }
         .font(.system(size: 11))
@@ -785,7 +785,7 @@ struct ContentView: View {
                 Button("Open saved reports") { NSWorkspace.shared.open(reportURL) }
                     .disabled(!FileManager.default.fileExists(atPath: reportURL.path))
             }
-            Text("Use this page as DNSwitch’s destination, run the Switch connection test, then open eShop or News. Included scripts and reports stay in this Mac’s Application Support folder.")
+            Text("Use this page as DNSwitch’s destination, then run Test Connection. Captive portal entry is experimental. Included scripts and reports stay in this Mac’s Application Support folder.")
                 .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }

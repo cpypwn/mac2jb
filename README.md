@@ -48,7 +48,7 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. extract the supplied v0.7.0 test zip and open `mac2jb.app`.
+1. download `mac2jb-v0.7.0-macos-arm64.zip`, extract it and open `mac2jb.app`.
 2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
 3. click install & load driver… and approve the administrator prompt.
 4. if prompted, open system settings → privacy & security and allow the driver.
@@ -333,7 +333,7 @@ success** in developer options. its current Mac adaptations include File Exchang
 BlitBun and VacooTube; video and capture pipelines still need console testing.
 the latest upstream IZ2S Platform and IZDOOM releases match the pinned source.
 HBLauncher is a separate native ABI 3 choice after a fresh Cellenseres or
-kurumuz held rpc session. this test build includes its Hello CPU and GPU Triangle sample apps,
+kurumuz held rpc session. this release includes its Hello CPU and GPU Triangle sample apps,
 plus MintNES. MintNES runs its NES CPU and graphics emulation on the Switch CPU
 and displays the result through HBLauncher's renderer. it includes the
 open-source Diamond Chase ROM. place supported `.nes` files in
@@ -359,7 +359,7 @@ the [Animal Crossing](https://github.com/ravensclawx/AnimalCrossing-HBLauncher)
 and [Twilight Princess](https://github.com/ravensclawx/TwilightPrincess-HBLauncher)
 ports need their own built packages, the HBLauncher Linux personality runtime,
 user-supplied GameCube game data and a local file server. neither game is
-bundled or verified in this Mac test build.
+bundled or verified in this Mac release.
 
 Stremio runs from MintBrew and requires Stremio installed on the Mac. leave the
 manual add-on field empty to use account add-ons.
@@ -430,9 +430,9 @@ saving the bootstrap does not preserve a live jailbreak connection.
   [Jmesmykil research scripts](https://github.com/Jmesmykil/switch2-captive-portal-research).
   choose either included source or a local folder in developer options, then
   start its page. mac2jb copies included scripts to Application Support and
-  stores reports there. use the page URL with DNSwitch, run the Switch connection
-  test, expect a captive portal error, then open eShop or News to launch the browser.
-  tap cpypwn on the portal to load the probe.
+  stores reports there. use the page URL with DNSwitch and run the Switch
+  connection test. if the portal stays open, tap cpypwn to load the probe.
+  portal entry is experimental and may loop or fail to open.
   stop DNSwitch and restore the Switch's DNS settings when finished. this panel
   is separate from jailbreak and rpc; desktop checks do not
   establish that a probe works on Switch hardware.
@@ -453,6 +453,7 @@ node v24.22.1 macOS arm64 or universal executable, then run:
 
 ```sh
 bash scripts/check.sh
+make
 make gui
 build/mac2jb.app/Contents/MacOS/mac2jb --self-test
 ```

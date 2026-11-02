@@ -23,7 +23,7 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>MAC2JBTestBuild</key>
-	<true/>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
