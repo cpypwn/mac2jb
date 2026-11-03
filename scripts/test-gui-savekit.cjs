@@ -401,6 +401,15 @@ test('Artemis backup proof rejects a different title before planning a write', a
       sha256: crypto.createHash('sha256').update(bytes).digest('hex')}]
   }));
   await backupProof(temp, uid, artemisProfile('seedsow').titleId);
+  const manifestPath = path.join(temp, 'manifest.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  await fs.writeFile(manifestPath, JSON.stringify({...manifest,
+    programId: manifest.titleId, uid, space: 1, type: 1, rank: 0, index: 0}));
+  await backupProof(temp, uid, artemisProfile('seedsow').titleId);
+  await fs.writeFile(manifestPath, JSON.stringify({...manifest, programId: manifest.titleId,
+    uid: 'd'.repeat(32)}));
+  await assert.rejects(backupProof(temp, uid, artemisProfile('seedsow').titleId),
+    /conflicting uid/);
   await assert.rejects(backupProof(temp, uid, artemisProfile('nora').titleId),
     /selected title and account archive/);
 });

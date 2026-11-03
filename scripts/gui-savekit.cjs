@@ -411,6 +411,13 @@ async function backupProof(directory, uid, titleId) {
     manifest.selection?.rank === 0 && manifest.selection?.index === 0 &&
     manifest.selection?.staticId === 0 && manifest.selection?.uid === uid,
   'The demo backup did not identify the selected title and account archive.');
+  if (Object.hasOwn(manifest, 'programId'))
+    check(manifest.programId === manifest.titleId,
+      'The demo backup has conflicting program IDs.');
+  for (const key of ['uid', 'space', 'type', 'rank', 'index'])
+    if (Object.hasOwn(manifest, key))
+      check(manifest[key] === manifest.selection?.[key],
+        'The demo backup has conflicting ' + key + ' fields.');
   for (const entry of manifest.entries) {
     check(entry.path === '/' + path.posix.basename(entry.path) && filePattern.test(entry.path.slice(1)),
       'The Seedsow demo backup has an unsupported path.');

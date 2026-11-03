@@ -106,6 +106,10 @@ async function main() {
     backupManifest.partial !== true &&
     Array.isArray(backupManifest.entries) && backupManifest.entries.length === backupManifest.files,
     'The backup does not prove the selected title, archive and account');
+  for (const [key, value] of Object.entries({programId: idText,
+    uid: uid.toString('hex'), space, type, rank: 0, index: 0}))
+    if (Object.hasOwn(backupManifest, key))
+      check(backupManifest[key] === value, 'The backup has conflicting ' + key + ' fields');
   const backupPaths = new Set();
   for (const entry of backupManifest.entries) {
     check(safePath(entry.path) && !backupPaths.has(entry.path) &&

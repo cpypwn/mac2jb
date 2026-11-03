@@ -196,6 +196,16 @@ test('pulled manifests are hash-verified and reject path traversal', async t => 
   await fs.writeFile(path.join(folder, 'manifest.json'), JSON.stringify(good));
   assert.deepEqual((await verifyPull(folder, {titleId: good.titleId, uid: 'a'.repeat(32),
     selection: {space: 1, type: 1, rank: 0, index: 0, staticId: 0}})).entries, good.entries);
+  const compatible = {...good, programId: good.titleId,
+    uid: good.selection.uid, space: 1, type: 1, rank: 0, index: 0};
+  await fs.writeFile(path.join(folder, 'manifest.json'), JSON.stringify(compatible));
+  await verifyPull(folder);
+  for (const change of [{programId: '010042d022aea000'}, {uid: 'b'.repeat(32)}, {type: 3}]) {
+    await fs.writeFile(path.join(folder, 'manifest.json'),
+      JSON.stringify({...compatible, ...change}));
+    await assert.rejects(verifyPull(folder), /conflicting/);
+  }
+  await fs.writeFile(path.join(folder, 'manifest.json'), JSON.stringify(good));
   await assert.rejects(verifyPull(folder, {titleId: '010042d022aea000'}), /program ID/);
   await assert.rejects(verifyPull(folder, {selection: {type: 3}}), /selected type/);
   await fs.writeFile(path.join(folder, 'manifest.json'), JSON.stringify({...good,

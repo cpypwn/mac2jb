@@ -345,9 +345,13 @@ async function main() {
         incomplete += state.failed.length;
         await fs.writeFile(path.join(target, 'manifest.json'),
           JSON.stringify({titleId: programId.toString(16).padStart(16, '0'),
+            programId: programId.toString(16).padStart(16, '0'),
             archive: archiveText(archive),
             selection: {space: archive.space, type: archive.type, rank: archive.rank,
               index: archive.index, staticId: archive.staticId, uid: archive.uid.toString('hex')},
+            uid: archive.uid.toString('hex'),
+            space: archive.space, type: archive.type, rank: archive.rank,
+            index: archive.index,
             files: state.files,
             bytes: state.bytes, partial: state.failed.length > 0,
             failed: state.failed, entries: state.entries}, null, 2) + '\n');

@@ -89,6 +89,10 @@ async function main() {
     backupManifest.archive === 'space=User type=Account rank=0 index=0 uid=' +
       uid.toString('hex').slice(0, 16) && Array.isArray(backupManifest.entries) &&
     backupEntry?.sha256, 'The backup does not prove the selected title, file and account');
+  for (const [key, value] of Object.entries({programId: id,
+    uid: uid.toString('hex'), space: 1, type: 1, rank: 0, index: 0}))
+    if (Object.hasOwn(backupManifest, key))
+      check(backupManifest[key] === value, 'The backup has conflicting ' + key + ' fields');
   const backup = await fs.readFile(path.join(backupDirectory, savePath.slice(1)));
   check(backup.length === backupEntry.size && sha(backup) === backupEntry.sha256,
     'The backup file failed SHA-256 verification');

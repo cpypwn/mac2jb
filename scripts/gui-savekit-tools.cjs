@@ -233,6 +233,13 @@ function validateArchive(manifest, expected = {}) {
     Number.isInteger(selected.rank) && Number.isInteger(selected.index) &&
     Number.isSafeInteger(selected.staticId) && uidPattern.test(selected.uid),
   'The pulled save has incomplete archive identity.');
+  if (Object.hasOwn(manifest, 'programId'))
+    check(manifest.programId === manifest.titleId,
+      'The pulled save has conflicting program IDs.');
+  for (const key of ['uid', 'space', 'type', 'rank', 'index'])
+    if (Object.hasOwn(manifest, key))
+      check(manifest[key] === selected[key],
+        'The pulled save has conflicting ' + key + ' fields.');
   for (const [key, number] of Object.entries(selection))
     check(selected[key] === number, 'The pulled save differs from the selected ' + key + '.');
   if (expectedUid) check(selected.uid === expectedUid ||
