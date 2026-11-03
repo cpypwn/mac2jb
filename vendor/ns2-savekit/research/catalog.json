@@ -1,5 +1,5 @@
 {
-  "revision": "3b4446fb8ef044c46052a53a5836c3071891e7f3",
+  "revision": "700814ff37fa8f11f12e77b65dc8a33d421e8dd1",
   "tools": [
     {
       "category": "Current SaveKit tools",
@@ -8,6 +8,22 @@
       "execution": "node",
       "requiresRun": true,
       "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "artemis-http.cjs",
+      "path": "current/tools/artemis-http.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Connects to the Artemis HTTP service on the console. Some commands change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "artemis-launcher.cjs",
+      "path": "current/tools/artemis-launcher.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Install and restore need a live patched RPC host. Stage and plan can run offline."
     },
     {
       "category": "Current SaveKit tools",
@@ -40,6 +56,14 @@
       "execution": "shell",
       "requiresRun": false,
       "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "diagnose-ns2jb-acquisition.cjs",
+      "path": "current/tools/diagnose-ns2jb-acquisition.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Reads local acquisition logs and reports stage 2 diagnosis."
     },
     {
       "category": "Current SaveKit tools",
@@ -200,6 +224,14 @@
       "execution": "node",
       "requiresRun": false,
       "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "transports/artemis-http.cjs",
+      "path": "current/tools/transports/artemis-http.cjs",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "HTTP transport implementation used by artemis-http.cjs."
     },
     {
       "category": "Current Artemis payloads",

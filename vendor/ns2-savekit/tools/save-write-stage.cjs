@@ -99,13 +99,25 @@ async function main() {
   check(verifyDirectory, 'A backup directory is required (pass the earlier save-pull output)');
   const backupManifest = JSON.parse(await fs.readFile(path.join(verifyDirectory,
     'manifest.json'), 'utf8'));
-  check(backupManifest.titleId === idText && backupManifest.selection?.space === space &&
-    backupManifest.selection?.type === type && backupManifest.selection?.rank === 0 &&
-    backupManifest.selection?.index === 0 && backupManifest.selection?.staticId === 0 &&
-    backupManifest.selection?.uid === uid.toString('hex') &&
+  const backupId = backupManifest.titleId ?? backupManifest.programId;
+  const selected = backupManifest.selection ?? {space: backupManifest.space,
+    type: backupManifest.type, rank: backupManifest.rank, index: backupManifest.index,
+    staticId: 0, uid: backupManifest.uid};
+  const spaceName = {1: 'User', 4: 'SdUser'}[space] ?? space;
+  const typeName = {1: 'Account', 3: 'Device'}[type] ?? type;
+  const archiveLabel = `space=${spaceName} type=${typeName} rank=0 index=0 ` +
+    `uid=${uid.toString('hex').slice(0, 16)}`;
+  check(backupId === idText && selected.space === space &&
+    selected.type === type && selected.rank === 0 &&
+    selected.index === 0 && selected.staticId === 0 &&
+    selected.uid === uid.toString('hex') &&
+    backupManifest.archive === archiveLabel &&
     backupManifest.partial !== true &&
     Array.isArray(backupManifest.entries) && backupManifest.entries.length === backupManifest.files,
     'The backup does not prove the selected title, archive and account');
+  if (Object.hasOwn(backupManifest, 'titleId') && Object.hasOwn(backupManifest, 'programId'))
+    check(backupManifest.titleId === backupManifest.programId,
+      'The backup has conflicting program IDs');
   for (const [key, value] of Object.entries({programId: idText,
     uid: uid.toString('hex'), space, type, rank: 0, index: 0}))
     if (Object.hasOwn(backupManifest, key))

@@ -406,6 +406,17 @@ test('Artemis backup proof rejects a different title before planning a write', a
   await fs.writeFile(manifestPath, JSON.stringify({...manifest,
     programId: manifest.titleId, uid, space: 1, type: 1, rank: 0, index: 0}));
   await backupProof(temp, uid, artemisProfile('seedsow').titleId);
+  const upstream = {archive: manifest.archive, programId: manifest.titleId,
+    uid, space: 1, type: 1, rank: 0, index: 0, files: 1,
+    bytes: bytes.length, partial: false, failed: [], entries: manifest.entries};
+  await fs.writeFile(manifestPath, JSON.stringify(upstream));
+  const verified = await backupProof(temp, uid, artemisProfile('seedsow').titleId);
+  assert.equal(verified.titleId, manifest.titleId);
+  assert.equal(verified.selection.uid, uid);
+  await fs.writeFile(manifestPath, JSON.stringify({...upstream,
+    programId: artemisProfile('nora').titleId}));
+  await assert.rejects(backupProof(temp, uid, artemisProfile('seedsow').titleId),
+    /selected title and account archive/);
   await fs.writeFile(manifestPath, JSON.stringify({...manifest, programId: manifest.titleId,
     uid: 'd'.repeat(32)}));
   await assert.rejects(backupProof(temp, uid, artemisProfile('seedsow').titleId),

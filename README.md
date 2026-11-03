@@ -259,8 +259,7 @@ list installed titles from internal storage, SD and game card. **List save archi
 reads the console's save index, including saves for games that are no longer
 installed; select an archive there to fill its title, account and archive fields.
 the installed-title picker shows names when available. enter a title ID manually
-if needed. read-only backups work for any selected title. after a save action
-finishes, mac2jb checks the held rpc connection before offering another save.
+if needed. read-only backups work for any selected title.
 each write, delete or restore backs up an existing save and verifies it before
 changing files. repeated save opens
 can interrupt the host; if rpc is lost, restart the Switch and start a fresh

@@ -401,22 +401,25 @@ async function stageCustomEditor(directory, sourcePath) {
 
 async function backupProof(directory, uid, titleId) {
   const manifest = JSON.parse(await fsp.readFile(path.join(directory, 'manifest.json'), 'utf8'));
+  const id = manifest.titleId ?? manifest.programId;
+  const selected = manifest.selection ?? {space: manifest.space, type: manifest.type,
+    rank: manifest.rank, index: manifest.index, staticId: 0, uid: manifest.uid};
   check(manifest.archive?.includes('space=User type=Account') &&
         manifest.archive?.includes('uid=' + uid.slice(0, 16)) &&
         Number.isSafeInteger(manifest.files) && manifest.files > 0 &&
         manifest.entries?.length === manifest.files,
     'The demo backup did not identify the selected account save.');
-  if (titleId) check(manifest.titleId === titleId &&
-    manifest.selection?.space === 1 && manifest.selection?.type === 1 &&
-    manifest.selection?.rank === 0 && manifest.selection?.index === 0 &&
-    manifest.selection?.staticId === 0 && manifest.selection?.uid === uid,
+  if (titleId) check(id === titleId &&
+    selected.space === 1 && selected.type === 1 &&
+    selected.rank === 0 && selected.index === 0 &&
+    selected.staticId === 0 && selected.uid === uid,
   'The demo backup did not identify the selected title and account archive.');
-  if (Object.hasOwn(manifest, 'programId'))
+  if (Object.hasOwn(manifest, 'programId') && Object.hasOwn(manifest, 'titleId'))
     check(manifest.programId === manifest.titleId,
       'The demo backup has conflicting program IDs.');
   for (const key of ['uid', 'space', 'type', 'rank', 'index'])
     if (Object.hasOwn(manifest, key))
-      check(manifest[key] === manifest.selection?.[key],
+      check(manifest[key] === selected[key],
         'The demo backup has conflicting ' + key + ' fields.');
   for (const entry of manifest.entries) {
     check(entry.path === '/' + path.posix.basename(entry.path) && filePattern.test(entry.path.slice(1)),
@@ -425,7 +428,7 @@ async function backupProof(directory, uid, titleId) {
     check(bytes.length === entry.size && sha(bytes) === entry.sha256,
       'The Seedsow demo backup failed verification: ' + entry.path);
   }
-  return manifest;
+  return {...manifest, titleId: id, selection: selected};
 }
 
 function chooseUser(candidates, source = process.stdin, game) {

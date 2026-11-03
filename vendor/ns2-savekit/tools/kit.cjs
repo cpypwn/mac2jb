@@ -478,7 +478,9 @@ async function doDelete(session, title, uid) {
   const target = await askDefault('File to delete at the save root (e.g. /save9999.dat)');
   if (!target) return;
   if (!(await confirm('Delete ' + target + ' from ' + title))) return;
-  const deleteArgs = [session, title, uid, target];
+  const backup = await doBackup(session, title, uid);
+  if (!backup) return;
+  const deleteArgs = [session, title, uid, target, backup];
   echoCommand('node tools/save-delete-root.cjs ' + deleteArgs.map(quote).join(' '));
   const result = run('save-delete-root.cjs', deleteArgs, {stdio: 'inherit'});
   console.log(result.ok ? '\ndeleted' : '\ndelete failed');
@@ -689,6 +691,7 @@ async function titleLoop(session, title, uid) {
       await installEditor(session, title, uid, backup);
     } else if (task.value === 'delete') {
       await doDelete(session, title, uid);
+      backup = null;
     } else if (task.value === 'verify') {
       await verifyAgainst(session, title, uid, backup);
     }

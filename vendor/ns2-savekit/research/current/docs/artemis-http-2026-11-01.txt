@@ -1,0 +1,238 @@
+# Artemis HTTP transport — hardware transcript, 2026-11-01
+
+Console: retail Switch 2, firmware 23.0.1, Seedsow Lullaby Demo 1.0.0, Artemis
+Launcher installed. HTTP server started with button Y. **No ns2jb RPC session
+was used.** The console address is written as `$CONSOLE`; the account uid is not
+recorded here.
+
+## 1. Connection and Lua
+
+```
+$ node tools/artemis-http.cjs health --host $CONSOLE
+status   200  nora2hax/seedsow HTTP server
+lua      Lua 5.1
+platform Ounce
+engine   userdata
+
+$ node tools/artemis-http.cjs eval --host $CONSOLE --code 'print("hello world")'
+hello world
+
+$ node tools/artemis-http.cjs eval --host $CONSOLE --code 'print(_VERSION); print(_G.n2h.platform)'
+Lua 5.1
+Ounce
+```
+
+## 2. Uploads
+
+```
+text.txt       41 bytes  de4f9d6de5c0f18f988f31bc267ab415ae8700277f411150ae92b4d4661ccccc
+bin-4096.bin 4096 bytes  e87d333e5f9dc3d12c4e6445700267dcebf57d156ebece144915a0a3742c44cb
+bin-16384.bin 16384 bytes cb158df680b8ead69b547ca78deef580b70947827a4ea23210e09987866a4d16
+bin-65536.bin 65536 bytes 5cccb2465cf3b2a34201823de07586a765b009cba96601d684228250c9b3eebd
+```
+
+The 65536-byte file exceeds the server body cap and was sent as a first `/save`
+chunk followed by `/eval` appends; the other two used `/save` directly.
+
+## 3. Downloads
+
+Every file was downloaded with 4 KiB hex reads, a per-chunk hash and a final
+SHA-256, then compared byte-for-byte with the local source:
+
+```
+text.txt       downloaded 41    sha256 de4f9d6d…  MATCH
+bin-4096.bin   downloaded 4096  sha256 e87d333e…  MATCH
+bin-16384.bin  downloaded 16384 sha256 cb158df6…  MATCH
+bin-65536.bin  downloaded 65536 sha256 5cccb246…  MATCH
+```
+
+The binary fixtures contain NUL, 0xFF and 0x80 at fixed offsets; the comparison
+is `cmp`, not just the hash.
+
+## 4. Errors and refusals
+
+```
+stat present  -> present 41 bytes
+stat missing  -> absent
+get missing   -> FAILED[ENOENT] ... exit 9
+put core.lua  -> FAILED[EPROTECTED] ... exit 9
+rm save9999.dat -> FAILED[EPROTECTED] ... exit 9
+put save:/../escape -> FAILED[EPATH] ... exit 9
+```
+
+## 5. Atomic rename probe
+
+```
+{
+  "rename": { "ok": false, "reason": "save:/.ns2http-probe-a: Operation not permitted",
+              "overwrote": false },
+  "serverBodyCap": 28672
+}
+```
+
+`os.rename` on `save:/` is refused, so chunked uploads are written directly and
+are **not atomic**. `put --atomic` refuses with `EATOMIC` and removes its
+temporary file; the target is left absent.
+
+## 6. Explicit-file backup
+
+```
+$ node tools/artemis-http.cjs backup --host $CONSOLE --out backup/
+explicit-file backup: 9 files, 114443 bytes -> backup/
+scope is explicit-files; complete=false
+```
+
+Entries include `core.lua 54d25862dc0d7969…`, `inject.iet bf79a739584de93d…`
+and `save9999.dat ca47241097a25061…`, matching the staged payload.
+
+## 7. Relaunch
+
+Marker uploaded, game fully closed (HOME -> X -> A) and relaunched, Y pressed:
+
+```
+health: 200, Lua 5.1, Ounce
+marker downloaded: 35 bytes, sha256 62c9a3fc… — exact content
+bin-65536 downloaded: 65536 bytes, sha256 5cccb246… — MATCH
+```
+
+## 8. Cleanup
+
+All five disposable files deleted with read-back verification:
+
+```
+deleted hw-text.txt; read-back confirms absent
+deleted hw-bin-4096.bin; ...
+deleted hw-bin-16384.bin; ...
+deleted hw-bin-65536.bin; ...
+deleted hw-persist.txt; ...
+stat -> absent (all five); probe scratch names also absent
+```
+
+## 9. Legacy migration using the HTTP snapshot
+
+The HTTP backup is read-only evidence, not a rollback baseline. It was used to
+migrate the pre-receipt installation:
+
+```
+$ ARTEMIS_STATE=<local state> node tools/artemis-launcher.cjs migrate-legacy \
+    --title 010042d022aea000 --uid <full-uid> \
+    --backup <pre-install backup> --snapshot backup/ --confirm-migration
+migration attestation written: ...original.json
+rollback baseline: <pre-install backup> (pre-install, unchanged)
+identity evidence: config/uids.json
+installed payload verified against pinned b9e6de8… and the deterministic trigger
+transformation.
+```
+
+The original backup's `manifest.json` SHA-256 before and after migration was
+`ea2a2ab0c0cb27be…` — unchanged. The record points at the pre-install trigger
+`d149d71bf87f1608…`, while the installed trigger verified as `ca47241097a25061…`.
+
+Negative checks:
+
+```
+$ ... --uid <wrong-account>
+FAILED: migration refuses: provenance is not established
+  no independently verified account identity evidence   (exit 6)
+
+$ ... --snapshot <backup with tampered core.lua>
+FAILED: migration refuses: provenance is not established
+  /core.lua does not match the pinned release           (exit 6)
+```
+
+## 10. Enumeration probe
+
+```
+io.open("save:/","rb")      -> file handle
+f:read("*a")                -> nil (cannot read a directory)
+getmetatable(_G.e).__index  -> function (not enumerable)
+```
+
+No complete save listing exists over the current API. Backups are therefore
+explicit-file, not complete archives, and cannot authorize a destructive full
+restore.
+
+## 11. Remote-verified uploads — 2026-11-01 23:21
+
+The upload path now reads the file back over `/eval` and compares its SHA-256
+with the local source before reporting success. Hardware run, no RPC session:
+
+```
+$ node tools/artemis-http.cjs put --host $CONSOLE --path save:/v-text.txt --in text.txt
+uploaded 23 bytes -> save:/v-text.txt  sha256 d765ef6e5cb123ba…  (remote read-back verified)
+
+v-bin-4096.bin   4096 bytes  eecee203ffa2b470…  (remote read-back verified)
+v-bin-16384.bin 16384 bytes  5519aa0a79bf39b5…  (remote read-back verified)
+v-bin-65536.bin 65536 bytes  5ee317fd75c476b9…  (remote read-back verified)
+
+$ ... --no-verify
+uploaded 23 bytes -> save:/v-unverified.txt  sha256 d765ef6e5cb123ba…  (unverified)
+```
+
+Each file was then downloaded with the expected SHA-256, compared with `cmp`,
+and deleted with read-back confirmation:
+
+```
+text.txt       23 bytes MATCH d765ef6e5cb123bae5ed2cdcd706b6adb676953eb83e2b731dbb74771e948997
+bin-4096.bin 4096 bytes MATCH eecee203ffa2b470e17a21134983e05de12f41ff801c6e08e12e771befb67d41
+bin-16384.bin 16384 bytes MATCH 5519aa0a79bf39b5156c01563bdaba0d37c49a8d428dc818d325555c479d26fd
+bin-65536.bin 65536 bytes MATCH 5ee317fd75c476b98956d4f2437a47ed40ac442a64fc8516bac82fa0bc38e8fc
+deleted v-text.txt, v-bin-4096.bin, v-bin-16384.bin, v-bin-65536.bin, v-unverified.txt
+stat -> absent (all four checked)
+```
+
+An interrupted upload and a failed PUT (both covered offline) are reported as
+`EINCOMPLETE` with the partial byte count; a corrupted remote copy is refused
+with `EHASH`; a failed write is attempted once, never retried.
+
+## 12. Randomized probe, path validation and transfers — 2026-11-01 23:36
+
+No RPC session. Scratch names use 128-bit random suffixes; ownership is checked
+by reading the content back before cleanup.
+
+```
+$ node tools/artemis-http.cjs probe --host $CONSOLE
+{
+  "rename": {
+    "ok": false,
+    "reason": "rename unsupported or interrupted: save:/.ns2http-probe-b1db…-a: Operation not permitted",
+    "names": {
+      "a": ".ns2http-probe-b1db5f225adb4d3763f4152a458853fb-a",
+      "b": ".ns2http-probe-b1db5f225adb4d3763f4152a458853fb-b"
+    },
+    "cleaned": ["…-b", "…-a"],
+    "left": [],
+    "cleanupError": null,
+    "collided": null
+  },
+  "serverBodyCap": 28672
+}
+stat .ns2http-probe-b1db…-a -> absent
+stat .ns2http-probe-b1db…-b -> absent
+```
+
+Path validation (rejected locally, no HTTP request):
+
+```
+stat save:/../system.dat  -> FAILED[EPATH] parent traversal (exit 9)
+put  save:/../escape      -> FAILED[EPATH] parent traversal (exit 9)
+put  save:/core.lua       -> FAILED[EPROTECTED] (exit 9)
+rm   save:/save9999.dat   -> FAILED[EPROTECTED] (exit 9)
+```
+
+Verified binary transfers (remote read-back hash, download hash, `cmp`, delete):
+
+```
+4096  af4046e794c5efffaae74fc19ea0113350be2e771d3834758a5fc97195bc6d70  MATCH
+16384 0cb74c50d8b85d0f00f70b2d2ff3342d4bc968a729b5f3d2cd7e9d5186a81801  MATCH
+65536 0d4b73fb19b64c603ce821a39db3d5c3928ee91f73d2c18c602569da3a3e8fdd  MATCH
+deleted z-bin-4096.bin / z-bin-16384.bin / z-bin-65536.bin; stat absent
+```
+
+Relaunch (HOME -> X -> A), press Y again:
+
+```
+health: 200, Lua 5.1, Ounce
+stat save:/core.lua        -> present 19156 bytes
+stat save:/save9999.dat    -> present 28400 bytes
+```

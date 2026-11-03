@@ -54,7 +54,7 @@ const archiveText = archive => `space=${SPACES[archive.space] ?? archive.space} 
   `type=${TYPES[archive.type] ?? archive.type} rank=${archive.rank} index=${archive.index} ` +
   `uid=${uidLabel(archive.uid)}`;
 const archiveDir = archive => `archive-space${archive.space}-type${archive.type}` +
-  `-rank${archive.rank}-index${archive.index}-${archive.uid.toString('hex')}`;
+  `-rank${archive.rank}-index${archive.index}-${uidLabel(archive.uid).slice(0, 8)}`;
 
 async function main() {
   const argv = process.argv.slice(2);
@@ -322,6 +322,11 @@ async function main() {
     // Files that refused to open, across every archive of this run. A pull that
     // lost files must not exit 0: that is what made a partial save look complete.
     let incomplete = 0;
+    if (all && !listOnly) {
+      const folders = archives.map(archiveDir);
+      if (new Set(folders).size !== folders.length)
+        throw Error('Archive folder names collide; pull these archives separately.');
+    }
     for (const archive of archives) {
       openHandle = archive.handle;
       console.error(`mounted ${archiveText(archive)}`);
@@ -344,11 +349,8 @@ async function main() {
         await pull(openHandle, target, state);
         incomplete += state.failed.length;
         await fs.writeFile(path.join(target, 'manifest.json'),
-          JSON.stringify({titleId: programId.toString(16).padStart(16, '0'),
+          JSON.stringify({archive: archiveText(archive),
             programId: programId.toString(16).padStart(16, '0'),
-            archive: archiveText(archive),
-            selection: {space: archive.space, type: archive.type, rank: archive.rank,
-              index: archive.index, staticId: archive.staticId, uid: archive.uid.toString('hex')},
             uid: archive.uid.toString('hex'),
             space: archive.space, type: archive.type, rank: archive.rank,
             index: archive.index,

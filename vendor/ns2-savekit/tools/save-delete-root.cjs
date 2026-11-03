@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 const fs = require('node:fs/promises');
+const {createReadStream} = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const crypto = require('node:crypto');
+const {classifyFsResult, decideDelete} = require('./lib/delete-result.cjs');
+const {walk} = require('./lib/save-tree.cjs');
 
 function request(socketPath, command) {
   return new Promise((resolve, reject) => {
@@ -25,10 +28,63 @@ function request(socketPath, command) {
 
 const code = value => '0x' + (Number(value) & 0x3fffff).toString(16);
 const check = (ok, message) => {if (!ok) throw Error(message);};
-const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const safeRootName = name => typeof name === 'string' && name &&
   name !== '.' && name !== '..' && !name.includes('/') && !name.includes('\\') &&
   !/[\x00-\x1f\x7f]/.test(name) && Buffer.byteLength(name) < 0x300;
+const safeSavePath = name => typeof name === 'string' && name.startsWith('/') &&
+  name !== '/' && name === path.posix.normalize(name) &&
+  Buffer.byteLength(name) < 0x301 && name.split('/').slice(1).every(safeRootName);
+
+async function hashFile(file) {
+  const digest = crypto.createHash('sha256');
+  for await (const chunk of createReadStream(file)) digest.update(chunk);
+  return digest.digest('hex');
+}
+
+async function verifyBackupFiles(directory, manifest) {
+  check(manifest.partial !== true &&
+    (manifest.failed === undefined || Array.isArray(manifest.failed) && manifest.failed.length === 0) &&
+    Number.isSafeInteger(manifest.files) && manifest.files > 0 &&
+    manifest.files <= 65536 && Array.isArray(manifest.entries) &&
+    manifest.entries.length === manifest.files,
+  'The backup is partial or incomplete');
+  const info = await fs.lstat(directory);
+  check(info.isDirectory() && !info.isSymbolicLink(), 'The backup folder is invalid');
+  const root = await fs.realpath(directory);
+  const seen = new Set();
+  let bytes = 0;
+  for (const entry of manifest.entries) {
+    check(entry && safeSavePath(entry.path) && !seen.has(entry.path) &&
+      Number.isSafeInteger(entry.size) && entry.size >= 0 &&
+      /^[a-f0-9]{64}$/.test(entry.sha256), 'The backup manifest has an invalid file');
+    seen.add(entry.path);
+    const file = path.join(directory, entry.path.slice(1));
+    const stat = await fs.lstat(file);
+    const resolved = await fs.realpath(file);
+    check(stat.isFile() && !stat.isSymbolicLink() &&
+      resolved.startsWith(root + path.sep) && stat.size === entry.size &&
+      await hashFile(file) === entry.sha256,
+    'The backup file failed SHA-256 verification: ' + entry.path);
+    bytes += stat.size;
+    check(Number.isSafeInteger(bytes), 'The backup size is invalid');
+  }
+  if (manifest.bytes !== undefined)
+    check(manifest.bytes === bytes, 'The backup byte count differs from its manifest');
+}
+
+function assertMatchingFiles(expected, actual) {
+  const before = new Map(expected.map(entry => [entry.path, entry]));
+  check(before.size === expected.length && actual.length === expected.length,
+    'The live save file list differs from the backup');
+  const seen = new Set();
+  for (const entry of actual) {
+    check(entry && !seen.has(entry.path), 'The live save repeats a file path');
+    seen.add(entry.path);
+    const backedUp = before.get(entry.path);
+    check(backedUp && backedUp.size === entry.size && backedUp.sha256 === entry.sha256,
+      'The live save differs from the backup: ' + entry.path);
+  }
+}
 
 function assertPreservedFiles(expected, actual, deletedPath) {
   const before = new Map();
@@ -81,21 +137,27 @@ async function main() {
   check(savePath?.startsWith('/') && safeRootName(savePath.slice(1)),
     'Only one file at the save root can be deleted');
   const backupManifest = JSON.parse(await fs.readFile(path.join(backupDirectory, 'manifest.json'), 'utf8'));
-  const backupEntry = backupManifest.entries?.find(entry => entry.path === savePath);
-  check(backupManifest.titleId === id && backupManifest.selection?.space === 1 &&
-    backupManifest.selection?.type === 1 && backupManifest.selection?.rank === 0 &&
-    backupManifest.selection?.index === 0 && backupManifest.selection?.staticId === 0 &&
-    backupManifest.selection?.uid === uid.toString('hex') &&
+  const backupEntry = Array.isArray(backupManifest.entries)
+    ? backupManifest.entries.find(entry => entry.path === savePath) : null;
+  const backupId = backupManifest.titleId ?? backupManifest.programId;
+  const selected = backupManifest.selection ?? {space: backupManifest.space,
+    type: backupManifest.type, rank: backupManifest.rank, index: backupManifest.index,
+    staticId: 0, uid: backupManifest.uid};
+  check(backupId === id && selected.space === 1 &&
+    selected.type === 1 && selected.rank === 0 &&
+    selected.index === 0 && selected.staticId === 0 &&
+    selected.uid === uid.toString('hex') &&
     backupManifest.archive === 'space=User type=Account rank=0 index=0 uid=' +
       uid.toString('hex').slice(0, 16) && Array.isArray(backupManifest.entries) &&
     backupEntry?.sha256, 'The backup does not prove the selected title, file and account');
+  if (Object.hasOwn(backupManifest, 'titleId') && Object.hasOwn(backupManifest, 'programId'))
+    check(backupManifest.titleId === backupManifest.programId,
+      'The backup has conflicting program IDs');
   for (const [key, value] of Object.entries({programId: id,
     uid: uid.toString('hex'), space: 1, type: 1, rank: 0, index: 0}))
     if (Object.hasOwn(backupManifest, key))
       check(backupManifest[key] === value, 'The backup has conflicting ' + key + ' fields');
-  const backup = await fs.readFile(path.join(backupDirectory, savePath.slice(1)));
-  check(backup.length === backupEntry.size && sha(backup) === backupEntry.sha256,
-    'The backup file failed SHA-256 verification');
+  await verifyBackupFiles(backupDirectory, backupManifest);
 
   await request(current.socketPath, {command: 'root-native-info'});
   const s = new Session('save-delete-' + Date.now(), 0x80000);
@@ -138,17 +200,13 @@ async function main() {
         return {path: filePath, size, sha256: digest.digest('hex')};
       } finally {await s.close(file.handle).catch(() => s.handles.delete(file.handle));}
     };
-    const liveFiles = async (handle, folder = '/') => {
+    const liveFiles = async handle => {
       const found = [];
-      for (const entry of await filesystem.listDirectory(s, handle, folder, 2048)) {
-        check(safeRootName(entry.name), 'The live save has an unsafe file name');
-        const name = (folder === '/' ? '' : folder) + '/' + entry.name;
-        const file = await filesystem.openFile(s, handle, name);
-        if (!file.result) {
-          await s.close(file.handle).catch(() => s.handles.delete(file.handle));
-          found.push(await liveFileHash(handle, name));
-        } else found.push(...await liveFiles(handle, name));
-      }
+      await walk(handle, '/', {
+        list: (save, folder, limit) => filesystem.listDirectory(s, save, folder, limit)
+      }, {
+        file: async name => { found.push(await liveFileHash(handle, name)); }
+      });
       return found;
     };
     const input = Buffer.alloc(0x48);
@@ -159,22 +217,21 @@ async function main() {
     let opened = await s.ipc('Open save read-only', root, 53, input);
     check(!opened.result && opened.moves.length === 1, 'Save read-only open failed: ' + code(opened.result));
     save = opened.moves[0];
-    const preflight = await liveFileHash(save, savePath);
-    check(preflight.size === backupEntry.size && preflight.sha256 === backupEntry.sha256,
-      'The live file changed after the backup');
+    assertMatchingFiles(backupManifest.entries, await liveFiles(save));
     await s.close(save); save = null;
     opened = await s.ipc('Open save read-write', root, 51, input);
     check(!opened.result && opened.moves.length === 1, 'Save open failed: ' + code(opened.result));
     save = opened.moves[0];
-    const beforeDelete = await liveFileHash(save, savePath);
-    check(beforeDelete.size === backupEntry.size && beforeDelete.sha256 === backupEntry.sha256,
-      'The live file changed before deletion on the write mount');
+    assertMatchingFiles(backupManifest.entries, await liveFiles(save));
     const reply = await pathCall(save, 1, savePath);
-    console.log('delete', savePath, '->', code(reply.canonicalResult ?? reply.result));
-    check(!reply.result, 'Delete failed: ' + code(reply.result));
+    const deleteResult = Number(reply.canonicalResult ?? reply.result) & 0x3fffff;
+    console.log('delete', savePath, '->', code(deleteResult));
+    check(classifyFsResult(deleteResult) === 'deleted',
+      'Delete failed: ' + code(deleteResult));
     const commit = await s.ipc('Commit save data filesystem', save, 10);
     console.log('commit ->', code(commit.result));
-    check(!commit.result, 'Commit failed');
+    check(decideDelete({fsResult: deleteResult,
+      commitResult: Number(commit.result)}).reason !== 'commit-failed', 'Commit failed');
     await s.close(save); save = null;
     opened = await s.ipc('Open save read-only', root, 53, input);
     check(!opened.result && opened.moves.length === 1, 'Save verification open failed: ' + code(opened.result));
@@ -188,6 +245,6 @@ async function main() {
   }
 }
 
-module.exports = {safeRootName, assertPreservedFiles};
+module.exports = {safeRootName, assertPreservedFiles, assertMatchingFiles, verifyBackupFiles};
 if (require.main === module)
   main().catch(error => {console.error('FAILED:', error.message); process.exit(1);});

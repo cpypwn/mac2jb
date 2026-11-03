@@ -1,7 +1,7 @@
 {
   "savekit": {
     "repository": "https://github.com/dougchansan/ns2-savekit",
-    "revision": "3b4446fb8ef044c46052a53a5836c3071891e7f3",
+    "revision": "700814ff37fa8f11f12e77b65dc8a33d421e8dd1",
     "license": "MIT"
   },
   "editor": {

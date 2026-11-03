@@ -89,6 +89,10 @@ bash scripts/test-artemis-http.sh
 "$NODE_BINARY" scripts/gui-savekit-tools.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-savekit-tools.cjs
 "$NODE_BINARY" --test scripts/test-savekit-file-hash.cjs
+"$NODE_BINARY" vendor/ns2-savekit/tests/test_delete_result.cjs
+"$NODE_BINARY" --test vendor/ns2-savekit/tests/test_kit_delete.cjs
+"$NODE_BINARY" vendor/ns2-savekit/tests/test_artemis_http.cjs
+"$NODE_BINARY" --test vendor/ns2-savekit/tests/test_diagnose_ns2jb.cjs
 "$NODE_BINARY" --test scripts/test-convert-elden-ring-save.cjs
 "$NODE_BINARY" --test scripts/test-savekit-title-names.cjs
 "$NODE_BINARY" --test scripts/test-seedsow-held-session.cjs

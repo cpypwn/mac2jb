@@ -8,7 +8,8 @@ const {spawnSync} = require('node:child_process');
 const {request, archive, archiveArgs, selectedArchiveArgs, verifyPull,
   stageFiles, stageRestoredFiles, parseListing, parseInventory, parseTitleNames} =
   require('./gui-savekit-tools.cjs');
-const {assertPreservedFiles, safeRootName} = require('../vendor/ns2-savekit/tools/save-delete-root.cjs');
+const {assertPreservedFiles, assertMatchingFiles, verifyBackupFiles, safeRootName} =
+  require('../vendor/ns2-savekit/tools/save-delete-root.cjs');
 const {listApplications} = require('../vendor/ns2-savekit/tools/list-apps.cjs');
 const {listSystem} = require('../vendor/ns2-savekit/overlay/engine/switch2/ro/ncm.cjs');
 const saveTree = require('../vendor/ns2-savekit/tools/lib/save-tree.cjs');
@@ -159,7 +160,8 @@ test('an arbitrary title reaches backup verification in the staged writer', asyn
   await Promise.all([fs.mkdir(app, {recursive: true}), fs.mkdir(root, {recursive: true}),
     fs.mkdir(backup)]);
   await Promise.all([
-    fs.writeFile(path.join(engine, 'current-acquisition.json'), JSON.stringify({session: 'test'})),
+    fs.writeFile(path.join(engine, 'current-acquisition.json'), JSON.stringify({session: 'test',
+      socketPath: path.join(run, 'missing-memory.sock')})),
     fs.writeFile(path.join(root, 'current-root.json'), JSON.stringify({session: 'test',
       pid: 1, rootHandle: 1})),
     fs.writeFile(path.join(app, 'session.cjs'), 'module.exports = {}'),
@@ -180,6 +182,23 @@ test('an arbitrary title reaches backup verification in the staged writer', asyn
     assert.equal(result.status, 1);
     assert.match(result.stderr, /The backup does not prove the selected title/);
   }
+  const bytes = Buffer.from('test');
+  const entry = {path: '/nora_01.dat', size: bytes.length,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex')};
+  const upstream = {archive: 'space=User type=Account rank=0 index=0 uid=' + uid.slice(0, 16),
+    programId: titleId, uid, space: 1, type: 1, rank: 0, index: 0,
+    files: 1, bytes: bytes.length, partial: false, failed: [], entries: [entry]};
+  await fs.writeFile(path.join(backup, 'nora_01.dat'), bytes);
+  await fs.writeFile(path.join(backup, 'manifest.json'), JSON.stringify(upstream));
+  assert.match(invoke(titleId).stderr, /ENOENT.*missing-memory\.sock/);
+  const legacy = {titleId, selection: {space: 1, type: 1, rank: 0,
+    index: 0, staticId: 0, uid}, archive: upstream.archive, files: 1,
+  entries: [entry]};
+  await fs.writeFile(path.join(backup, 'manifest.json'), JSON.stringify(legacy));
+  assert.match(invoke(titleId).stderr, /ENOENT.*missing-memory\.sock/);
+  await fs.writeFile(path.join(backup, 'manifest.json'), JSON.stringify({...upstream,
+    archive: 'space=User type=Account rank=0 index=0 uid=bbbbbbbbbbbbbbbb'}));
+  assert.match(invoke(titleId).stderr, /The backup does not prove the selected title/);
 });
 
 test('pulled manifests are hash-verified and reject path traversal', async t => {
@@ -200,6 +219,22 @@ test('pulled manifests are hash-verified and reject path traversal', async t => 
     uid: good.selection.uid, space: 1, type: 1, rank: 0, index: 0};
   await fs.writeFile(path.join(folder, 'manifest.json'), JSON.stringify(compatible));
   await verifyPull(folder);
+  const upstream = {archive: good.archive, programId: good.titleId,
+    uid: good.selection.uid, space: 1, type: 1, rank: 0, index: 0,
+    files: good.files, bytes: good.bytes, partial: false, failed: [],
+    entries: good.entries};
+  await fs.writeFile(path.join(folder, 'manifest.json'), JSON.stringify(upstream));
+  const verified = await verifyPull(folder, {titleId: good.titleId, uid: good.selection.uid,
+    selection: good.selection});
+  assert.equal(verified.titleId, good.titleId);
+  assert.deepEqual(verified.selection, good.selection);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(folder, 'manifest.json'), 'utf8')),
+    upstream);
+  await assert.rejects(verifyPull(folder, {selection: {...good.selection, staticId: 7}}),
+    /selected staticId/);
+  const trusted = await verifyPull(folder, {selection: {...good.selection, staticId: 7},
+    trustedStaticId: 7});
+  assert.equal(trusted.selection.staticId, 7);
   for (const change of [{programId: '010042d022aea000'}, {uid: 'b'.repeat(32)}, {type: 3}]) {
     await fs.writeFile(path.join(folder, 'manifest.json'),
       JSON.stringify({...compatible, ...change}));
@@ -269,6 +304,37 @@ test('delete verification catches changed, missing and newly added save files', 
   assert.throws(() => assertPreservedFiles(before, before, '/selected.dat'),
     /still present/);
   assert.equal(safeRootName('save\r.dat'), false);
+});
+
+test('delete preflight requires a complete and unchanged backup', async t => {
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-savekit-delete-'));
+  t.after(() => fs.rm(folder, {recursive: true, force: true}));
+  await fs.writeFile(path.join(folder, 'save.dat'), 'original');
+  const entry = {path: '/save.dat', size: 8,
+    sha256: crypto.createHash('sha256').update('original').digest('hex')};
+  const valid = {files: 1, bytes: 8, partial: false, failed: [], entries: [entry]};
+  await verifyBackupFiles(folder, valid);
+  await assert.rejects(verifyBackupFiles(folder, {...valid, partial: true}), /partial or incomplete/);
+  await assert.rejects(verifyBackupFiles(folder, {...valid, failed: ['/other.dat']}),
+    /partial or incomplete/);
+  await assert.rejects(verifyBackupFiles(folder, {...valid, files: 2}), /partial or incomplete/);
+  await assert.rejects(verifyBackupFiles(folder, {...valid, entries: [entry, entry], files: 2}),
+    /invalid file/);
+  await fs.writeFile(path.join(folder, 'save.dat'), 'modified');
+  await assert.rejects(verifyBackupFiles(folder, valid), /SHA-256 verification/);
+});
+
+test('delete preflight compares every live save file before mutation', () => {
+  const before = [
+    {path: '/selected.dat', size: 3, sha256: 'a'.repeat(64)},
+    {path: '/other.dat', size: 5, sha256: 'b'.repeat(64)}
+  ];
+  assertMatchingFiles(before, before.slice().reverse());
+  assert.throws(() => assertMatchingFiles(before, before.slice(0, 1)), /file list differs/);
+  assert.throws(() => assertMatchingFiles(before,
+    [before[0], {...before[1], sha256: 'c'.repeat(64)}]), /live save differs/);
+  assert.throws(() => assertMatchingFiles(before,
+    [before[0], {path: '/new.dat', size: 5, sha256: 'b'.repeat(64)}]), /live save differs/);
 });
 
 test('a full archive listing keeps each file associated with its archive', () => {

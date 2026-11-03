@@ -928,3 +928,45 @@ Empty archives (allocation > 0, zero files) are real: Pokemon Sword Account
 (8.7 MB allocation), MK8DX Device (68.9 MB), Pokemon Sword Bcat (69.9 MB). The
 index `size` is allocation throughout: MK8DX Account said 108.9 MB and pulled
 80,736 bytes; Mario Kart World said 151.1 MB and pulled 864,156 / 1,248,964 bytes.
+
+## 2026-11-01 21:00: alula's Artemis Launcher runs on hardware from this save path
+
+Installed upstream `switch-artemis-launcher` (commit
+`b9e6de82934dfda1f2c6219aaf305ed980a3d1ba`, tag `v1`) into `010042d022aea000`
+through the existing one-transaction writer, and ran every test the launcher
+offers. Full report, evidence images and limits: `docs/ARTEMIS-LAUNCHER.md`.
+
+Environment: retail Switch 2, firmware **23.0.1**, Seedsow Lullaby Demo **Ver.
+1.0.0**, ns2jb-rpc held session `switch2-rIh6OU`. The demo's `main` was checked
+against upstream's hard-coded offsets before the run (disassembly of the dumped
+`main`, then the live `main @`/`sdk @` leaks).
+
+| step | measurement |
+| --- | --- |
+| backup before the write | 290 files, 4,665,778 bytes, per-file SHA-256 |
+| install (one commit) | 7 files, 104,236 bytes; `commit -> 0x0`; 7/7 read-back hashes match |
+| post-install pull vs backup | 6 added, 1 replaced (`save9999.dat` `d149d71b…` -> `ca472410…`), 289 unchanged |
+| launcher screen | "switch-artemis-launcher by alula", A/B/Y menu |
+| slot A | `main @ 0x2e24206000`, `sdk @ 0x2e581bb000`, `running on: Ounce`, then `hello world` |
+| HTTP server | `GET /status` 200; `POST /eval print("hello world")` -> `hello world`; `_G.n2h.platform` -> `Ounce` |
+| save write/delete via HTTP | 51-byte uniquely named file: written, read back equal, deleted, confirmed gone |
+| close + relaunch | launcher screen again |
+| full power cycle + relaunch | launcher screen again |
+
+Two findings that shape the integration:
+
+- The launcher's `save9999.dat` is **not** upstream's `common/save9999.dat` (a
+  version-1002 container made from the author's own save). The boot trigger is
+  rebuilt from the backup's own suspend save with `artemis-save.py launch`, so
+  the installed file keeps the game's container version (1003 here). `saveg.dat`
+  and `system.dat` are not written at all.
+- The **startup** minus-button bypass (`e:isDown(114)` in `inject.iet`, meant to
+  skip a bad `<name>2.lua`) did **not** trigger on demo 1.0.0: two boots with
+  minus held continuously through the resume still loaded `inject2.lua`. The
+  payload half works (minus at the launcher menu prints `[!] RECOVERY MODE`).
+  Treat the update fail-safe as unverified and keep a backup as the rollback.
+
+`tools/artemis-launcher.cjs` and the kit's **Install alula Artemis Launcher** entry make the install reproducible:
+pinned download with per-file hashes, deterministic staging manifest, add/replace
+conflict reporting, backup + `--confirm` required, pull-after-write verification,
+and `restore` for the boot trigger plus the six added files.

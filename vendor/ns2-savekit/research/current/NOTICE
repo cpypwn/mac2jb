@@ -19,6 +19,17 @@ Seedsow Lua Editor -- reference save and format documentation, NOT bundled.
     tools/indexed_save.py, with the index field order corrected and relocation
     applied on write.
 
+switch-artemis-launcher -- alula's upstream launcher, NOT vendored.
+    https://github.com/alula/switch-artemis-launcher
+    By alula. Its scripts (core.lua, inject.iet, inject.lua, http.lua,
+    exploita.lua), the Proggy Clean TT font it redistributes (by Tristan
+    Grimmer), and its update/recovery design are downloaded from upstream at
+    install time by tools/artemis-launcher.cjs. They are not stored in this
+    repository, and the installer verifies every file against a recorded
+    SHA-256. Upstream's own credits: n0llptr/remote_lua_loader and
+    Gezine/ArtemisLuaLoader. The tool writes upstream files into a game save on
+    the user's console; it does not relicense them.
+
 titledb -- title names, fetched at run time, NOT bundled.
     https://github.com/blawar/titledb
     By Blake Warner. Licensed MIT (Copyright (c) 2019 Blake Warner).

@@ -344,7 +344,14 @@ async function main() {
         await pull(openHandle, target, state);
         incomplete += state.failed.length;
         await fs.writeFile(path.join(target, 'manifest.json'),
-          JSON.stringify({archive: archiveText(archive), files: state.files,
+          JSON.stringify({archive: archiveText(archive),
+            // Identity for backup validation: the truncated uid in `archive` is
+            // for humans only. These fields are what a restore compares.
+            programId: programId.toString(16).padStart(16, '0'),
+            uid: archive.uid.toString('hex'),
+            space: archive.space, type: archive.type, rank: archive.rank,
+            index: archive.index,
+            files: state.files,
             bytes: state.bytes, partial: state.failed.length > 0,
             failed: state.failed, entries: state.entries}, null, 2) + '\n');
         if (state.failed.length)

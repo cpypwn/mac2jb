@@ -223,17 +223,19 @@ function safeRootName(name) {
     Buffer.byteLength(name, 'utf8') < 0x301;
 }
 function validateArchive(manifest, expected = {}) {
-  const {titleId: expectedTitle, uid: expectedUid, selection = {}} = expected;
-  check(titlePattern.test(manifest.titleId) &&
-    (!expectedTitle || manifest.titleId === expectedTitle),
+  const {titleId: expectedTitle, uid: expectedUid, selection = {}, trustedStaticId = 0} = expected;
+  const id = manifest.titleId ?? manifest.programId;
+  check(titlePattern.test(id) && (!expectedTitle || id === expectedTitle),
   'The pulled save belongs to a different program ID.');
-  const selected = manifest.selection;
+  const selected = manifest.selection ?? {uid: manifest.uid, space: manifest.space,
+    type: manifest.type, rank: manifest.rank, index: manifest.index,
+    staticId: trustedStaticId};
   check(selected && typeof selected === 'object' && !Array.isArray(selected) &&
     Number.isInteger(selected.space) && Number.isInteger(selected.type) &&
     Number.isInteger(selected.rank) && Number.isInteger(selected.index) &&
     Number.isSafeInteger(selected.staticId) && uidPattern.test(selected.uid),
   'The pulled save has incomplete archive identity.');
-  if (Object.hasOwn(manifest, 'programId'))
+  if (Object.hasOwn(manifest, 'programId') && Object.hasOwn(manifest, 'titleId'))
     check(manifest.programId === manifest.titleId,
       'The pulled save has conflicting program IDs.');
   for (const key of ['uid', 'space', 'type', 'rank', 'index'])
@@ -248,10 +250,11 @@ function validateArchive(manifest, expected = {}) {
     `type=${types[selected.type] ?? selected.type} rank=${selected.rank} ` +
     `index=${selected.index} uid=${selected.uid.slice(0, 16)}`;
   check(manifest.archive === archiveLabel, 'The archive identity differs from its manifest.');
+  return {titleId: id, selection: selected};
 }
 async function verifyPull(directory, expected = {}) {
   const manifest = JSON.parse(await fsp.readFile(path.join(directory, 'manifest.json'), 'utf8'));
-  validateArchive(manifest, expected);
+  const identity = validateArchive(manifest, expected);
   check(manifest.partial !== true && (!manifest.failed || manifest.failed.length === 0) &&
     Array.isArray(manifest.entries) && manifest.entries.length === manifest.files &&
     manifest.files >= 0 && manifest.files <= 65536 && typeof manifest.archive === 'string',
@@ -288,7 +291,7 @@ async function verifyPull(directory, expected = {}) {
   await walk(directory);
   check(actual.length === seen.size && actual.every(name => seen.has(name)),
     'The save export contains files missing from its manifest.');
-  return manifest;
+  return {...manifest, ...identity};
 }
 async function privateFolder(prefix) {
   const parent = path.join(root, 'savekit-exports');
@@ -308,14 +311,16 @@ async function pull(run, value, all = false) {
     check(result.code === 0 && !result.signal, 'The save pull did not finish. Keep the partial export and restart the console.');
     if (!all) {
       const manifest = await verifyPull(folder, {titleId: value.titleId, uid: value.uid,
-        selection: value.archive ?? archive(undefined)});
+        selection: value.archive ?? archive(undefined),
+        trustedStaticId: value.archive?.staticId ?? 0});
       return {folder, files: manifest.files, bytes: manifest.bytes, manifests: [manifest]};
     }
     const subdirs = (await fsp.readdir(folder, {withFileTypes: true})).filter(item => item.isDirectory());
     check(subdirs.length > 0 && subdirs.length <= 256, 'No matching save archive was exported.');
     const manifests = [];
     for (const item of subdirs) manifests.push(await verifyPull(path.join(folder, item.name),
-      {titleId: value.titleId, uid: value.uid, selection: value.archiveSelection}));
+      {titleId: value.titleId, uid: value.uid, selection: value.archiveSelection,
+        trustedStaticId: value.archive?.staticId ?? 0}));
     return {folder, files: manifests.reduce((n, item) => n + item.files, 0),
       bytes: manifests.reduce((n, item) => n + item.bytes, 0), manifests};
   } catch (error) {

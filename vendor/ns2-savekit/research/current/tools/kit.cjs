@@ -602,9 +602,44 @@ async function replaceFromDirectory(session, title, uid, backup) {
   await writeFiles(session, title, uid, backup, manifest);
 }
 
+// alula's upstream launcher. Separate from installLauncher() above on purpose:
+// that one writes our ns2jb payload, this one writes the upstream Artemis
+// Launcher, and both take save9999.dat. The installer does the staging, the
+// conflict check and the pull-after-write verification itself; the kit only
+// takes the backup, shows the plan and asks for the write authorization.
+async function installAlula(session, title, uid, backup) {
+  if (!ALULA_TITLES.has(title)) {
+    console.log('alula Artemis Launcher does not support ' + title + ' (demo titles only)');
+    return;
+  }
+  if (!backup) {
+    console.log('No backup yet: pulling one now; the launcher is built from it.');
+    backup = await doBackup(session, title, uid);
+    if (!backup) return;
+  }
+  const args = ['install', session, '--title', title, '--uid', uid, '--backup', backup];
+  echoCommand('node tools/artemis-launcher.cjs ' + args.map(quote).join(' ') + ' --dry-run');
+  const plan = run('artemis-launcher.cjs', [...args, '--dry-run'], {stdio: 'inherit'});
+  if (!plan.ok) {
+    console.log('\nplan failed - nothing was written');
+    return;
+  }
+  if (!(await confirm('Proceed? This commits one transaction'))) return;
+  echoCommand('node tools/artemis-launcher.cjs ' + args.map(quote).join(' ') + ' --confirm');
+  const result = run('artemis-launcher.cjs', [...args, '--confirm'], {stdio: 'inherit'});
+  console.log(result.ok ? '\ninstalled and verified' :
+    '\ninstall failed - see the message above; the backup is intact');
+  saveOpDone();
+}
+
 // Artemis saves are recognised by their own file names, which the listing has
 // already shown once: system.dat/saveg.dat (BOWX/BOWG) plus the slot files.
 const ARTEMIS_FILES = /\/(system\.dat|saveg\.dat|save[0-9]{4}\.dat)$/im;
+
+// alula's upstream launcher supports these two demo titles only; its README says
+// the full games are not supported. Keep this identical to
+// tools/artemis-launcher.cjs, which refuses anything else before it writes.
+const ALULA_TITLES = new Set(['010042d022aea000', '010012900d38a000']);
 
 // 'all' only makes sense for a backup. Any other action needs one account, so it
 // resolves to the first account that actually has a save - never to the literal
@@ -669,6 +704,13 @@ async function titleLoop(session, title, uid) {
       {label: 'Delete a file (optional)                     [save op]', value: 'delete'},
       {label: 'Verify: compare the save with what we wrote  [save op]', value: 'verify'},
       {label: 'Back to the title list', value: 'back'});
+    if (ALULA_TITLES.has(title)) {
+      // A separate installer, not a replacement for option 4: option 4 writes
+      // this repository's ns2jb launcher, this writes alula's Artemis Launcher.
+      // Both own save9999.dat, so they are alternatives, not a pair.
+      items.splice(items.length - 1, 0,
+        {label: 'Install alula Artemis Launcher               [save op]', value: 'alula'});
+    }
     const task = await choose(titles.label(title) +
       (artemis ? '\n  Artemis save detected' : '\n  no Artemis files in this save') +
       '\n  (each entry opens the save once; several in a row usually work - restart if one fails)', items);
@@ -694,6 +736,8 @@ async function titleLoop(session, title, uid) {
       await replaceFromDirectory(session, title, uid, backup);
     } else if (task.value === 'launcher') {
       await installLauncher(session, title, uid, backup);
+    } else if (task.value === 'alula') {
+      await installAlula(session, title, uid, backup);
     } else if (task.value === 'editor') {
       await installEditor(session, title, uid, backup);
     } else if (task.value === 'delete') {
@@ -704,10 +748,80 @@ async function titleLoop(session, title, uid) {
   }
 }
 
+// Artemis HTTP is a different transport: the console's game is running the
+// launcher's own HTTP server, not an ns2jb run folder. Only the four upstream
+// endpoints are used, and only this title's save is reachable.
+async function httpMenu(initialHost) {
+  let host = initialHost;
+  if (!host) host = await askDefault('Console IP running the Artemis Launcher (blank = back)');
+  if (!host) return;
+  for (;;) {
+    const task = await choose('Artemis HTTP  ' + host + '  (no ns2jb session)', [
+      {label: 'Health: status, Lua version, platform', value: 'health'},
+      {label: 'Run Lua code', value: 'eval'},
+      {label: 'Run a local Lua file', value: 'evalfile'},
+      {label: 'Stat a save file', value: 'stat'},
+      {label: 'Download a save file (hex /eval reads)', value: 'get'},
+      {label: 'Upload a save file', value: 'put'},
+      {label: 'Delete a save file', value: 'rm'},
+      {label: 'Backup known files (explicit-file, not complete)', value: 'backup'},
+      {label: 'Discover Artemis servers on a subnet', value: 'discover'},
+      {label: 'Change console IP', value: 'host'},
+      {label: 'Back to transport selection', value: 'back'},
+    ]);
+    if (closed || !task || task.value === 'back') return;
+    const call = (args) => run('artemis-http.cjs', args, {stdio: 'inherit'});
+    if (task.value === 'health') {
+      call(['health', '--host', host]);
+    } else if (task.value === 'eval' || task.value === 'evalfile') {
+      const value = task.value === 'eval'
+        ? await askDefault('Lua code (one line)')
+        : await askDefault('Local Lua file');
+      if (!value) continue;
+      call(['eval', '--host', host, task.value === 'eval' ? '--code' : '--file', value]);
+    } else if (task.value === 'stat') {
+      const target = await askDefault('Save path (e.g. save:/core.lua)');
+      if (target) call(['stat', '--host', host, '--path', target]);
+    } else if (task.value === 'get') {
+      const target = await askDefault('Save path');
+      const out = target ? await askDefault('Local output file') : '';
+      if (target && out) call(['get', '--host', host, '--path', target, '--out', out]);
+    } else if (task.value === 'put') {
+      const target = await askDefault('Save path (e.g. save:/notes.txt)');
+      const input = target ? await askDefault('Local input file') : '';
+      if (!target || !input) continue;
+      const force = await confirm('Overwrite if the file exists?');
+      call(['put', '--host', host, '--path', target, '--in', input].concat(force ? ['--force'] : []));
+    } else if (task.value === 'rm') {
+      const target = await askDefault('Save path to delete');
+      if (target && await confirm('Delete ' + target + ' from this save?')) {
+        call(['rm', '--host', host, '--path', target]);
+      }
+    } else if (task.value === 'backup') {
+      const out = await askDefault('Local backup directory');
+      if (out) call(['backup', '--host', host, '--out', out]);
+    } else if (task.value === 'discover') {
+      const subnet = await askDefault('Subnet (e.g. 192.168.1)');
+      if (subnet) call(['discover', '--subnet', subnet]);
+    } else if (task.value === 'host') {
+      host = await askDefault('Console IP');
+      if (!host) return;
+    }
+  }
+}
+
 async function main() {
   console.log('ns2-savekit - guided save data access for Switch 2');
   console.log(NOTICE + '\n');
-  const explicit = process.argv[2];
+  const httpAt = process.argv.indexOf('--http');
+  if (httpAt >= 0) {
+    const value = process.argv[httpAt + 1];
+    const host = value && !value.startsWith('--') ? value : null;
+    await httpMenu(host);
+    rl.close();
+    return;
+  }
+  const explicit = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : null;
   let session = explicit ? path.resolve(explicit) : await pickSession();
   if (!session) return;
   console.log('session: ' + session + '\n');
