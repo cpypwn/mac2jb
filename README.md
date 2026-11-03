@@ -524,5 +524,6 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 - [Freedoom contributors](https://freedoom.github.io/) — [Freedoom: Phase 1](https://github.com/freedoom/freedoom), free game data retained with the BlitBun Mac adaptation source.
 - [Khronos Group](https://github.com/KhronosGroup) — [glslang](https://github.com/KhronosGroup/glslang) and [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools), shader compilation and validation.
 - [Electron](https://www.electronjs.org/) — the Mac runtime referenced by the VacooTube adaptation source.
+- [Northernside](https://github.com/Northernside) — [PR #9](https://github.com/cpypwn/mac2jb/pull/9), measured keystroke timing for the bootstrap ETA.
 
 see the bundled notices, licenses and upstream documentation for attribution and reuse terms.
