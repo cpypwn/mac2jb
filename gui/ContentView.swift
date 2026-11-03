@@ -1317,7 +1317,11 @@ struct ContentView: View {
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "square.grid.3x3.fill").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                Text("MintBrew").font(.system(size: 13, weight: .semibold))
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("MintBrew").font(.system(size: 13, weight: .semibold))
+                    Text("Open the homebrew library on your Switch")
+                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                }
                 Spacer(minLength: 8)
                 Button("Open MintBrew") {
                     model.launchMintBrew(accountAddons: account.addonURLs,
@@ -1511,7 +1515,7 @@ struct ContentView: View {
                     : model.postRun.heldConfirmed ? "Your Switch is connected. Choose one app for this session." : "Waiting for the host to verify the Switch and hold RPC open.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
             homebrewRow(icon: "square.grid.3x3.fill", title: "MintBrew",
-                        description: nil,
+                        description: "Open the homebrew library on your Switch",
                         actionTitle: model.postRun.homebrewAttempted && model.homebrewApp == .mintBrew
                             ? homebrewActionTitle : "Launch MintBrew",
                         enabled: model.canLaunchHomebrew, action: {
