@@ -88,6 +88,8 @@ bash scripts/test-artemis-update.sh
 bash scripts/test-artemis-http.sh
 "$NODE_BINARY" scripts/gui-savekit-tools.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-savekit-tools.cjs
+"$NODE_BINARY" --test scripts/test-savekit-file-hash.cjs
+"$NODE_BINARY" --test scripts/test-convert-elden-ring-save.cjs
 "$NODE_BINARY" --test scripts/test-savekit-title-names.cjs
 "$NODE_BINARY" --test scripts/test-seedsow-held-session.cjs
 "$NODE_BINARY" --test scripts/test-custom-rpc-package.cjs scripts/test-gui-homebrew.cjs
@@ -163,6 +165,7 @@ PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" "$PAYLOAD/integra
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/hello.js"
 "$PAYLOAD/mac2jb-civswitch-hid" --payload "$PAYLOAD/integrations/civswitch/payload.txt" --dry-run
 "$NODE_BINARY" "$PAYLOAD/scripts/check-savekit-research.cjs" --root "$PAYLOAD" --compare "$ROOT"
+"$NODE_BINARY" --check "$PAYLOAD/scripts/convert-elden-ring-save.cjs"
 
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/HBLauncher/apps"
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/GPUBrewLauncher/apps"

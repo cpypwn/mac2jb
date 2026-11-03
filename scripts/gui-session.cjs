@@ -75,7 +75,6 @@ function validSavekitToolEvent(event, action, root) {
   if (event.type === 'titles') return action === 'titles' && Array.isArray(event.titles) &&
     event.titles.length <= 2048 && new Set(event.titles).size === event.titles.length &&
     event.titles.every(id => typeof id === 'string' && /^[a-f0-9]{16}$/.test(id)) &&
-    Array.isArray(event.writable) && event.writable.every(id => event.titles.includes(id)) &&
     (event.names === undefined || event.names && typeof event.names === 'object' &&
       !Array.isArray(event.names) && Object.keys(event.names).length <= 2048 &&
       Object.entries(event.names).every(([id, name]) => event.titles.includes(id) &&

@@ -48,7 +48,7 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. download `mac2jb-v0.7.1-macos-arm64.zip`, extract it and open `mac2jb.app`.
+1. download `mac2jb-v0.7.2-macos-arm64.zip`, extract it and open `mac2jb.app`.
 2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
 3. click install & load driver… and approve the administrator prompt.
 4. if prompted, open system settings → privacy & security and allow the driver.
@@ -261,7 +261,8 @@ installed; select an archive there to fill its title, account and archive fields
 the installed-title picker shows names when available. enter a title ID manually
 if needed. read-only backups work for any selected title. after a save action
 finishes, mac2jb checks the held rpc connection before offering another save.
-each write, delete or restore makes a new verified backup. repeated save opens
+each write, delete or restore backs up an existing save and verifies it before
+changing files. repeated save opens
 can interrupt the host; if rpc is lost, restart the Switch and start a fresh
 session.
 
@@ -276,15 +277,30 @@ Princess 2 trial title ID is `010012900D38A000` if it is absent from the
 installed list. this read-only step does not install a Lua payload.
 
 the SaveKit panel can compare a live save with an export, write a folder of flat
-save files, or delete one root file for the supported research titles. it can
-also restore a verified mac2jb export to any selected title's Account or Device
-archive at rank 0 and index 0. restore replaces files in the export and keeps
-other live files. every write, delete or restore requires confirmation and makes
-a verified backup of the current save first. the new restore control has passed
-offline checks and still needs console testing. the separate **SaveKit research
-sources** catalog keeps the previous research utilities and adds the current
+save files, or delete one root file for any selected title with an accessible
+save archive. it can also restore a verified mac2jb export to the selected
+title's Account or Device archive at rank 0 and index 0. restore replaces files
+in the export and keeps other live files. every write, delete or restore
+requires confirmation and a verified backup when a current save exists.
+large files are verified in chunks after writing. the separate **SaveKit
+research sources** catalog keeps the previous research utilities and adds the current
 upstream save and Artemis tools. it provides source paths and syntax checks;
 utilities with hardware or local path requirements are run manually after review.
+
+### elden ring save conversion
+
+**Elden Ring save conversion** is available in developer options on the Mac.
+choose a PC `.sl2` save and a complete Elden Ring Switch 2 SaveKit backup folder,
+including its `manifest.json`. select the PC character and the Switch character
+slot to replace, then click **Convert save**. mac2jb creates a new folder with
+the converted character and profile files; it leaves both source saves intact.
+
+to install the converted character, close Elden Ring on the Switch and open
+SaveKit in a verified held rpc session. select Elden Ring and its account,
+choose the converted folder with **Choose local save folder…**, then click
+**Back up and write save**. SaveKit backs up the current Switch save and
+verifies the written files. keep the original complete SaveKit export for
+recovery.
 
 the experimental **SD card files** tool uses a verified held FS rpc session
 and [Super File Bros.](https://github.com/byizmysh/super-file-bros) to expose

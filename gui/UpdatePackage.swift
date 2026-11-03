@@ -90,7 +90,7 @@ struct UpdateRelease: Codable {
               assets.filter({ $0.name == sumsName }).count == 1,
               let archive = assets.first(where: { $0.name == appName }),
               let checksums = assets.first(where: { $0.name == sumsName }),
-              archive.size > 0, archive.size <= 200 * 1024 * 1024,
+              archive.size > 0, archive.size <= UpdatePackage.maximumArchiveBytes,
               checksums.size > 0, checksums.size <= 16384 else {
             throw UpdateFailure("This release does not contain a supported Mac app and checksums.")
         }
@@ -172,6 +172,7 @@ struct UpdateRequirement {
 
 enum UpdatePackage {
     static let bundleID = "io.github.cpypwn.mac2jb.demo"
+    static let maximumArchiveBytes = 512 * 1024 * 1024
 
     static func sha256(_ url: URL) throws -> String {
         let handle = try FileHandle(forReadingFrom: url)
@@ -211,7 +212,7 @@ enum UpdatePackage {
             return Int(data[n]) | Int(data[n + 1]) << 8
         }
         func u32(_ n: Int) throws -> Int { try u16(n) | (u16(n + 2) << 16) }
-        guard data.count >= 22, data.count <= 200 * 1024 * 1024 else { throw bad() }
+        guard data.count >= 22, data.count <= maximumArchiveBytes else { throw bad() }
         var end: Int?
         for offset in stride(from: data.count - 22, through: max(0, data.count - 65557), by: -1) {
             if try u32(offset) == 0x06054b50, try offset + 22 + u16(offset + 20) == data.count { end = offset; break }

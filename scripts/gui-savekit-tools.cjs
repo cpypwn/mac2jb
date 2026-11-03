@@ -10,10 +10,6 @@ const root = path.resolve(__dirname, '..');
 const tools = path.join(root, 'vendor/ns2-savekit/tools');
 const uidPattern = /^[a-f0-9]{32}$/;
 const titlePattern = /^[a-f0-9]{16}$/;
-const writableTitles = new Set([
-  '010012900d38a000', '01002eb00ce48000', '010042d022aea000',
-  '01005eb012fe2000', '0100ee5021c9e000'
-]);
 const spaces = {0: 'System', 1: 'User', 2: 'SdSystem', 3: 'Temporary', 4: 'SdUser',
   100: 'ProperSystem', 101: 'SafeMode', 102: 'ProperUser'};
 const types = {0: 'System', 1: 'Account', 2: 'Bcat', 3: 'Device', 4: 'Temporary',
@@ -90,9 +86,6 @@ function request(value) {
     check(value.all === undefined || typeof value.all === 'boolean', 'Invalid all-archives option.');
     parsed.all = value.all === true;
     check(!parsed.all || value.action !== 'filetime', 'Timestamp probes need one archive.');
-  }
-  if (value.action === 'write' || value.action === 'delete') {
-    check(writableTitles.has(parsed.titleId), 'Writing this title is not allowed by savekit.');
   }
   if (value.action === 'write') {
     check(typeof value.sourceFolder === 'string' && path.isAbsolute(value.sourceFolder),
@@ -464,7 +457,7 @@ async function execute(runDirectory, raw, emitEvent = emit) {
       const result = await runTool('save-write-stage.cjs',
         [run, value.titleId, value.uid, backupPath, manifestPath,
           '--space', String(value.archive.space), '--type', String(value.archive.type),
-          '--restore', '--confirm-restore', '--allow-title', value.titleId], 1800000);
+          '--restore', '--confirm-restore'], 1800000);
       check(result.code === 0 && !result.signal &&
         result.stdout.includes('verified ' + files.length + ' written files after commit'),
       'The restore was not fully verified. Keep the current-save backup and restart the console.');
@@ -515,7 +508,7 @@ async function execute(runDirectory, raw, emitEvent = emit) {
       error.unsafe = true;
       throw error;
     }
-    emitEvent('titles', {titles, names, writable: titles.filter(id => writableTitles.has(id)),
+    emitEvent('titles', {titles, names,
       message: titles.length + ' installed application(s) found'});
     emitEvent('complete', {action: value.action, message: 'Installed title list ready'});
     return;
@@ -666,7 +659,7 @@ async function main(args = process.argv.slice(2)) {
 
 module.exports = {request, archive, archiveArgs, selectedArchiveArgs, validRun,
   validateArchive, verifyPull, stageFiles, stageRestoredFiles, parseListing, parseInventory,
-  parseTitleNames, execute, writableTitles};
+  parseTitleNames, execute};
 if (require.main === module)
   main().catch(error => {emit('failed', {message: String(error.message).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 512),
     ...(error.unsafe ? {unsafe: true} : {}),

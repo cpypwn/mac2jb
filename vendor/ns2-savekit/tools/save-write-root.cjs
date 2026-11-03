@@ -9,6 +9,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const net = require('node:net');
+const {hashFile} = require('./lib/verified-file-hash.cjs');
 
 function request(socketPath, command) {
   return new Promise((resolve, reject) => {
@@ -60,22 +61,8 @@ async function main() {
   check(uid.length === 16, 'uid must be the raw 16-byte AccountUid');
   const data = await fs.readFile(localFile);
 
-  // --- guardrails: disposable titles only, user space only, add-only, backed up ---
-  const WHITELIST = new Set([
-    '010012900d38a000', // Nora to Oujo to Noraneko Heart 2 trial
-    '01002eb00ce48000',
-    '010042d022aea000', // Seedsow Lullaby demo
-    '01005eb012fe2000', // Wagamama High Spec trial
-  ]);
-  // Optional local allowlist; the built-in list stays as the floor.
-  try {
-    const extra = JSON.parse(require('node:fs').readFileSync(
-      path.join(__dirname, '..', 'config', 'titles.json'), 'utf8'));
-    for (const entry of extra.write || []) WHITELIST.add(String(entry.id).toLowerCase());
-  } catch { /* no local allowlist: use the built-in one */ }
   const idText = programId.toString(16).padStart(16, '0');
-  check(WHITELIST.has(idText),
-    'Refusing to write to ' + idText + ': not a whitelisted disposable title');
+  check(/^[a-f0-9]{16}$/.test(idText), 'Use a 16-digit program ID');
   const target = path.posix.basename(savePath);
   check(target && savePath === '/' + target && !target.includes('/'),
     'Only a new file at the save root is allowed');
@@ -209,13 +196,17 @@ async function main() {
         continue;
       }
       const size = Number(await filesystem.fileSize(s, opened.handle));
-      const bytes = await filesystem.readFile(s, opened.handle, 0, size);
-      await s.close(opened.handle).catch(() => s.handles.delete(opened.handle));
+      let got;
+      try {
+        got = await hashFile(s, filesystem, opened.handle, size);
+      } finally {
+        await s.close(opened.handle).catch(() => s.handles.delete(opened.handle));
+      }
       let expectedHash = null;
       if (expected[entry.name]) expectedHash = sha(await fs.readFile(expected[entry.name]));
-      const match = expectedHash ? (expectedHash === sha(bytes) ? 'ok' : 'DIFFERS') : 'n/a';
-      console.log(`  ${entry.name.padEnd(14)} ${String(size).padStart(7)}  ${sha(bytes).slice(0, 16)}  ${
-        entry.name === savePath.replace(/^\//, '') ? '(' + (sha(bytes) === sha(data) ? 'written ok' : 'WRITE MISMATCH') + ')' : ''} ${match}`);
+      const match = expectedHash ? (expectedHash === got ? 'ok' : 'DIFFERS') : 'n/a';
+      console.log(`  ${entry.name.padEnd(14)} ${String(size).padStart(7)}  ${got.slice(0, 16)}  ${
+        entry.name === savePath.replace(/^\//, '') ? '(' + (got === sha(data) ? 'written ok' : 'WRITE MISMATCH') + ')' : ''} ${match}`);
     }
   } finally {
     if (save !== null) await s.close(save).catch(() => s.handles.delete(save));

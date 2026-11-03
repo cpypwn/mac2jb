@@ -235,9 +235,16 @@ import AppKit
         }
         try rejects("oversized archive rejected") {
             _ = try release { row in
-                var assets = row["assets"] as! [[String: Any]]; assets[0]["size"] = 300 * 1024 * 1024; row["assets"] = assets
+                var assets = row["assets"] as! [[String: Any]]
+                assets[0]["size"] = UpdatePackage.maximumArchiveBytes + 1
+                row["assets"] = assets
             }.validated()
         }
+        try expect(try release { row in
+            var assets = row["assets"] as! [[String: Any]]
+            assets[0]["size"] = 350 * 1024 * 1024
+            row["assets"] = assets
+        }.validated().archive.size == 350 * 1024 * 1024, "published-size archive accepted")
         try rejects("missing digest rejected") { _ = try UpdateRelease.digest(nil) }
         let digest = String(repeating: "a", count: 64), filename = "mac2jb-v1.2.3-macos-arm64.zip"
         try expect(UpdatePackage.checksum(in: Data("\(digest)  \(filename)\n".utf8), filename: filename) == digest, "checksum entry parsed")

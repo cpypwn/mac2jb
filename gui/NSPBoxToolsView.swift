@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor final class NSPBoxModel: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var progress: Double?
-    @Published private(set) var status = "Choose an extracted game snapshot"
+    @Published private(set) var status = ""
     @Published private(set) var resultURL: URL?
     @Published private(set) var log = ""
 
@@ -209,8 +209,10 @@ struct NSPBoxToolsView: View {
             }
             if let progress = model.progress { ProgressView(value: progress).tint(Mac2jbTheme.mint) }
             else if model.isRunning { ProgressView().progressViewStyle(.linear) }
-            Text(model.status).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
+            if !model.status.isEmpty {
+                Text(model.status).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if !model.log.isEmpty {
                 DisclosureGroup("Packaging log") {
                     ScrollView {

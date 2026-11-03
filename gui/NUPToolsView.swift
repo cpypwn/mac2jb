@@ -8,7 +8,7 @@ import SwiftUI
     @Published var nupURL: URL?
     @Published private(set) var sourceReady = false
     @Published private(set) var busy = false
-    @Published private(set) var status = "Get the pinned upstream NUP source to begin"
+    @Published private(set) var status = ""
     @Published private(set) var output = ""
 
     private var process: Process?
@@ -110,7 +110,7 @@ import SwiftUI
             }
         } else if action == "status" {
             sourceReady = false
-            status = "Get the pinned upstream NUP source to begin"
+            status = ""
         } else {
             status = "NUP \(action) failed"
         }
@@ -136,8 +136,6 @@ struct NUPToolsView: View {
                     }
                 }
             }
-            Text("The source is fetched from upstream only when requested; mac2jb verifies the pinned revision before running it")
-                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
             Divider()
             HStack(spacing: 10) {
                 Button("Choose dump folder…") { chooseDirectory { tool.dumpURL = $0 } }
@@ -162,7 +160,9 @@ struct NUPToolsView: View {
             }
             .disabled(tool.busy || !tool.sourceReady || tool.nupURL == nil)
             if tool.busy { Button("Stop NUP tool") { tool.cancel() } }
-            Text(tool.status).font(.system(size: 11, weight: .semibold))
+            if !tool.status.isEmpty {
+                Text(tool.status).font(.system(size: 11, weight: .semibold))
+            }
             if !tool.output.isEmpty {
                 ScrollView {
                     Text(tool.output)

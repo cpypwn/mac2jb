@@ -89,9 +89,6 @@ function localNames() {
     for (const entry of config.names ? Object.entries(config.names) : []) {
       overrides[String(entry[0]).toLowerCase()] = entry[1];
     }
-    for (const entry of config.write || []) {
-      if (entry.name) overrides[String(entry.id).toLowerCase()] = entry.name;
-    }
   } catch { /* no local names */ }
   return overrides;
 }

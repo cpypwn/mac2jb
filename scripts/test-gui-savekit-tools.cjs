@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const {request, archive, archiveArgs, selectedArchiveArgs, verifyPull,
-  stageFiles, stageRestoredFiles, parseListing, parseInventory, parseTitleNames, writableTitles} =
+  stageFiles, stageRestoredFiles, parseListing, parseInventory, parseTitleNames} =
   require('./gui-savekit-tools.cjs');
 const {assertPreservedFiles, safeRootName} = require('../vendor/ns2-savekit/tools/save-delete-root.cjs');
 const {listApplications} = require('../vendor/ns2-savekit/tools/list-apps.cjs');
@@ -105,12 +105,10 @@ test('developer requests keep title, account and archive parameters bounded', ()
       index: 0, staticId: 0}, all: false});
   assert.deepEqual(archiveArgs(archive({space: 4, type: 3, rank: 1, index: 4})),
     ['--space', '4', '--type', '3', '--rank', '1', '--index', '4', '--static-id', '0']);
-  assert.ok(writableTitles.has(titleId));
-  assert.ok(writableTitles.has('01002eb00ce48000'));
   assert.equal(request({action: 'write', titleId: '01002eb00ce48000', uid,
     sourceFolder: '/tmp/nora1', allowReplace: true}).titleId, '01002eb00ce48000');
-  assert.throws(() => request({action: 'write', titleId: '0100c9100b06a000', uid,
-    sourceFolder: '/tmp/demo'}), /not allowed/);
+  assert.equal(request({action: 'write', titleId: '0400f5802371e000', uid,
+    sourceFolder: '/tmp/elden-ring'}).titleId, '0400f5802371e000');
   assert.throws(() => request({action: 'backup', titleId, uid: 'zz'}), /account ID/);
   const sweep = request({action: 'backup', titleId, uid, all: true});
   assert.deepEqual(sweep.archiveSelection, {});
@@ -146,13 +144,13 @@ test('developer requests keep title, account and archive parameters bounded', ()
     sourceFolder: '/tmp/backup', confirmRestore: true, archive: {rank: 1}}), /rank 0/);
 });
 
-test('nora 1 write is accepted by both the gui and the staged writer', async t => {
-  const titleId = '01002eb00ce48000';
+test('an arbitrary title reaches backup verification in the staged writer', async t => {
+  const titleId = '0400f5802371e000';
   const uid = 'a'.repeat(32);
   assert.equal(request({action: 'write', titleId, uid, sourceFolder: '/tmp/nora1'}).titleId,
     titleId);
 
-  const run = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-savekit-allowlist-'));
+  const run = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-savekit-title-'));
   t.after(() => fs.rm(run, {recursive: true, force: true}));
   const engine = path.join(run, 'switch2');
   const app = path.join(engine, 'app');
@@ -177,12 +175,11 @@ test('nora 1 write is accepted by both the gui and the staged writer', async t =
   const writer = path.join(__dirname, '../vendor/ns2-savekit/tools/save-write-stage.cjs');
   const invoke = id => spawnSync(process.execPath,
     [writer, run, id, uid, backup, manifest], {encoding: 'utf8'});
-  const allowed = invoke(titleId);
-  assert.equal(allowed.status, 1);
-  assert.match(allowed.stderr, /The backup does not prove the selected title/);
-  const denied = invoke('0100000000000000');
-  assert.equal(denied.status, 1);
-  assert.match(denied.stderr, /not a whitelisted disposable title/);
+  for (const id of [titleId, '0100000000000000']) {
+    const result = invoke(id);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /The backup does not prove the selected title/);
+  }
 });
 
 test('pulled manifests are hash-verified and reject path traversal', async t => {

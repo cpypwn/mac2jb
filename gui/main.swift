@@ -46,6 +46,7 @@ if CommandLine.arguments.contains("--self-test") {
             ("homebrew/python/bin/python3", ["integrations/civswitch-control-center/verify-source.py"]),
             ("node", ["scripts/gui-savekit.cjs", "--self-test"]),
             ("node", ["scripts/gui-savekit-tools.cjs", "--self-test"]),
+            ("node", ["--check", "scripts/convert-elden-ring-save.cjs"]),
             ("node", ["scripts/check-savekit-research.cjs"]),
             ("node", ["--check", "scripts/usb-controllers.cjs"]),
             ("node", ["scripts/gui-dnswitch.cjs", "--self-test"]),

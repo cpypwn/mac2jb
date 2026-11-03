@@ -27,15 +27,14 @@ struct SaveKitToolsView: View {
         "0100ee5021c9e000": "Seedsow Lullaby (full)",
         "01005eb012fe2000": "Wagamama High Spec (trial)",
         "0100b4b00f9f6000": "SmileBASIC 4 (demo)",
+        "0400f5802371e000": "Elden Ring",
         "04008e001f098000": "Nintendo Switch Sports Resort"
     ]
 
     private var validTitle: Bool { titleID.range(of: "^[a-fA-F0-9]{16}$", options: .regularExpression) != nil }
     private var validAccount: Bool { accountID.range(of: "^[a-fA-F0-9]{32}$", options: .regularExpression) != nil }
     private var canRead: Bool { model.canOpenAnotherSave && validTitle && validAccount && archiveValid }
-    private var canModify: Bool {
-        canRead && model.savekitWritableTitles.contains(titleID.lowercased())
-    }
+    private var canModify: Bool { canRead }
     private var canRestore: Bool {
         canRead && [1, 3].contains(archive?["type"] ?? 1) &&
             (archive?["rank"] ?? 0) == 0 && (archive?["index"] ?? 0) == 0 &&
@@ -62,9 +61,7 @@ struct SaveKitToolsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Save data actions").font(.system(size: 13, weight: .semibold))
-            Text("Close the game whose save you want to inspect or back up.")
-                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-            Text("Choose a title and account for each save action. Every write, restore or delete makes its own verified backup. Keep the game closed.")
+            Text("Keep the selected game closed. Writes, restores and deletes make a verified backup.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             HStack {
                 Button("List console accounts") { send("accounts") }
@@ -171,8 +168,6 @@ struct SaveKitToolsView: View {
                 Divider()
                 DisclosureGroup("Write, restore and verify") {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("Writes are limited to the supported demo and research titles. The selected game must be closed. A fresh backup is made and verified before any change.")
-                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                         HStack {
                             Button("Choose local save folder…") { sourceFolder = chooseFolder() }
                             Text(sourceFolder?.lastPathComponent ?? "No folder chosen")

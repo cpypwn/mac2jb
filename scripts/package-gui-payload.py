@@ -44,6 +44,7 @@ RUNTIME_FILES = (
     'packaging/switch2-browser-research-provenance.json',
     'scripts/dnswitch-launch.applescript', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
     'scripts/gui-savekit.cjs', 'scripts/gui-savekit-tools.cjs',
+    'scripts/convert-elden-ring-save.cjs',
     'scripts/savekit-title-names.cjs', 'packaging/ArtemisLauncher-v1.json',
     'packaging/ArtemisLauncher-bundles.json',
     'scripts/check-savekit-research.cjs',

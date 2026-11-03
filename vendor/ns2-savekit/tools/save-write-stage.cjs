@@ -9,6 +9,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const net = require('node:net');
+const {hashFile} = require('./lib/verified-file-hash.cjs');
 
 function request(socketPath, command) {
   return new Promise((resolve, reject) => {
@@ -45,7 +46,7 @@ async function main() {
   if (!runDirectory || !programText || !uidText || !verifyDirectory || !manifestPath) {
     console.error('usage: node save-write-stage.cjs <run-directory> <program-id> <uid-hex> ' +
       '<backup-directory> <manifest.json> [--space N] [--type N] [--restore] ' +
-      '[--confirm-restore] [--allow-title ID]');
+      '[--confirm-restore]');
     process.exit(2);
   }
   // Space/type make this work outside User/Account (Sports Resort is a Device save);
@@ -64,11 +65,6 @@ async function main() {
   const restore = flag('--restore');
   if (restore) check(flag('--confirm-restore'),
     '--restore overwrites live save data; pass --confirm-restore after the backup');
-  const allowAt = process.argv.indexOf('--allow-title');
-  const allowedTitle = allowAt < 0 ? null : process.argv[allowAt + 1];
-  if (allowedTitle !== null)
-    check(restore && /^[a-f0-9]{16}$/.test(allowedTitle),
-      '--allow-title requires --restore and a 16-digit title ID');
   const run = path.resolve(runDirectory);
   const engine = path.join(run, 'switch2');
   const current = JSON.parse(await fs.readFile(path.join(engine, 'current-acquisition.json'), 'utf8'));
@@ -98,27 +94,8 @@ async function main() {
       local: path.join(verifyDirectory, rel)});
   }
 
-  // --- guardrails: disposable titles only, user space only, add-only, backed up ---
-  const WHITELIST = new Set([
-    '010012900d38a000', // Nora to Oujo to Noraneko Heart 2 trial
-    '01002eb00ce48000',
-    '010042d022aea000', // Seedsow Lullaby demo
-    '0100ee5021c9e000', // Seedsow Lullaby (full)
-    '01005eb012fe2000', // Wagamama High Spec trial
-  ]);
-  for (const file of ['titles.json', 'titles.local.json']) {
-    try {
-      const extra = JSON.parse(require('node:fs').readFileSync(
-        path.join(__dirname, '..', 'config', file), 'utf8'));
-      for (const entry of extra.write || []) WHITELIST.add(String(entry.id).toLowerCase());
-    } catch { /* an absent optional file adds no titles */ }
-  }
   const idText = programId.toString(16).padStart(16, '0');
-  if (allowedTitle !== null)
-    check(allowedTitle === idText, 'The explicitly confirmed title does not match the save');
-  if (allowedTitle === idText) WHITELIST.add(idText);
-  check(WHITELIST.has(idText),
-    'Refusing to write to ' + idText + ': not a whitelisted disposable title');
+  check(/^[a-f0-9]{16}$/.test(idText), 'Use a 16-digit program ID');
   check(verifyDirectory, 'A backup directory is required (pass the earlier save-pull output)');
   const backupManifest = JSON.parse(await fs.readFile(path.join(verifyDirectory,
     'manifest.json'), 'utf8'));
@@ -242,16 +219,16 @@ async function main() {
       check(!opened.result, 'Cannot open ' + job.path + ' to compare it');
       try {
         const size = Number(await filesystem.fileSize(s, opened.handle));
-        const live = await filesystem.readFile(s, opened.handle, 0, size);
+        const liveHash = await hashFile(s, filesystem, opened.handle, size);
         const backup = await fs.readFile(job.local);
         if (restore) {
           // Say exactly what changes: with --restore this log line is the record of
           // the overwrite, and the caller's pre-restore backup is the way back.
-          console.log('restore: ' + job.path + ' live ' + live.length + 'B ' +
-            sha(live).slice(0, 16) + '... -> ' + backup.length + 'B ' +
+          console.log('restore: ' + job.path + ' live ' + size + 'B ' +
+            liveHash.slice(0, 16) + '... -> ' + backup.length + 'B ' +
             sha(backup).slice(0, 16) + '...');
         } else {
-          check(sha(live) === sha(backup),
+          check(liveHash === sha(backup),
             'Live ' + job.path + ' differs from the backup; refusing to replace ' +
             '(use --restore --confirm-restore to put a backup back)');
           console.log('replace ok: live ' + job.path + ' matches the backup ('
@@ -293,9 +270,12 @@ async function main() {
       const opened = await filesystem.openFile(s, save, job.path);
       check(!opened.result, 'Verify could not open ' + job.path + ': ' + code(opened.result));
       const size = Number(await filesystem.fileSize(s, opened.handle));
-      const bytes = await filesystem.readFile(s, opened.handle, 0, size);
-      await s.close(opened.handle).catch(() => s.handles.delete(opened.handle));
-      const got = sha(bytes);
+      let got;
+      try {
+        got = await hashFile(s, filesystem, opened.handle, size);
+      } finally {
+        await s.close(opened.handle).catch(() => s.handles.delete(opened.handle));
+      }
       const ok = got === sha(job.bytes) && size === job.bytes.length;
       if (!ok) mismatches++;
       console.log('  ' + job.path.padEnd(30) + String(size).padStart(8) + '  ' +
@@ -308,9 +288,13 @@ async function main() {
       const opened = await filesystem.openFile(s, save, entry.path);
       check(!opened.result, 'Preserved file is missing: ' + entry.path);
       const size = Number(await filesystem.fileSize(s, opened.handle));
-      const bytes = await filesystem.readFile(s, opened.handle, 0, size);
-      await s.close(opened.handle).catch(() => s.handles.delete(opened.handle));
-      check(size === entry.size && sha(bytes) === entry.sha256,
+      let got;
+      try {
+        got = await hashFile(s, filesystem, opened.handle, size);
+      } finally {
+        await s.close(opened.handle).catch(() => s.handles.delete(opened.handle));
+      }
+      check(size === entry.size && got === entry.sha256,
         'Preserved file changed after commit: ' + entry.path);
       preserved++;
     }

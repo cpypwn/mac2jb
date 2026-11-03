@@ -67,8 +67,7 @@ writes are fenced:
 
 - read-only by default; a write needs a prior backup and compares the live
   bytes against it before replacing anything;
-- only titles on the allowlist (`config/titles.json`, plus your
-  `config/titles.local.json`) can be written;
+- the selected title and account must match the verified backup;
 - one open, one commit, then every file is read back and hashed;
 - paths must be `/name`; `..`, nested paths and absolute paths are rejected.
 
@@ -142,7 +141,6 @@ game look for `save9999.dat` at boot.
 | `ListAllUsers: transport 0xf601` | the engine has no CMIF pointer descriptors; not a console fault | apply the patches and start a new run |
 | `SESSION LOST` / `transport 0xf601` during a pull or write | the console stopped answering | restart the console, reopen SmileBASIC, start a new session |
 | `NO LIVE HOST` / `memory.sock` | the session folder is stale or gone | start the host again and use the run folder it prints |
-| title listed without `✔` | it is not on your write allowlist | add its id to `config/titles.local.json` |
 | names are missing, ids only | the console gave no name for that id (no control data, or the read was refused) and titledb is a Switch 1 catalogue, so it cannot name a Switch 2 title | paste the stub the tools print into `config/titles.local.json`; console names that were read are cached in `config/titles.nacp.json` |
 
 ## tests
@@ -174,7 +172,7 @@ python3 tests/test_offline.py        # save/ASB encoders (8)
 tools/     pull/write/restore/list/inventory, ASB encoder, launcher builders
 payloads/  Lua that runs inside the game: launcher stub, body, metadata
 patches/   the engine patches the tools need (apply before the first run)
-config/    write allowlist template (local config files are gitignored)
+config/    optional title names and local settings
 docs/      LAUNCHER, RESTORE, SAVE-ARCHIVES, TECHNICAL, PATCHED-ENGINE, RESULTS
 tests/     offline suites; none of them prove console behaviour
 ```

@@ -1017,9 +1017,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         }
         check(!savekitChoice.model.savekitTitles.contains("010012900d38a000") &&
               savekitChoice.model.savekitTitles.contains("0100aaaaaaaaaaaa") &&
-              savekitChoice.model.savekitTitleNames["0100aaaaaaaaaaaa"] == "Fixture game" &&
-              savekitChoice.model.savekitWritableTitles == ["010042d022aea000"],
-              "SaveKit preserves every read-only title and its name instead of filtering to writable titles")
+              savekitChoice.model.savekitTitleNames["0100aaaaaaaaaaaa"] == "Fixture game",
+              "SaveKit preserves every title and its name")
         check(savekitChoice.model.canOpenAnotherSave,
               "a manual title ID remains available when a save title is absent from the installed list")
         if savekitHost == .kurumuz {

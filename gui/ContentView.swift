@@ -658,6 +658,7 @@ struct ContentView: View {
             panel { webKitResearchSettings }
             panel { NSPBoxToolsView(runtimeRoot: model.runtime?.root) }
             panel { NUPToolsView(runtimeRoot: model.runtime?.root) }
+            panel { EldenRingSaveConvertView(runtimeRoot: model.runtime?.root) }
             panel {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("SD card files")
@@ -716,9 +717,6 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("DNSwitch")
                 .font(.system(size: 15, weight: .semibold))
-            Text("Serve a local captive portal page for the Switch browser applet. This research tool runs independently of jailbreak and RPC.")
-                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
                 if dnsSwitch.addresses.isEmpty {
                     Text("No Mac network address found")
@@ -771,9 +769,6 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Switch browser research")
                 .font(.system(size: 15, weight: .semibold))
-            Text("Choose a mac2jb probe, the included upstream research page, or a local folder. The page runs on this Mac through the Switch connection screen and does not need RPC.")
-                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
             Picker("Probe source", selection: $webKitResearch.sourceMode) {
                 Text("mac2jb probes").tag(WebKitResearchModel.SourceMode.bundled)
                 Text("Upstream research").tag(WebKitResearchModel.SourceMode.upstream)
@@ -797,9 +792,6 @@ struct ContentView: View {
                     Button("Open stored probe files") { NSWorkspace.shared.open(folder) }
                 }
             } else if webKitResearch.sourceMode == .upstream {
-                Text("The pinned Jmesmykil research scripts include the full browser feature inventory and local test fixtures.")
-                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                    .fixedSize(horizontal: false, vertical: true)
                 if let folder = webKitResearch.upstreamStoredURL {
                     Button("Open included research files") { NSWorkspace.shared.open(folder) }
                 }
@@ -852,9 +844,6 @@ struct ContentView: View {
                 Button("Open saved reports") { NSWorkspace.shared.open(reportURL) }
                     .disabled(!FileManager.default.fileExists(atPath: reportURL.path))
             }
-            Text("Use this page as DNSwitch’s destination, then run Test Connection. Captive portal entry is experimental. Included scripts and reports stay in this Mac’s Application Support folder.")
-                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 11))
         .onAppear { webKitResearch.loadCatalog(runtimeRoot: model.runtime?.root) }
@@ -1328,11 +1317,7 @@ struct ContentView: View {
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "square.grid.3x3.fill").font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("MintBrew").font(.system(size: 13, weight: .semibold))
-                    Text("Open the homebrew library on your Switch")
-                        .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                }
+                Text("MintBrew").font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 8)
                 Button("Open MintBrew") {
                     model.launchMintBrew(accountAddons: account.addonURLs,
@@ -1526,7 +1511,7 @@ struct ContentView: View {
                     : model.postRun.heldConfirmed ? "Your Switch is connected. Choose one app for this session." : "Waiting for the host to verify the Switch and hold RPC open.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
             homebrewRow(icon: "square.grid.3x3.fill", title: "MintBrew",
-                        description: "Launch the combined homebrew library on your Switch.",
+                        description: nil,
                         actionTitle: model.postRun.homebrewAttempted && model.homebrewApp == .mintBrew
                             ? homebrewActionTitle : "Launch MintBrew",
                         enabled: model.canLaunchHomebrew, action: {
@@ -1674,7 +1659,7 @@ struct ContentView: View {
         }
     }
 
-    private func homebrewRow<Details: View>(icon: String, title: String, description: String,
+    private func homebrewRow<Details: View>(icon: String, title: String, description: String?,
                                             actionTitle: String, enabled: Bool,
                                             action: @escaping () -> Void,
                                             @ViewBuilder details: () -> Details) -> some View {
@@ -1682,7 +1667,9 @@ struct ContentView: View {
             Image(systemName: icon).font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
-                Text(description).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                if let description {
+                    Text(description).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                }
                 details()
             }
             Spacer(minLength: 8)
@@ -1719,8 +1706,6 @@ struct ContentView: View {
     private var stremioSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Stremio").font(.system(size: 15, weight: .semibold))
-            Text("Set video output before launching Stremio through MintBrew.")
-                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             Picker("Video output", selection: $model.stremioQuality) {
                 ForEach(StremioQuality.allCases) { quality in
                     Text(quality.label).tag(quality)

@@ -125,7 +125,6 @@ private struct GUIEvent: Decodable {
     let bytes: Int?
     let titles: [String]?
     let names: [String: String]?
-    let writable: [String]?
     let entries: [SaveKitListedEntry]?
     let inventory: [SaveKitArchiveEntry]?
     let inventoryTotal: Int?
@@ -180,7 +179,6 @@ private struct GUIEvent: Decodable {
     @Published private(set) var savekitAccounts: [String] = []
     @Published private(set) var savekitTitles: [String] = []
     @Published private(set) var savekitTitleNames: [String: String] = [:]
-    @Published private(set) var savekitWritableTitles: [String] = []
     @Published private(set) var savekitEntries: [SaveKitListedEntry] = []
     @Published private(set) var savekitArchives: [SaveKitArchiveEntry] = []
     @Published private(set) var savekitArchiveTotal = 0
@@ -711,7 +709,7 @@ private struct GUIEvent: Decodable {
         activeSaveGame = nil; legacySeedsowInstall = false
         savekitBusy = false; savekitSaveOperationUsed = false; savekitPendingOperation = false
         savekitMessage = "Waiting for verified held RPC"
-        savekitAccounts = []; savekitTitles = []; savekitTitleNames = [:]; savekitWritableTitles = []
+        savekitAccounts = []; savekitTitles = []; savekitTitleNames = [:]
         savekitEntries = []; savekitArchives = []; savekitArchiveTotal = 0
         savekitInventoryFolder = nil; savekitListingTruncated = false; savekitBackupFolder = nil
         savekitChoicePending = false; savekitChoiceStarted = false
@@ -1836,15 +1834,14 @@ private struct GUIEvent: Decodable {
             savekitMessage = event.message ?? "Console accounts listed"
         case "savekit-tool-titles":
             guard role == "host", saveKitToolsAvailableInRun,
-                  let titles = event.titles, titles.count <= 2048,
-                  let writable = event.writable, writable.allSatisfy({ titles.contains($0) }) else { return }
+                  let titles = event.titles, titles.count <= 2048 else { return }
             let names = event.names ?? [:]
             guard names.count <= titles.count,
                   names.allSatisfy({ id, name in
                       titles.contains(id) && !name.isEmpty && name.utf8.count <= 160 &&
                       !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
                   }) else { return }
-            savekitTitles = titles; savekitTitleNames = names; savekitWritableTitles = writable
+            savekitTitles = titles; savekitTitleNames = names
             savekitMessage = event.message ?? "Installed titles listed"
         case "savekit-tool-inventory":
             guard role == "host", saveKitToolsAvailableInRun,

@@ -4,7 +4,7 @@
 //
 // It does not reimplement anything: every action shells out to the proven
 // scripts (list-apps, find-save-uid, save-pull-root, save-write-stage,
-// save-delete-root) so the safety rails - whitelist, required backup, verified
+// save-delete-root) so the safety rails - required backup, verified
 // replaces, one transaction per write - stay exactly where they were tested.
 //
 //   node kit.cjs [run-directory]
@@ -16,20 +16,11 @@ const path = require('node:path');
 const readline = require('node:readline');
 
 const titles = require('./lib/titles.cjs');
-const ALLOWED = new Set();
-try {
-  for (const name of ['titles.json', 'titles.local.json']) {
-    const extra = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', name), 'utf8'));
-    for (const entry of extra.write || []) ALLOWED.add(String(entry.id).toLowerCase());
-  }
-} catch { /* allowlist file is optional */ }
-
 const TOOLS = __dirname;
 const REPO = path.resolve(TOOLS, '..');
 let namesNoted = false;
 const NOTICE = [
-  'Writes are the only dangerous operation and they are fenced: disposable titles',
-  'only, a backup is required, existing files are replaced only when the live bytes',
+  'Writes require a backup. Existing files are replaced only when the live bytes',
   'still match that backup, everything goes down in one commit and is hashed back.',
   'Several save operations run fine in one session; restart only if one fails.',
 ].join('\n');
@@ -192,7 +183,7 @@ async function titleRows(session) {
   }
   return ids.map(id => ({
     id,
-    label: (ALLOWED.has(id.toLowerCase()) ? '✔ ' : '  ') + titles.label(id),
+    label: titles.label(id),
   }));
 }
 
@@ -202,7 +193,7 @@ async function pickTitle(session) {
     console.log('No installed applications were listed.');
     return null;
   }
-  const chosen = await choose('Which title?  (✔ = write-allowed)', rows);
+  const chosen = await choose('Which title?', rows);
   return chosen ? chosen.value : null;
 }
 
@@ -719,7 +710,7 @@ async function main() {
       console.log('check with: node rpc.cjs ' + session + ' status');
       break;
     }
-    heading(rows.length + ' installed applications  (✔ = write-allowed)');
+    heading(rows.length + ' installed applications');
     rows.forEach((row, index) => console.log('  [' + (index + 1) + '] ' + row.label));
     const picked = await ask('\nNumber 1-' + rows.length +
       '  (i = installed inventory, a = all save archives, p = pull next batch (5), blank = quit): ');

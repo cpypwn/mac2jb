@@ -78,9 +78,6 @@ async function main() {
   const programId = BigInt(/^0x/i.test(programText) ? programText : '0x' + programText);
   const uid = Buffer.from(uidText.replace(/^0x/i, ''), 'hex');
   const id = programId.toString(16).padStart(16, '0');
-  check(new Set(['010012900d38a000', '01002eb00ce48000', '010042d022aea000',
-    '01005eb012fe2000', '0100ee5021c9e000']).has(id),
-  'This title is not in the savekit write allowlist');
   check(savePath?.startsWith('/') && safeRootName(savePath.slice(1)),
     'Only one file at the save root can be deleted');
   const backupManifest = JSON.parse(await fs.readFile(path.join(backupDirectory, 'manifest.json'), 'utf8'));
