@@ -509,6 +509,7 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 - [kurumuz](https://gitlab.com/kurumuz) — [ns2jb](https://gitlab.com/kurumuz/ns2jb), compatibility updates, microSD Express update support and demo support.
 - [BermTheSequel](https://gitlab.com/BermTheSequel) — [ns2jb2](https://gitlab.com/BermTheSequel/ns2jb2), demo support.
 - [shinyquagsire](https://github.com/shinyquagsire23) — [libusbd](https://github.com/shinyquagsire23/libusbd) and [macos_usb_gadget_poc](https://github.com/shinyquagsire23/macos_usb_gadget_poc), usb device emulation and macOS gadget-driver work.
+- [duszmox](https://github.com/duszmox) — [PR #11](https://github.com/cpypwn/mac2jb/pull/11), automatic USB controller discovery through the IORegistry.
 - [misshexa66](https://github.com/misshexa66) — the original [OunceCake](https://github.com/misshexa66/OunceCake), game-content export.
 - [alula](https://github.com/alula) — [switch-artemis-launcher](https://github.com/alula/switch-artemis-launcher), the Seedsow and Nora save launchers and HTTP interface.
 - [smarkyie](https://github.com/smarkyie) — [NSP-Box](https://github.com/smarkyie/NSP-Box), the extracted-snapshot packager adapted for Mac.
