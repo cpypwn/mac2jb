@@ -152,6 +152,25 @@ test('custom homebrew uses GPUBrewLauncher with an isolated selected-app library
     return app;
   }}),/changed during staging/);
 });
+for(const [marker,kind,option] of [
+  ['module.json','iz-module','stageIZModule'],
+  ['manifest.json','native-app','preflightNativeApp']
+])test('custom picker recognizes '+kind+' before GPU app staging',async t=>{
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-custom-kind-')));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const folder=path.join(root,'selected');fs.mkdirSync(folder);
+  fs.writeFileSync(path.join(folder,marker),'{}');
+  let called=false;
+  const options={[option]:async(selectedRoot,selectedFolder)=>{
+    assert.equal(selectedRoot,root);assert.equal(selectedFolder,folder);called=true;
+    return kind==='iz-module' ? {id:'my-module',name:'My module',version:'1.0.0',
+      sha256:'a'.repeat(64),cleanup:async()=>{}} : {kind:'native-app',
+      app:{id:'my-native',name:'My native app'},packageFolder:path.join(root,'staged'),cleanup:async()=>{}};
+  }};
+  const prepared=await preflightCustomHomebrew(root,folder,options);
+  assert.equal(called,true);assert.equal(prepared.kind,kind);
+  if(kind==='iz-module')assert.equal(prepared.moduleId,'my-module');
+});
 test('custom homebrew helper runs only the selected package through the held RPC',async t=>{
   const f=fixture(t,{application:'custom-homebrew'}),source=path.join(f.root,'my-gpu-app');
   fs.mkdirSync(source);
@@ -301,6 +320,11 @@ test('attach uses existing held connection, separate authenticated metadata and 
   assert.deepEqual(trace.filter(row=>row.event==='stop').map(row=>row.role),['ftp','audio','graphics']);
   assert.equal(trace.at(-1).event,'proxy-close');
   assert.ok(f.events.some(row=>row.type==='running'));assert.equal(f.events.at(-1).type,'stopped');
+  const markerFile=path.join(f.directory,'.mac2jb-hblauncher-attempt.json');
+  assert.equal(f.events.at(-1).cleanupVerified,true);
+  assert.deepEqual(f.events.at(-1).attemptMarkers,['.mac2jb-hblauncher-attempt.json']);
+  assert.equal(f.events.at(-1).attemptMarkerSha256,
+    crypto.createHash('sha256').update(fs.readFileSync(markerFile)).digest('hex'));
   await assert.rejects(main([f.directory],f.api),/EEXIST/);
 });
 for(const application of ['hblauncher','gpubrewlauncher','mintbrew'])
@@ -360,4 +384,39 @@ test('foreign runs, wrong native identity and public connection files cannot att
   await assert.rejects(validateRun(f.root,f.directory,f.api.verifySession),/another session/);
   fs.writeFileSync(connection,JSON.stringify(original));fs.chmodSync(connection,0o644);
   await assert.rejects(validateRun(f.root,f.directory,f.api.verifySession),/private owned/);
+});
+for(const hostId of ['kurumuz','cellenseres'])
+test('SaveKit-patched '+hostId+' run is trusted only with its pinned source and digest',async t=>{
+  const repository=path.resolve(__dirname,'..');
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-savekit-homebrew-')));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const vendor=path.join(root,'vendor');fs.mkdirSync(vendor,{mode:0o700});
+  fs.cpSync(path.join(repository,'vendor/ns2jb-hosts',hostId),path.join(vendor,'ns2jb'),{recursive:true});
+  fs.cpSync(path.join(repository,'vendor/ns2-savekit'),path.join(vendor,'ns2-savekit'),{recursive:true});
+  const profile=require('./host-profiles.cjs').profileById(hostId);
+  fs.writeFileSync(path.join(root,'selected-host.json'),JSON.stringify(profile),{mode:0o600});
+  const host=require('./prepare-seedsow-host.cjs').prepare(root);
+  const directory=path.join(host,'runs/switch2-patched');fs.mkdirSync(directory,{mode:0o700});
+  const digest=require('./host-profiles.cjs').sourceDigest(host,profile);
+  const addresses={session:'switch2-patched',target:'switch2',platform:2,
+    scratch:4096,main:8192,sdk:12288,backing:16384,controller:20480};
+  fs.writeFileSync(path.join(directory,'connection.json'),JSON.stringify({port:12345,addresses}),{mode:0o600});
+  const result=path.join(directory,'result.json');
+  fs.writeFileSync(result,JSON.stringify({sourceSha256:digest}),{mode:0o600});
+  const verified=async candidate=>({root:candidate,session:path.basename(candidate)});
+  const accepted=await validateRun(root,directory,verified);
+  assert.equal(accepted.trustedSource.directory,host);
+  assert.equal(accepted.trustedSource.profileId,hostId);
+  assert.equal(accepted.trustedSource.sourceSha256,digest);
+  fs.writeFileSync(result,JSON.stringify({sourceSha256:'f'.repeat(64)}),{mode:0o600});
+  await assert.rejects(validateRun(root,directory,verified),/does not match its patched host source/);
+  fs.writeFileSync(result,JSON.stringify({sourceSha256:digest}),{mode:0o600});
+  fs.appendFileSync(path.join(host,'engine/shared/ipc.cjs'),'\n// altered\n');
+  await assert.rejects(validateRun(root,directory,verified),/patched host source changed/);
+  const forgedHost=path.join(vendor,'ns2-savekit-host-forged');
+  const forgedRun=path.join(forgedHost,'runs/switch2-patched');
+  fs.mkdirSync(forgedRun,{recursive:true,mode:0o700});
+  fs.copyFileSync(result,path.join(forgedRun,'result.json'));
+  fs.copyFileSync(path.join(directory,'connection.json'),path.join(forgedRun,'connection.json'));
+  await assert.rejects(validateRun(root,forgedRun,verified),/patched host source contains unexpected files/);
 });

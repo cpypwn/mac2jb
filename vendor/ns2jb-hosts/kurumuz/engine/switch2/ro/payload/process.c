@@ -19,6 +19,13 @@ extern u32 process_permission(u32 handle, u64 address, u64 size, u32 permission)
 
 #define SELF 0xffff8001u
 #define BAD_INPUT 0xd401u
+#define PAGE 0x1000ULL
+#define MAX_RANGE_PAGES 16384ULL
+
+static u32 contains_range(const MemoryInfo *info, u64 address, u64 size) {
+    return size && address >= info->address && size <= info->size &&
+        address - info->address <= info->size - size;
+}
 
 static void publish_code(u64 address, u64 size) {
     // Cover every possible cache line without assuming a particular line size.
@@ -86,6 +93,55 @@ u32 process_request(u32 command, const u64 *input, u32 bytes,
         return queried.result;
     }
     if (!input[0] || queried.result) return queried.result ? queried.result : BAD_INPUT;
+    if (command == 0x524f001a || command == 0x524f001b || command == 0x524f001c) {
+        u64 source = input[1], destination = input[2], pages = input[3];
+        *output_bytes = 80;
+        if ((program.value != 0x0100c9100b06a000ULL &&
+            program.value != 0x0100b4b00f9f6000ULL) ||
+            (source | destination) & (PAGE - 1) || !source || !destination ||
+            !pages || pages > MAX_RANGE_PAGES) return BAD_INPUT;
+        u64 size = pages * PAGE;
+        if (!contains_range(&info, source, size + PAGE)) return BAD_INPUT;
+        MemoryInfo target = {0};
+        Reply q = query_process(&target, handle, destination);
+        if (q.result || !contains_range(&target, destination, size))
+            return q.result ? q.result : BAD_INPUT;
+        if (command == 0x524f001c) {
+            if (target.type == 0 || target.attributes) return BAD_INPUT;
+            out[5] = unmap_code(handle, destination, source, size);
+            if (out[5]) { out[4] = 0; out[6] = 1; return (u32)out[5]; }
+            out[3] = pages;
+            MemoryInfo after = {0};
+            Reply observed = query_process(&after, handle, destination);
+            if (observed.result || after.type != 0 || after.attributes ||
+                !contains_range(&after, destination, size)) {
+                out[4] = 0; out[5] = observed.result ? observed.result : BAD_INPUT;
+                out[6] = 1;
+                return (u32)out[5];
+            }
+            return 0;
+        }
+        if (info.type != 5 || info.permission != 3 || info.attributes ||
+            target.type != 0 || target.attributes) return BAD_INPUT;
+        u32 permission = command == 0x524f001a ? 5 : 3;
+        out[4] = map_code(handle, destination, source, size);
+        if (out[4]) return (u32)out[4];
+        out[5] = process_permission(handle, destination, size, permission);
+        if (!out[5]) {
+            MemoryInfo first = {0}, last = {0};
+            Reply a = query_process(&first, handle, destination);
+            Reply b = query_process(&last, handle, destination + size - PAGE);
+            out[7] = a.result ? a.result : b.result;
+            if (!out[7] && first.permission == permission && last.permission == permission &&
+                !first.attributes && !last.attributes && first.type != 0 && last.type != 0) {
+                out[3] = pages; out[8] = 1;
+                return 0;
+            }
+            if (!out[7]) out[7] = BAD_INPUT;
+        }
+        out[6] = unmap_code(handle, destination, source, size);
+        return out[6] ? (u32)out[6] : out[5] ? (u32)out[5] : (u32)out[7];
+    }
     if (command == 0x524f0015) {
         // Toggle only the read bit of native FS executable pages.
         u64 address = input[1], size = input[2], permission = input[3];

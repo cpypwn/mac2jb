@@ -2,20 +2,40 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleExecutable</key><string>mac2jb</string>
-    <key>CFBundleIdentifier</key><string>io.github.cpypwn.mac2jb.demo</string>
-    <key>CFBundleName</key><string>mac2jb</string>
-    <key>CFBundleDisplayName</key><string>mac2jb</string>
-    <key>CFBundleIconFile</key><string>mac2jb</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.6.0</string>
-    <key>CFBundleVersion</key><string>520</string>
-    <key>MAC2JBTestBuild</key><false/>
-    <key>LSMinimumSystemVersion</key><string>14.0</string>
-    <key>NSHighResolutionCapable</key><true/>
-    <key>NSLocalNetworkUsageDescription</key><string>mac2jb connects to your Switch 2 over your local network for the ns2jb host session.</string>
-    <key>NSAudioCaptureUsageDescription</key><string>mac2jb captures Mac audio when you choose to stream with VacooTube.</string>
-    <key>NSPrincipalClass</key><string>NSApplication</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>mac2jb</string>
+	<key>CFBundleExecutable</key>
+	<string>mac2jb</string>
+	<key>CFBundleIconFile</key>
+	<string>mac2jb</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.cpypwn.mac2jb.demo</string>
+	<key>CFBundleName</key>
+	<string>mac2jb</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.7.3</string>
+	<key>CFBundleVersion</key>
+	<string>537</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>MAC2JBTestBuild</key>
+	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>mac2jb captures Mac audio when you choose to stream with VacooTube.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>mac2jb connects to your Switch 2 over your local network for ns2jb and the Artemis launcher.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
 </dict>
 </plist>

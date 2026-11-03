@@ -1,0 +1,18 @@
+:root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#071b18;color:#e9fff4}
+*{box-sizing:border-box}
+body{margin:0;padding:24px}
+main{max-width:900px;margin:auto}
+header,nav,.file{display:flex;align-items:center;gap:14px}
+header{justify-content:space-between;padding:14px 0 24px}
+h1{font-size:32px;letter-spacing:-.035em;margin:0}
+p{color:#a8c5b9;margin:4px 0}
+header a,button{border:0;border-radius:10px;background:#183b31;color:#95f0c7;padding:9px 14px;text-decoration:none;font:inherit;cursor:pointer}
+button:hover,header a:hover{background:#245c49}
+nav{padding:12px 0;border-top:1px solid #37564c;border-bottom:1px solid #37564c}
+#path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere;flex:1}
+#message{min-height:24px;margin:18px 0}
+.file{justify-content:space-between;border-bottom:1px solid #263d35;padding:12px 2px}
+.name{min-width:0;overflow-wrap:anywhere}
+.meta{font-size:13px;color:#9ab8aa}
+.file button{flex-shrink:0}
+@media(max-width:500px){body{padding:14px}.file{align-items:flex-start}}

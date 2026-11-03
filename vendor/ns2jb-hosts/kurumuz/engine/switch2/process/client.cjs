@@ -6,6 +6,16 @@ const {exportHandle} = require("../ro/export-handle.cjs");
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const read = file => fs.readFile(file, 'utf8').then(JSON.parse);
 const words = bytes => Array.from({length: Math.floor(bytes.length / 8)}, (_, i) => bytes.readBigUInt64LE(i * 8));
+const rangeIds = new Set([0x524f001a, 0x524f001b, 0x524f001c]);
+function rangeInput(values) {
+  check(Array.isArray(values) && values.length === 4, 'Native range commands need pid, source, destination and page count');
+  const [pid, source, destination, pages] = values.map(BigInt);
+  check(pid > 0n && source > 0n && destination > 0n &&
+    (source | destination) % 0x1000n === 0n && pages > 0n && pages <= 16384n &&
+    source + (pages + 1n) * 0x1000n <= 1n << 39n &&
+    destination + pages * 0x1000n <= 1n << 39n,
+  'Native range command exceeds its owned address or page bounds');
+}
 
 class Client {
   async save() {
@@ -65,6 +75,10 @@ class Client {
   }
   async request(id, handle, values) {
     check(values.length === (id === 0x524f0014 ? 8 : 4), 'The process command has an incorrect input size');
+    if (rangeIds.has(id)) {
+      check(handle === 0xffff8001, 'Native ranges require the transferred SmileBASIC process handle');
+      rangeInput(values);
+    }
     const input = Buffer.alloc(values.length * 8);
     values.forEach((value, i) => input.writeBigUInt64LE(BigInt(value), 8 * i));
     const call = {id, handle, input: values.map(String), started: new Date().toISOString()};
@@ -100,6 +114,23 @@ class Client {
   async unmap(handle, pid, source, destination) {
     const reply = await this.request(0x524f0013, handle, [pid, source, destination, 0x1000]);
     return {result: reply.result};
+  }
+  async mapRange(handle, pid, source, destination, pages, permission) {
+    check(permission === 3 || permission === 5, 'Native range permission must be RW or RX');
+    const reply = await this.request(permission === 5 ? 0x524f001a : 0x524f001b,
+      handle, [pid, source, destination, pages]);
+    const v = reply.values;
+    return {result: reply.result, mapped: Number(v[3] || 0n),
+      mapResult: Number(v[4] || 0n), permissionResult: Number(v[5] || 0n),
+      rollbackResult: Number(v[6] || 0n), queryResult: Number(v[7] || 0n),
+      mode: Number(v[8] || 0n)};
+  }
+  async unmapRange(handle, pid, source, destination, pages) {
+    const reply = await this.request(0x524f001c, handle, [pid, source, destination, pages]);
+    const v = reply.values;
+    return {result: reply.result, unmapped: Number(v[3] || 0n),
+      failingPage: Number(v[4] || 0n), failingResult: Number(v[5] || 0n),
+      failures: Number(v[6] || 0n)};
   }
   async patch(handle, pid, address, expected, replacement) {
     check(expected.length === 16 && replacement.length === 16, 'An instruction patch must contain exactly 16 bytes');

@@ -49,6 +49,26 @@ test('Validates bounded compressed private GPU memory images',async()=>{
  await edit(root,m=>m.memory.bytes=4096);await fs.writeFile(path.join(root,'hello-world/assets/memory.bin'),deflateSync(Buffer.alloc(8192)));assert.equal((await scan(root)).apps.length,0);
  await edit(root,m=>m.memory={bytes:4096,initial:'../../outside',encoding:'deflate'});assert.match((await scan(root)).rejected[0].error,/inside/);
 });
+test('Loads File Exchange DEFLATE shaders and restricts host runtimes',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'mintbrew-exchange-test-'));
+ t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ const folder=path.join(root,'iz-exchange');
+ await fs.cp(path.resolve(__dirname,'../../../vendor/IZ2S-Platform/modules/iz-exchange/switch'),folder,{recursive:true});
+ const app=await readApp(folder);
+ assert.equal(app.id,'iz-exchange');
+ for(const stage of ['vertex','fragment','compute']){
+  assert.equal(app.files[stage].bytes.readUInt32LE(),0x07230203);
+  assert.ok(app.files[stage].bytes.equals(await fs.readFile(path.join(folder,'app.'+({vertex:'vert',fragment:'frag',compute:'comp'})[stage]+'.spv'))));
+ }
+ const manifestFile=path.join(folder,'app.json'),manifest=JSON.parse(await fs.readFile(manifestFile));
+ manifest.hostRuntime='module:other/runtime';await fs.writeFile(manifestFile,JSON.stringify(manifest));
+ await assert.rejects(readApp(folder,{validate:false}),/Unsupported host runtime/);
+ manifest.hostRuntime='module:iz-exchange/runtime';manifest.shaderEncoding='brotli';await fs.writeFile(manifestFile,JSON.stringify(manifest));
+ await assert.rejects(readApp(folder,{validate:false}),/Unsupported shader encoding/);
+ manifest.shaderEncoding='deflate';await fs.writeFile(manifestFile,JSON.stringify(manifest));
+ await fs.writeFile(path.join(folder,'app.comp.spv.deflate'),Buffer.from('not deflate'));
+ await assert.rejects(readApp(folder,{validate:false}),/Invalid compressed SPIR-V compute/);
+});
 test('Accepts only a bounded CPU counter bridge in private GPU memory',async t=>{
  const root=await fixture(),folder=path.join(root,'hello-world');
  t.after(()=>fs.rm(root,{recursive:true,force:true}));

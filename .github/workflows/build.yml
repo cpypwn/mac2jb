@@ -87,6 +87,11 @@ jobs:
       - name: Verify experimental media protocol and Stremio addon client
         run: node --test stremio/*.test.cjs stremio/test-*.cjs
 
+      - name: Verify CivSwitch Control Center without a console
+        run: |
+          python3 integrations/civswitch-control-center/verify-source.py
+          PYTHONDONTWRITEBYTECODE=1 python3 integrations/civswitch-control-center/test_mac_host.py
+
       - name: Verify OunceCake snapshot and lifecycle without a console
         run: |
           node scripts/gui-ouncecake.cjs --self-test

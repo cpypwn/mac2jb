@@ -14,7 +14,7 @@ from pathlib import Path
 
 SOURCE_FILES = (
     'README.md', 'LICENSE', '.gitignore', 'Makefile', 'sender.c', 'commands.c',
-    'keyboard.c', 'indent-test.bas', 'upstream.lock', 'mac2jb.command',
+    'keyboard.c', 'civswitch-hid.c', 'indent-test.bas', 'upstream.lock', 'mac2jb.command',
     'setup.sh', 'fetch-bootstrap.sh', 'make-release-zip.command',
 )
 SOURCE_FOLDERS = (
@@ -22,54 +22,73 @@ SOURCE_FOLDERS = (
     'integrations', '.github',
 )
 RUNTIME_FOLDERS = (
-    'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/HBLauncher',
+    'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit', 'vendor/HBLauncher',
     'vendor/GPUBrewLauncher', 'vendor/MintBrew', 'vendor/IZ2S-Platform', 'vendor/IZDOOM',
-    'vendor/OunceCake', 'assets', 'drivers', 'stremio',
+    'vendor/BlitBun', 'vendor/CivSwitch-ControlCenter',
+    'vendor/OunceCake', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
     'integrations',
 )
 OMITTED_RUNTIME_FOLDERS = (
     'vendor/MintBrew/apps/mintnes',
     'vendor/MintBrew/apps/mintftp',
     'integrations/mintnes',
+    'integrations/luna-editor',
     'integrations/mintbrew-file-explorer',
-    'integrations/izlauncher-shell',
-    'integrations/blitbun',
-    'integrations/vacootube',
-    'homebrew/IZ2S-Platform',
+    'integrations/mintbrew-native/upstream/apps/mintnes/tests/build',
 )
 RUNTIME_FILES = (
-    'scripts/gui-host.cjs', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
-    'scripts/gui-attach.cjs', 'scripts/rpc-attachment.cjs',
+    'scripts/gui-host.cjs', 'scripts/usb-controllers.cjs', 'scripts/gui-dnswitch.cjs',
+    'scripts/gui-webkit-research.cjs', 'scripts/gui-bundled-browser-probes.cjs',
+    'scripts/gui-nup.cjs', 'packaging/NUP-source.json',
+    'scripts/check-webkit-research.cjs',
+    'packaging/switch2-browser-research-provenance.json',
+    'scripts/dnswitch-launch.applescript', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
+    'scripts/gui-savekit.cjs', 'scripts/gui-savekit-tools.cjs',
+    'scripts/convert-elden-ring-save.cjs',
+    'scripts/savekit-title-names.cjs', 'packaging/ArtemisLauncher-v1.json',
+    'packaging/ArtemisLauncher-bundles.json',
+    'scripts/check-savekit-research.cjs',
+    'scripts/prepare-seedsow-host.cjs',
+    'scripts/gui-attach.cjs', 'scripts/gui-discover-rpc.cjs', 'scripts/rpc-attachment.cjs',
+    'scripts/homebrew-reentry.cjs',
     'scripts/host-profiles.cjs', 'scripts/prepare-host-profiles.cjs',
     'packaging/host-profiles.json', 'scripts/gui-homebrew.cjs',
     'scripts/gui-stremio.cjs', 'scripts/check-homebrew-runtime.cjs',
     'scripts/gui-hblauncher.cjs', 'scripts/gui-mintbrew.cjs', 'scripts/prepare-mintbrew.cjs',
+    'scripts/gui-native-hblauncher.cjs',
+    'scripts/gui-izlauncher.cjs', 'scripts/prepare-izlauncher.cjs',
+    'scripts/gui-custom-homebrew.cjs', 'scripts/custom-rpc-package.cjs',
+    'scripts/check-izlauncher-runtime.cjs', 'scripts/izlauncher-modules.cjs',
+    'scripts/izlauncher-panel.cjs', 'scripts/stage-custom-izmodule.cjs',
     'packaging/HBLauncher-v0.2.0-SHA256SUMS',
     'scripts/gui-gpubrewlauncher.cjs', 'packaging/GPUBrewLauncher-provenance.json',
     'packaging/GPUBrewLauncher-SHA256SUMS',
     'packaging/IZ2S-Platform-provenance.json',
     'packaging/IZ2S-Platform-SHA256SUMS', 'scripts/gui-keyboard.cjs',
-    'scripts/usb-controllers.cjs',
     'scripts/prepare-homebrew-apps.cjs', 'scripts/check-stremio-runtime.cjs',
     'packaging/ftpd-sb-v0.1.0-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-release-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-provenance.json',
     'scripts/gui-ouncecake.cjs', 'packaging/OunceCake-provenance.json',
+    'integrations/civswitch-control-center/mac-host.py',
+    'integrations/civswitch-control-center/verify-source.py',
+    'integrations/civswitch-control-center/provenance.json',
     'packaging/OunceCake-SHA256SUMS', 'packaging/OunceCake-upstream-SHA256SUMS',
     'packaging/stremio-display-SHA256SUMS',
     'packaging/stremio-sample-provenance.json', 'scripts/install-driver.sh',
 )
 BLOCKED_PARTS = {
-    '.git', 'runs', 'dumps', '__pycache__', 'xcuserdata',
+    '.git', '.build', 'runs', 'dumps', '__pycache__', 'xcuserdata',
     'project.xcworkspace', 'usb_device', '.DS_Store',
 }
 BLOCKED_SUFFIXES = {
     '.o', '.dylib', '.log', '.pyc', '.bak', '.xcuserstate', '.kate-swp',
 }
 EXECUTABLES = {
-    'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard',
+    'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard', 'mac2jb-civswitch-hid',
     'homebrew/bin/spirv-val', 'homebrew/bin/glslangValidator',
     'homebrew/python/bin/python3', 'homebrew/python/bin/python3.13',
+    'integrations/blitbun/doom-engine/doom-headless',
 }
 
 
@@ -83,7 +102,7 @@ def sha256_file(path):
 
 def verify_minimum(payload):
     targets = (
-        'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard',
+        'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard', 'mac2jb-civswitch-hid',
         'vendor/libusbd/libusbd.dylib',
     )
     for name in targets:
@@ -149,7 +168,7 @@ def stage(root, payload, node):
     (payload / 'packaging/test-build.json').write_text(marker)
     (source / 'packaging/test-build.json').write_text(marker)
     (payload / 'packaging/runtime-homebrew.json').write_text(
-        json.dumps({'allowed': ['mintbrew', 'ouncecake']}, indent=2) + '\n'
+        json.dumps({'allowed': ['mintbrew', 'native-hblauncher', 'ouncecake', 'izlauncher', 'custom-homebrew']}, indent=2) + '\n'
     )
     for name in SOURCE_FILES:
         if (root / name).exists():
@@ -195,7 +214,10 @@ def archive(payload, build, source_archive):
                     entry.uid = entry.gid = 0
                     entry.uname = entry.gname = ''
                     entry.mtime = 0
-                    entry.mode = 0o700 if item.is_dir() or relative in EXECUTABLES else 0o600
+                    entry.mode = 0o700 if item.is_dir() or relative in EXECUTABLES or (
+                        relative.startswith('homebrew/IZ2S-Platform/') and item.is_file() and
+                        item.stat().st_mode & 0o111
+                    ) else 0o600
                     if item.is_file():
                         with item.open('rb') as file:
                             tar.addfile(entry, file)

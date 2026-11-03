@@ -1,0 +1,18 @@
+{
+  "id": "mintnes",
+  "name": "MintNES",
+  "description": "Mapper-0 NES emulator with a ROM list and audio test",
+  "version": "0.3.0",
+  "abi": 3,
+  "kind": "native",
+  "icon": "icon.png",
+  "assets": [
+    "*.nes"
+  ],
+  "imports": ["posix_memalign", "_ZdlPv"],
+  "limits": {
+    "heap_bytes": 4194304,
+    "stack_bytes": 1048576,
+    "frames": 180000
+  }
+}

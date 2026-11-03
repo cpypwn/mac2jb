@@ -3,9 +3,16 @@ import Foundation
 @main struct SessionRunModeTests {
     static func main() throws {
         let address = "192.0.2.1"
-        precondition(SessionRunMode.allCases == [.bootstrapOnly, .heldRPC, .systemCodeDump, .exploitOnly, .commandsOnly, .hostOnly, .hostOnlyHeld, .existingRPC])
-        precondition(SessionRunMode.allCases.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8])
-        precondition(SessionRunMode.heldRPC.caption.contains("launch MintBrew automatically"))
+        precondition(SessionRunMode.allCases == [.bootstrapOnly, .heldRPC, .systemCodeDump, .exploitOnly, .commandsOnly, .hostOnly, .hostOnlyHeld, .existingRPC, .seedsowSave, .savekitTools])
+        precondition(SessionRunMode.allCases.map(\.number) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+        precondition(SessionRunMode.heldRPC.caption.contains("choose what to open"))
+        precondition(SessionRunMode.seedsowSave.startTitle == "Start jailbreak")
+        precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options", "--seedsow-save"])
+        precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--seedsow-save"])
+        precondition(SessionRunMode.seedsowSave.postRunAction?.keepRPC == true)
+        precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options", "--savekit-tools"])
+        precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--savekit-tools"])
+        precondition(SessionRunMode.savekitTools.postRunAction?.keepRPC == true)
 
         var bootstrap = WorkflowProgress()
         bootstrap.begin(fullInstall: true)
@@ -19,15 +26,22 @@ import Foundation
         bootstrap.confirmSavedAndStartHost(); bootstrap.complete()
         precondition(bootstrap.state(for: 2) == .pending)
         precondition(!SessionRunMode.bootstrapOnly.requiresHost)
-        precondition(SessionRunMode.bootstrapOnly.hostArguments(address: "") == nil)
+        precondition(SessionRunMode.bootstrapOnly.hostArguments(address: "", host: "kurumuz") == nil)
         precondition(SessionRunMode.bootstrapOnly.postRunAction == nil)
         precondition(!SessionRunMode.commandsOnly.requiresHost && !SessionRunMode.commandsOnly.requiresNetworkAddress)
-        precondition(SessionRunMode.commandsOnly.hostArguments(address: address) == nil && SessionRunMode.commandsOnly.postRunAction == nil)
+        precondition(SessionRunMode.commandsOnly.hostArguments(address: address, host: "kurumuz") == nil && SessionRunMode.commandsOnly.postRunAction == nil)
         precondition(!SessionRunMode.existingRPC.requiresNetworkAddress && !SessionRunMode.existingRPC.isHostOnly)
-        precondition(SessionRunMode.existingRPC.hostArguments(address: address) == nil && SessionRunMode.existingRPC.postRunAction == nil)
+        precondition(SessionRunMode.existingRPC.hostArguments(address: address, host: "kurumuz") == nil && SessionRunMode.existingRPC.postRunAction == nil)
         for mode in [SessionRunMode.hostOnly, .hostOnlyHeld] {
             precondition(mode.isHostOnly && mode.requiresHost && mode.requiresNetworkAddress)
-            precondition(mode.hostArguments(address: address) == ["host", address] + (mode == .hostOnlyHeld ? ["--post-run-options"] : []))
+            for host in ["kurumuz", "cellenseres"] {
+                precondition(mode.hostArguments(address: address, host: host) == ["host", address] +
+                    (mode == .hostOnlyHeld ? ["--post-run-options", "--savekit-tools"] : []))
+            }
+            for host in ["BermTheSequel", "pepsipu", "izmysh"] {
+                precondition(mode.hostArguments(address: address, host: host) == ["host", address] +
+                    (mode == .hostOnlyHeld ? ["--post-run-options"] : []))
+            }
             precondition(mode.postRunAction?.keepRPC == (mode == .hostOnlyHeld ? true : nil))
             precondition(mode.postRunAction?.dumpFirmware != true)
         }
@@ -42,10 +56,10 @@ import Foundation
             precondition(workflow.state(for: 1) == .complete && workflow.state(for: 2) == .active)
             var postRun = PostRunSessionState()
             if mode == .exploitOnly {
-                precondition(mode.hostArguments(address: address) == ["host", address])
+                precondition(mode.hostArguments(address: address, host: "kurumuz") == ["host", address])
                 precondition(mode.postRunAction == nil && !postRun.isActive)
             } else {
-                precondition(mode.hostArguments(address: address) == ["host", address, "--post-run-options"])
+                precondition(mode.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options"])
                 let action = mode.postRunAction!
                 let control = try JSONSerialization.jsonObject(with: JSONSerialization.data(withJSONObject: action.control)) as! [String: Any]
                 precondition(control["action"] as? String == "post-run")

@@ -1,0 +1,28 @@
+{
+  "savekit": {
+    "repository": "https://github.com/dougchansan/ns2-savekit",
+    "revision": "700814ff37fa8f11f12e77b65dc8a33d421e8dd1",
+    "license": "MIT"
+  },
+  "editor": {
+    "repository": "https://github.com/DialingSpoon527/seedsow-lua-editor",
+    "release": "v0.1.3",
+    "asset": "Seedsow-Lua-Editor-Save.zip",
+    "sha256": "e13f095a920831d7e8ce170d96e12b033531d97491d9d0666e253fb6d4073b34",
+    "installableFiles": 273,
+    "license": "0BSD"
+  },
+  "kurumuzIpc": {
+    "originalSha256": "a29650186333a7bc6b3e5ef69a5d1a48dc9c8a471325616994a8a77739304412",
+    "patchedSha256": "2b29b3ecb10cf79fa7f445dd887aff3bf2280604efcf33acd19fab5ba4c68d84"
+  },
+  "kurumuzNcm": {
+    "originalSha256": "fdda25755a8023356d92995e9493f6ab515a69bf91a334e544fd66d5e289f7f6",
+    "patchedSha256": "36b76a1a47193f97005672710367ef819a4f58ad17eaa798871b9924d88f55cf"
+  },
+  "kurumuzMountedSave": {
+    "originalSha256": "fdf76f2ff460f344ace7d5c08fcf30fadb87b6f5ef321622438cc0cf31254c08",
+    "patchedSha256": "85b33fc7e1f14e4f1d07e363df71de2f0eb66fe044b54b0599f07744faf26f92"
+  },
+  "demoProgramId": "010042d022aea000"
+}

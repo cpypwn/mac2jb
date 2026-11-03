@@ -10,13 +10,14 @@ const {prepare, validateManifest, OWNER, ATTEMPT} = require('./rpc-attachment.cj
 const {validateRun} = require('./gui-homebrew.cjs');
 const {verifiedSession} = require('./gui-dump.cjs');
 const {profileById} = require('./host-profiles.cjs');
+const {expectedPatchedSource} = require('./prepare-seedsow-host.cjs');
 const repository = path.resolve(__dirname, '..');
 const write = async (file, value) => {
   await fs.mkdir(path.dirname(file), {recursive:true, mode:0o700});
   await fs.writeFile(file, JSON.stringify(value), {mode:0o600});
 };
 const update = async (file, mutate) => {const value = JSON.parse(await fs.readFile(file)); mutate(value); await write(file, value);};
-async function fixture(t, hostId = 'BermTheSequel') {
+async function fixture(t, hostId = 'BermTheSequel', patched = false) {
   const base = await fs.mkdtemp('/private/tmp/m2a-');
   const root = path.join(base, 'app'), directory = path.join(base, 'original/switch2-test');
   await fs.mkdir(root, {mode:0o700});
@@ -26,6 +27,11 @@ async function fixture(t, hostId = 'BermTheSequel') {
   if (hostId !== 'BermTheSequel') await fs.cp(source, path.join(root, host.sourceDirectory), {recursive:true});
   for (const name of ['shared','switch2'])
     await fs.cp(path.join(source, 'engine', name), path.join(directory, name), {recursive:true});
+  if (patched) {
+    await fs.cp(path.join(repository, 'vendor/ns2-savekit'), path.join(root, 'vendor/ns2-savekit'), {recursive:true});
+    for (const name of ['shared/ipc.cjs','switch2/ro/ncm.cjs','switch2/app/mounted-save.cjs'])
+      await fs.copyFile(path.join(root, 'vendor/ns2-savekit/overlay/engine', name), path.join(directory, name));
+  }
   const session = path.basename(directory), engine = path.join(directory, 'switch2');
   const proofFile = path.join(engine, 'process', session+'-fs-proof.json');
   const reportFile = path.join(engine, 'memory/report.json');
@@ -63,7 +69,8 @@ async function fixture(t, hostId = 'BermTheSequel') {
   const summary = {session, file:proofFile, trials:2, verified:true, restored:true,
     cleanup:{deferred:true, donor:{cleanedUp:true}}, retainedEndpoint:{ready:true, session, socketPath}};
   const resultFile = path.join(directory, 'result.json');
-  await write(resultFile, {platform:2, sourceSha256:host.sourceSha256, verified:true,
+  await write(resultFile, {platform:2,
+    sourceSha256:patched ? expectedPatchedSource(root, hostId).sourceSha256 : host.sourceSha256, verified:true,
     rpc:{mode:'held', state:'listening'}, fs:summary});
   await write(path.join(engine, 'fs-execution-current.json'), summary);
   await write(proofFile, {session, report:reportFile, verified:true,
@@ -98,7 +105,7 @@ test('local attachment validates real held proof and both live endpoints without
   assert.deepEqual(await fs.readFile(f.resultFile), before);
 });
 
-for (const application of ['hblauncher','mintbrew','izlauncher']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {
+for (const application of ['hblauncher','mintbrew','native-hblauncher','izlauncher']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {
   const f = await fixture(t), context = await f.attach();
   await assert.rejects(validateRun(f.root, f.directory, verifiedSession), /current held run|authorized/);
   await assert.rejects(validateManifest(f.root, f.directory, context.manifestPath), /authorization/);
@@ -171,11 +178,37 @@ test('wrong source, changed copied code and added executable code are rejected b
   assert.equal(f.requests.length, 0); assert.equal(f.retainedRequests.length, 0);
 });
 
-test('a supported held source attaches across the current host picker using its own pinned code', async t => {
-  const f = await fixture(t, 'kurumuz'), context = await f.attach();
-  assert.match(context.description, /kurumuz/);
+for (const hostId of ['kurumuz', 'cellenseres'])
+test(hostId+' held source attaches across the current host picker using its own pinned code', async t => {
+  const f = await fixture(t, hostId), context = await f.attach();
+  assert.match(context.description, new RegExp(hostId, 'i'));
   await context.claimApplication('ouncecake');
-  assert.equal((await validateManifest(f.root, f.directory, context.manifestPath)).profileId, 'kurumuz');
+  assert.equal((await validateManifest(f.root, f.directory, context.manifestPath)).profileId, hostId);
+});
+
+for (const hostId of ['kurumuz', 'cellenseres'])
+test(hostId+' SaveKit patched host attaches only with the exact verified overlay', async t => {
+  const f = await fixture(t, hostId, true), expected = expectedPatchedSource(f.root, hostId);
+  const context = await f.attach();
+  assert.equal(JSON.parse(await fs.readFile(context.manifestPath)).sourceSha256, expected.sourceSha256);
+  assert.equal((await context.verify()).ready, true);
+  await context.claimApplication('mintbrew');
+  assert.equal((await validateManifest(f.root, f.directory, context.manifestPath)).sourceSha256,
+    expected.sourceSha256);
+});
+
+test('changed SaveKit overlay and closed RPC reject attachment before live requests', async t => {
+  const altered = await fixture(t, 'cellenseres', true);
+  await fs.appendFile(path.join(altered.directory, 'shared/ipc.cjs'), '\n');
+  await assert.rejects(altered.attach(), /changed host code/);
+  assert.equal(altered.requests.length, 0);
+  assert.equal(altered.retainedRequests.length, 0);
+
+  const stopped = await fixture(t, 'kurumuz', true);
+  await update(stopped.resultFile, value => {value.rpc.state = 'closed';});
+  await assert.rejects(stopped.attach(), /held|stopped|available/i);
+  assert.equal(stopped.requests.length, 0);
+  assert.equal(stopped.retainedRequests.length, 0);
 });
 
 test('real upstream archived source copies are accepted only with pinned bytes and socket aliases retain live identity', async t => {

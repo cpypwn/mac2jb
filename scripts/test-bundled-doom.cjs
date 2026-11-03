@@ -61,17 +61,57 @@ test('packaged Freedoom engine sustains RGB565 frames without a Doom installatio
   assert.equal(fs.existsSync(path.join(session,'doom-host.log')),true);
 });
 
-test('Freedoom frame timeout records a useful engine diagnostic',{timeout:5000},async t=>{
+test('Freedoom permits a slower first frame while later frame waits stay bounded',{timeout:5000},async t=>{
   const {doom,session}=packagedDoom(t);
   const launch=()=>{
-    const child=new EventEmitter();child.pid=1234;child.stdin=new PassThrough();child.stdio=[child.stdin,null,null,new PassThrough()];
+    const child=new EventEmitter(),video=new PassThrough();
+    child.pid=1234;child.stdin=new PassThrough();child.stdio=[child.stdin,null,null,video];
+    child.stdin.on('data',()=>setTimeout(()=>video.write(Buffer.alloc(doom.FRAME_BYTES,0x5a)),35));
     child.kill=signal=>{queueMicrotask(()=>child.emit('exit',null,signal));return true;};
     return child;
   };
-  await assert.rejects(doom.create(session,{launch,frameTimeoutMs:25}),/did not produce a frame/);
+  const remote=await doom.create(session,{launch,frameTimeoutMs:10,startupFrameTimeoutMs:100});
+  assert.equal(remote.report.frames,1);
+  assert.equal(remote.report.timeout,undefined);
+  await remote.close();
+});
+
+test('Freedoom frame timeout records the stalled phase and received bytes',{timeout:5000},async t=>{
+  const {doom,session}=packagedDoom(t);
+  const launch=()=>{
+    const child=new EventEmitter();child.pid=1234;child.stdin=new PassThrough();child.stdio=[child.stdin,null,null,new PassThrough()];
+    child.stdin.once('data',()=>child.stdio[3].write(Buffer.alloc(17)));
+    child.kill=signal=>{queueMicrotask(()=>child.emit('exit',null,signal));return true;};
+    return child;
+  };
+  await assert.rejects(doom.create(session,{launch,startupFrameTimeoutMs:25}),
+    /startup frame timed out.*17\/128000 bytes received; engine process alive/);
   const report=JSON.parse(fs.readFileSync(path.join(session,'doom-engine.json')));
+  assert.equal(report.timeout.phase,'startup');
   assert.equal(report.timeout.sequence,1);
-  assert.equal(report.timeout.frameBytesReceived,0);
+  assert.equal(report.timeout.budgetMs,25);
+  assert.equal(report.timeout.frameBytesReceived,17);
+  assert.equal(report.timeout.frameBytesExpected,128000);
   assert.equal(report.timeout.childPid,1234);
   assert.ok(report.timeout.elapsedMs>0);
+});
+
+test('Freedoom distinguishes a later stream stall from startup',{timeout:5000},async t=>{
+  const {doom,session}=packagedDoom(t);
+  let requests=0;
+  const launch=()=>{
+    const child=new EventEmitter(),video=new PassThrough();
+    child.pid=1234;child.stdin=new PassThrough();child.stdio=[child.stdin,null,null,video];
+    child.stdin.on('data',()=>{if(++requests===1)video.write(Buffer.alloc(doom.FRAME_BYTES,0x5a));});
+    child.kill=signal=>{queueMicrotask(()=>child.emit('exit',null,signal));return true;};
+    return child;
+  };
+  const remote=await doom.create(session,{launch,frameTimeoutMs:25,startupFrameTimeoutMs:100});
+  await assert.rejects(remote.nextFrame(),/stream frame timed out.*0\/128000 bytes received/);
+  await remote.close();
+  const report=JSON.parse(fs.readFileSync(path.join(session,'doom-engine.json')));
+  assert.equal(report.timeout.phase,'stream');
+  assert.equal(report.timeout.sequence,2);
+  assert.equal(report.timeout.budgetMs,25);
+  assert.ok(report.timeout.lastFrameAt);
 });

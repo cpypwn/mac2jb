@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/a55uka/nup",
+  "commit": "6fa98a8623afc5e40eeb30052b77691f1a68d542",
+  "archive": "https://codeload.github.com/a55uka/nup/zip/6fa98a8623afc5e40eeb30052b77691f1a68d542",
+  "archiveSha256": "7a97b74ce0787856ad3e9009eef3e5c45d3c9faf113d421717856aa6cac4221b",
+  "modules": {
+    "__init__.py": "10f43be5642e3dfff0cd41d458967ee1eb10d151733e52e6a8955d5364238df6",
+    "cli.py": "84e769105dc1b5984d3560a6408a065e9dd96ca788596290a1d07d031234778e",
+    "format.py": "d08006d883d33e36a5b3514b1d866aec1896ea77b473548627dc5d6d6534c410",
+    "pack.py": "8e6215b6286421712f7de199cec0a3b89f2b3e2e05b2ffb84c52b685bfe87030",
+    "read.py": "0c578c7169d823d0a8952eb0cd8192d035e3970447abafa028d5bd246f77f9fd",
+    "verify.py": "3296e69af92756cdad9c1168de56a5d2211661ec2c0ceefe8dc4251a8f774ffe"
+  },
+  "zstandard": {
+    "version": "0.25.0",
+    "wheel": "https://files.pythonhosted.org/packages/3f/06/9ae96a3e5dcfd119377ba33d4c42a7d89da1efabd5cb3e366b156c45ff4d/zstandard-0.25.0-cp313-cp313-macosx_11_0_arm64.whl",
+    "wheelSha256": "a1a4ae2dec3993a32247995bdfe367fc3266da832d82f8438c8570f989753de1"
+  }
+}

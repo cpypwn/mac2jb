@@ -1,0 +1,20 @@
+{
+  "comment": "Program IDs this toolkit may WRITE to. Anything not listed is refused before a handle opens. Copy the entries you want into config/titles.local.json (gitignored) so your own console's ids never land in version control. The names map is safe to keep: title ids are global, and demos/trials need it because titledb has a null id for them.",
+  "write": [],
+  "names": {
+    "010042d022aea000": "Seedsow Lullaby (demo)",
+    "0100ee5021c9e000": "Seedsow Lullaby (full)",
+    "010012900d38a000": "Nora to Oujo to Noraneko Heart 2 (trial)",
+    "01005eb012fe2000": "Wagamama High Spec (trial)",
+    "0100b4b00f9f6000": "SmileBASIC 4 (demo)",
+    "04008e001f098000": "Nintendo Switch Sports Resort"
+  },
+  "example": {
+    "write": [
+      {
+        "id": "0100000000000000",
+        "name": "your disposable title"
+      }
+    ]
+  }
+}

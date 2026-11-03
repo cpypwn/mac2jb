@@ -13,7 +13,7 @@ function fixture(t, actualHost = true) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-fork-test-'));
   t.after(() => fs.rmSync(root, {recursive: true, force: true}));
   fs.mkdirSync(path.join(root, 'scripts'));
-  for (const name of ['gui-host.cjs', 'host-wrapper.cjs', 'host-profiles.cjs'])
+  for (const name of ['gui-host.cjs', 'usb-controllers.cjs', 'host-wrapper.cjs', 'host-profiles.cjs'])
     fs.copyFileSync(path.join(__dirname, name), path.join(root, 'scripts', name));
   fs.mkdirSync(path.join(root, 'packaging'));
   fs.copyFileSync(path.join(repository, 'packaging/host-profiles.json'), path.join(root, 'packaging/host-profiles.json'));
@@ -114,7 +114,7 @@ test('CLI host settings override inherited modes while preserving explicit --rpc
     {arity: '5', rpc: '0', args: ['--rpc', '127.0.0.1']});
 });
 
-for(const id of ['pepsipu','kurumuz']) test(`GUI pairs with the actual pinned ${id} host and its unchanged bootstrap protocol`,
+for(const id of ['pepsipu','kurumuz','cellenseres']) test(`GUI pairs with the actual pinned ${id} host and its unchanged bootstrap protocol`,
   {timeout:10000},async t=>{
     const {profileById,validStartCommand}=require('./host-profiles.cjs');
     const profile=profileById(id),source=fixture(t,false);

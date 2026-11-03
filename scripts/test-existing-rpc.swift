@@ -24,7 +24,13 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try Data("{\"id\":\"\(host.rawValue)\"}".utf8).write(to: root.appendingPathComponent("selected-host.json"))
         let worker = #"""
         #!/bin/sh
-        case "$1" in */scripts/gui-attach.cjs) ;; *) exit 88 ;; esac
+        case "$1" in
+          */scripts/gui-discover-rpc.cjs)
+            if [ -f discovery-result ]; then cat discovery-result; else printf '%s\n' '{"candidates":[]}'; fi
+            exit 0 ;;
+          */scripts/gui-attach.cjs) ;;
+          *) exit 88 ;;
+        esac
         printf '%s\n' "$*" >> invocations
         printf '%s\n' "$$" > fixture-pid
         emit_events() { if [ -f "$1" ]; then while IFS= read -r line; do printf '%s\n' "$line"; done < "$1"; fi; }
@@ -91,8 +97,9 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try eventFile("detached-event", type: "rpc-detached")
     }
     func put(_ file: String, _ value: String = "") throws {try Data(value.utf8).write(to: root.appendingPathComponent(file))}
-    func eventFile(_ file: String, type: String, path: String? = nil, session: String? = nil) throws {
-        let event: [String: Any] = ["type": type, "path": path ?? source.path, "sourceSession": session ?? source.lastPathComponent]
+    func eventFile(_ file: String, type: String, path: String? = nil, session: String? = nil, profileId: String? = nil) throws {
+        var event: [String: Any] = ["type": type, "path": path ?? source.path, "sourceSession": session ?? source.lastPathComponent]
+        if type == "rpc-attached" { event["profileId"] = profileId ?? model.selectedHost.rawValue }
         let data = try JSONSerialization.data(withJSONObject: event)
         try put(file, String(decoding: data, as: UTF8.self) + "\n")
     }
@@ -140,6 +147,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               "pepsipu capabilities preserve its nine-argument bootstrap and no held endpoint")
         check(HostProfile.kurumuz.supportsHeldRPC && HostProfile.kurumuz.supportsDemo && HostProfile.kurumuz.startArgumentCount == 5,
               "kurumuz exposes held RPC and demo mode")
+        check(HostProfile.cellenseres.supportsHeldRPC && HostProfile.cellenseres.supportsDemo && HostProfile.cellenseres.startArgumentCount == 5,
+              "Cellenseres exposes held RPC and the inherited five-argument bootstrap")
         check(HostProfile.bermTheSequel.supportsHeldRPC && HostProfile.bermTheSequel.supportsDemo && HostProfile.bermTheSequel.startArgumentCount == 5,
               "BermTheSequel retains held RPC and demo support")
         check(!HostProfile.izmysh.supportsHeldRPC && !HostProfile.izmysh.supportsDemo &&
@@ -148,7 +157,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         let five = "V=START(39380,192,0,2,42)", nine = "V=START(39380,192,0,2,42,1,2,3,281474976710655)"
         check(PostBootstrapCommandSelection.validStartCommand(nine, host: .pepsipu) && !PostBootstrapCommandSelection.validStartCommand(five, host: .pepsipu),
               "pepsipu validates the exact nine-value START including token values")
-        for host in [HostProfile.kurumuz, .bermTheSequel] {
+        for host in [HostProfile.kurumuz, .cellenseres, .bermTheSequel] {
             check(PostBootstrapCommandSelection.validStartCommand(five, host: host) && !PostBootstrapCommandSelection.validStartCommand(nine, host: host),
                   "five-value hosts reject a different bootstrap command shape")
         }
@@ -158,11 +167,49 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         }
         let unsupported = try AttachmentFixture(host: .pepsipu)
         defer {unsupported.dispose()}
-        check(unsupported.model.selectedHost == .pepsipu && unsupported.model.runMode == .exploitOnly && !unsupported.model.canAttachExistingRPC,
-              "runtime profile capability prevents unsupported attachment")
-        unsupported.model.attachExistingRPC(); unsupported.model.startHostOnly(keepRPC: true); unsupported.model.selectRunMode(.existingRPC)
-        check(!unsupported.model.hasLiveWorkers && unsupported.invocations.isEmpty && unsupported.model.runMode == .exploitOnly,
-              "unsupported held workflows never spawn a worker")
+        check(unsupported.model.selectedHost == .pepsipu && unsupported.model.runMode == .exploitOnly && unsupported.model.canAttachExistingRPC,
+              "attachment checks the source run rather than the currently selected host")
+        unsupported.model.startHostOnly(keepRPC: true); unsupported.model.selectRunMode(.existingRPC)
+        check(!unsupported.model.hasLiveWorkers && unsupported.invocations.isEmpty && unsupported.model.runMode == .existingRPC,
+              "unsupported hosts still cannot start held RPC but can select an existing session")
+
+        let discovered = try AttachmentFixture(host: .pepsipu)
+        defer {discovered.dispose()}
+        try discovered.eventFile("attached-event", type: "rpc-attached", profileId: "cellenseres")
+        let discoveredCandidate: [String: String] = ["path": discovered.source.path,
+            "description": "Cellenseres · \(discovered.source.lastPathComponent)",
+            "session": discovered.source.lastPathComponent, "profileId": "cellenseres",
+            "modified": "2026-11-01T00:00:00.000Z"]
+        let discoveredOutput = try JSONSerialization.data(withJSONObject: ["candidates": [discoveredCandidate]])
+        try discovered.put("discovery-result", String(decoding: discoveredOutput, as: UTF8.self))
+        discovered.model.findOpenRPC()
+        try await until("one discovered session starts attachment") {discovered.model.phase == .rpcAttaching}
+        check(discovered.model.existingRPCRunPath == discovered.source.path &&
+              discovered.model.rpcDiscoveredSessions.count == 1 && discovered.model.hasLiveWorkers,
+              "one verified discovery result automatically uses the existing attachment path")
+        try discovered.put("release-attach")
+        try await until("discovered source host verified") {discovered.model.phase == .rpcHeld}
+        check(discovered.model.activeHost == .cellenseres && discovered.model.selectedHost == .pepsipu &&
+              discovered.model.canLaunchHomebrew,
+              "the attached run's verified profile controls capabilities independently of the picker")
+
+        let choices = try AttachmentFixture()
+        defer {choices.dispose()}
+        let otherCandidate: [String: String] = ["path": choices.base.appendingPathComponent("other/switch2-test").path,
+            "description": "Kurumuz · switch2-test", "session": "switch2-test", "profileId": "kurumuz",
+            "modified": "2026-11-01T00:00:00.000Z"]
+        var firstCandidate = discoveredCandidate
+        firstCandidate["path"] = choices.source.path
+        firstCandidate["session"] = choices.source.lastPathComponent
+        let choicesOutput = try JSONSerialization.data(withJSONObject: ["candidates": [firstCandidate, otherCandidate]])
+        try choices.put("discovery-result", String(decoding: choicesOutput, as: UTF8.self))
+        choices.model.findOpenRPC()
+        try await until("multiple discovered sessions offered") {
+            !choices.model.rpcDiscoveryRunning && choices.model.rpcDiscoveredSessions.count == 2
+        }
+        check(choices.model.phase == .ready && !choices.model.hasLiveWorkers &&
+              choices.model.selectedDiscoveredRPCPath == choices.source.path,
+              "multiple verified sessions wait for an explicit selection")
 
         for (launcher, action, edition, host) in [("MintBrew", "launch-mintbrew", SmileBASICEdition.full, HostProfile.kurumuz), ("IZlauncher", "launch-izlauncher", .full, .bermTheSequel), ("IZlauncher", "launch-izlauncher", .demo, .bermTheSequel)] {
         var addressReads = 0

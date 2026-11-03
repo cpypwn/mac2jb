@@ -174,7 +174,7 @@ private final class UpdateDownloadGuard: NSObject, URLSessionDownloadDelegate {
                 guard try expected == UpdateRelease.digest(candidate.archive.digest) else {
                     throw UpdateFailure("The published app checksums disagree. Please try again later.")
                 }
-                let temporary = try await fetchFile(candidate.archive.browser_download_url, limit: 200 * 1024 * 1024,
+                let temporary = try await fetchFile(candidate.archive.browser_download_url, limit: Int64(UpdatePackage.maximumArchiveBytes),
                                                       expected: candidate.archive.size) { [weak self] fraction in
                     Task { @MainActor in self?.progress = fraction }
                 }

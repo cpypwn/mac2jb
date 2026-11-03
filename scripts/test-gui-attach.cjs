@@ -24,7 +24,8 @@ function fixture(t, options = {}) {
   const events = [], calls = [], children = [];
   const state = {lost: false, closed: false, checks: 0};
   const context = {
-    directory, sourceSession: 'switch2-held', description: 'Verified local RPC', manifestPath: root + '/attached-run.json',
+    directory, sourceSession: 'switch2-held', profileId:options.profileId || 'kurumuz',
+    description: 'Verified local RPC', manifestPath: root + '/attached-run.json',
     async verify() {
       calls.push(['verify']); state.checks++;
       if (options.verify) await options.verify(state);
@@ -66,6 +67,11 @@ function fixture(t, options = {}) {
   }
   const done = main({root: fixtureRoot, input, output, signals, emit: (type, fields) => events.push({type, ...fields}),
     pollMs: options.pollMs ?? 0, graceMs: options.graceMs ?? 200,
+    releaseMarkers: (run, proof, ouncecakeMode) => {
+      calls.push(['release-markers', run, ouncecakeMode]);
+      assert.equal(proof?.cleanupVerified, true);
+      options.releaseMarkers?.(run, proof, ouncecakeMode);
+    },
     listIZlauncherModules: async () => [{id:'blitbun',name:'BlitBun',version:'1.14.4',description:'Stream a browser'}],
     preflightCustomApp: async (selectedRoot, folder) => {
       calls.push(['preflight', selectedRoot, folder]);
@@ -82,6 +88,13 @@ function fixture(t, options = {}) {
       if (folder.includes('NativeTool'))
         return {kind:'rpc-app',adapter:'script',app:{name:'Native tool'},
           packageFolder:root+'/runs/staged/native-tool',
+          cleanup:async()=>{calls.push(['preflight-cleanup']);}};
+      if (folder.includes('CustomIZ'))
+        return {kind:'iz-module',moduleId:'custom-iz',app:{name:'Custom IZ module'},
+          cleanup:async()=>{calls.push(['preflight-cleanup']);}};
+      if (folder.includes('ABI3App'))
+        return {kind:'native-app',app:{name:'ABI 3 app'},
+          packageFolder:root+'/runs/staged/abi3-app',
           cleanup:async()=>{calls.push(['preflight-cleanup']);}};
       return {app: {name: 'My GPU App'}, appFolder: root + '/runs/staged/my-gpu-app',
         cleanup: async () => {calls.push(['preflight-cleanup']);}};
@@ -100,7 +113,12 @@ function fixture(t, options = {}) {
       child.signals.push([signal, group]); calls.push(['signal', signal, group]);
       if (signal === 'SIGKILL') child.close(null, 'SIGKILL');
       else if (options.stopChild) options.stopChild(child);
-      else setImmediate(() => {child.event({type: 'stopped'}); child.close();});
+      else setImmediate(() => {
+        child.event({type: 'stopped', cleanupVerified:true,
+          attemptMarkerSha256:'a'.repeat(64),
+          attemptMarkers:['.mac2jb-hblauncher-attempt.json']});
+        child.close();
+      });
     }});
   const keepAlive = setInterval(() => {}, 100);
   let finished = false; done.finally(() => {finished = true; clearInterval(keepAlive);});
@@ -127,6 +145,7 @@ test('local attachment is announced only after prepare and live verification', a
   session.send({action: 'launch-mintbrew'}); await session.wait('action-rejected');
   proof.resolve(); const attached = await session.wait('rpc-attached');
   assert.equal(attached.path, directory); assert.equal(attached.sourceSession, 'switch2-held');
+  assert.equal(attached.profileId, 'kurumuz');
   assert.deepEqual(session.calls.map(row => row[0]), ['prepare', 'verify']);
   session.send({action: 'rpc-status'}); assert.equal((await session.wait('rpc-status')).ready, true);
   assert.equal(session.state.checks, 2); assert.equal(session.children.length, 0);
@@ -169,9 +188,50 @@ test('attached held RPC waits for MintBrew shutdown before a system-code dump', 
   const stop = session.calls.findIndex(row => row[0] === 'signal' && row[1] === 'SIGTERM');
   const dump = session.calls.findIndex(row => row[0] === 'spawn' && row[2][0].endsWith('gui-dump.cjs'));
   assert.ok(stop >= 0 && dump > stop);
-  assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim','mintbrew']]);
-  assert.equal(session.calls.filter(row => row[0] === 'release').length, 0);
+  assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim','mintbrew'],['claim','system-code-dump']]);
+  assert.equal(session.calls.filter(row => row[0] === 'release').length, 2);
   session.send({action:'finish'}); assert.equal(await session.done, 0);
+});
+test('attached stop button releases a clean launcher and accepts another app', async t => {
+  const session = fixture(t); await session.attach();
+  session.send({action:'stop-homebrew'});
+  assert.equal((await session.wait('action-rejected')).action, 'stop-homebrew');
+  session.send({action:'launch-mintbrew'}); await session.wait('homebrew-running');
+  session.send({action:'launch-izlauncher'});
+  assert.match((await session.wait('action-rejected',2)).message,/one homebrew launch attempt/i);
+  session.send({action:'stop-homebrew'});
+  await session.wait('homebrew-stopping');
+  await session.wait('homebrew-ready');
+  assert.equal(session.calls.filter(row => row[0] === 'release').length, 1);
+  assert.equal(session.calls.filter(row => row[0] === 'release-markers').length, 1);
+  session.send({action:'launch-izlauncher'}); await session.wait('homebrew-running',2);
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','mintbrew'],['claim','izlauncher']]);
+  session.send({action:'finish'}); assert.equal(await session.done, 0);
+});
+test('detaching during a delayed claim releases it before closing the attachment', async t => {
+  const claim = deferred(), session = fixture(t, {claim: () => claim.promise});
+  await session.attach();
+  session.send({action:'launch-mintbrew'});
+  await until(() => session.calls.some(row => row[0] === 'claim'));
+  session.send({action:'finish'});
+  claim.resolve();
+  assert.equal(await session.done, 0);
+  assert.deepEqual(session.calls.filter(row => ['claim','release','close'].includes(row[0])).map(row => row[0]),
+    ['claim','release','close']);
+  assert.equal(session.calls.some(row => row[0] === 'spawn'), false);
+});
+test('attached stop without cleanup proof keeps the source claimed', async t => {
+  const session = fixture(t, {stopChild: child => setImmediate(() => {
+    child.event({type:'stopped'}); child.close();
+  })});
+  await session.attach();
+  session.send({action:'launch-mintbrew'}); await session.wait('homebrew-running');
+  session.send({action:'stop-homebrew'}); await session.wait('homebrew-stopping');
+  await session.wait('cleanup-blocked');
+  assert.equal(session.events.some(event => event.type === 'homebrew-ready'), false);
+  assert.equal(session.calls.filter(row => row[0] === 'release').length, 0);
+  session.send({action:'finish'});
+  assert.notEqual(await session.done, 0);
 });
 test('attached held RPC never starts a dump if MintBrew cleanup fails', async t => {
   const session = fixture(t, {stopChild:child => setImmediate(() => {
@@ -294,7 +354,45 @@ test('attached custom launcher keeps the same held RPC and selects its staged bu
   session.send({action:'finish'});assert.equal(await session.done,0);
   assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
 });
-test('attached direct OunceCake fork uses the catalog and selected FTP endpoint',async t=>{
+for(const [folder,kind,claim,helper,argument] of [
+  ['/Users/test/CustomIZ','iz-module','izlauncher','gui-izlauncher.cjs','--modules'],
+  ['/Users/test/ABI3App','native-app','native-hblauncher','gui-native-hblauncher.cjs','--app-folder']
+])test('attached custom '+kind+' claims its matching runtime',async t=>{
+  const session=fixture(t);await session.attach();
+  session.send({action:'launch-custom-homebrew',customHomebrewPath:folder});
+  const accepted=await session.wait('homebrew-accepted');
+  assert.equal(accepted.customHomebrewKind,kind);
+  if(kind==='native-app')assert.match(accepted.message,/Select it in HBLauncher/);
+  await session.wait('homebrew-running');
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim',claim]]);
+  const args=session.calls.find(row=>row[0]==='spawn')[2];
+  assert.equal(args[0],root+'/scripts/'+helper);
+  assert.equal(args.includes(argument),true);
+  if(kind==='iz-module')assert.deepEqual(JSON.parse(args.at(-1)),
+    ['iz-exchange','blitbun','vacootube','custom-iz']);
+  else assert.equal(args.at(-1),root+'/runs/staged/abi3-app');
+  session.send({action:'launch-mintbrew'});await session.wait('action-rejected');
+  session.send({action:'finish'});assert.equal(await session.done,0);
+  assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
+});
+test('attached custom native app rejects a non-Kurumuz host before claiming',async t=>{
+  const session=fixture(t,{profileId:'bermthesequel'});await session.attach();
+  session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/ABI3App'});
+  assert.match((await session.wait('action-rejected')).message,/Kurumuz or Cellenseres/);
+  assert.equal(session.calls.some(row=>row[0]==='claim'),false);
+  assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
+  session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
+  session.send({action:'finish'});assert.equal(await session.done,0);
+});
+test('attached custom native app accepts a Cellenseres held session',async t=>{
+  const session=fixture(t,{profileId:'cellenseres'});await session.attach();
+  session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/ABI3App'});
+  assert.equal((await session.wait('homebrew-accepted')).customHomebrewKind,'native-app');
+  await session.wait('homebrew-running');
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','native-hblauncher']]);
+  session.send({action:'finish'});assert.equal(await session.done,0);
+});
+test('attached direct OunceCake fork uses the catalog and selected WebDAV endpoint',async t=>{
   const session=fixture(t,{childStart:child=>child.event({type:'started'})});await session.attach();
   session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/OunceFork'});
   const rejected=await session.wait('action-rejected');
@@ -315,11 +413,11 @@ test('attached direct OunceCake fork uses the catalog and selected FTP endpoint'
   session.send({action:'select-ouncecake-game',titleId:game.titleId});
   await until(()=>child.input.includes('select-game'));
   assert.deepEqual(JSON.parse(child.input.split('\n')[1]),{action:'select-game',titleId:game.titleId});
-  child.event({type:'running',host:'192.0.2.9',port:2121,ftpURL:'ftp://192.0.2.9:2121'});
-  assert.equal((await session.wait('homebrew-running')).ftpURL,'ftp://192.0.2.9:2121');
+  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/'});
+  assert.equal((await session.wait('homebrew-running')).httpURL,'http://192.0.2.9:2121/');
   session.send({action:'finish'});assert.equal(await session.done,0);
 });
-test('attached OunceCake fork cannot claim a different FTP endpoint',async t=>{
+test('attached OunceCake fork cannot claim a different WebDAV endpoint',async t=>{
   const session=fixture(t,{childStart:child=>child.event({type:'started'})});await session.attach();
   session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/OunceFork',consoleAddress:'192.0.2.9'});
   await session.wait('homebrew-started');
@@ -327,7 +425,7 @@ test('attached OunceCake fork cannot claim a different FTP endpoint',async t=>{
   await session.wait('homebrew-catalog');
   session.send({action:'select-ouncecake-game',titleId:game.titleId});
   await until(()=>child.input.split('\n').filter(Boolean).length===2);
-  child.event({type:'running',host:'192.0.2.10',port:2121,ftpURL:'ftp://192.0.2.10:2121'});
+  child.event({type:'running',host:'192.0.2.10',port:2121,httpURL:'http://192.0.2.10:2121/'});
   await session.wait('homebrew-stopped');
   assert.equal(session.events.some(row=>row.type==='homebrew-running'),false);
   session.send({action:'finish'});assert.equal(await session.done,1);
@@ -405,6 +503,7 @@ test('invalid IZlauncher module can be corrected before claiming the attached ru
 for (const [action, application, name] of [
   ['launch-izlauncher', 'izlauncher', 'gui-izlauncher.cjs'],
   ['launch-mintbrew', 'mintbrew', 'gui-mintbrew.cjs'],
+  ['launch-native-hblauncher', 'native-hblauncher', 'gui-native-hblauncher.cjs'],
   ['launch-custom-homebrew', 'custom-homebrew', 'gui-custom-homebrew.cjs'],
   ['launch-ouncecake', 'ouncecake', 'gui-ouncecake.cjs']
 ]) test(application + ' claims the original run once before the correct local helper starts', async t => {
@@ -419,6 +518,7 @@ for (const [action, application, name] of [
   assert.equal(call[3].env.MAC2JB_ATTACHED_RUN_MANIFEST, session.context.manifestPath);
   assert.equal(call[3].detached, true); assert.equal(call[3].cwd, root);
   if (application === 'izlauncher') assert.deepEqual(call[2].slice(2), []);
+  if (application === 'native-hblauncher') assert.deepEqual(call[2].slice(2), ['--sd-rom-folder', '/sd/roms/nes']);
   if (application === 'custom-homebrew') assert.deepEqual(call[2].slice(2), ['--app-folder', root + '/runs/staged/my-gpu-app']);
   if (application === 'mintbrew') {
     assert.deepEqual(call[2].slice(2), []);
@@ -429,6 +529,25 @@ for (const [action, application, name] of [
   session.send({action: 'finish'}); assert.equal(await session.done, 0);
   assert.deepEqual(session.children[0].signals, [['SIGTERM', false]]);
   assert.ok(session.events.findIndex(row => row.type === 'homebrew-stopped') < session.events.findIndex(row => row.type === 'rpc-detached'));
+});
+test('native SD ROM path is checked before claiming the held RPC session', async t => {
+  const session = fixture(t); await session.attach();
+  session.send({action: 'launch-native-hblauncher', sdRomFolder: '/sd/../user'});
+  assert.match((await session.wait('action-rejected')).message, /SD ROM folder/i);
+  assert.equal(session.calls.some(row => row[0] === 'claim'), false);
+  session.send({action: 'launch-native-hblauncher', sdRomFolder: '/sd/games/nes'});
+  await session.wait('homebrew-started');
+  assert.deepEqual(session.calls.find(row => row[0] === 'spawn')[2].slice(2),
+    ['--sd-rom-folder', '/sd/games/nes']);
+  session.send({action: 'finish'}); assert.equal(await session.done, 0);
+});
+test('direct native HBLauncher rejects unsupported host without consuming held RPC', async t => {
+  const session = fixture(t, {profileId: 'BermTheSequel'}); await session.attach();
+  session.send({action: 'launch-native-hblauncher'});
+  assert.match((await session.wait('action-rejected')).message, /Kurumuz or Cellenseres/);
+  assert.equal(session.calls.some(row => row[0] === 'claim'), false);
+  session.send({action: 'launch-mintbrew'}); await session.wait('homebrew-running');
+  session.send({action: 'finish'}); assert.equal(await session.done, 0);
 });
 test('atomic source claim failure never spawns and cannot be retried', async t => {
   const session = fixture(t, {claim: async () => {throw Error('already claimed');}}); await session.attach();
@@ -525,7 +644,7 @@ test('a zero helper exit without terminal cleanup proof is not a successful app 
   session.send({action: 'launch-mintbrew'}); await session.wait('action-rejected');
   session.send({action: 'finish'}); assert.equal(await session.done, 1);
 });
-test('OunceCake catalog selection and FTP endpoint belong to the attached session', async t => {
+test('OunceCake catalog selection and WebDAV endpoint belong to the attached session', async t => {
   const session = fixture(t); await session.attach(); session.send({action: 'launch-ouncecake', consoleAddress: '192.0.2.9'});
   await session.wait('homebrew-started'); const child = session.children[0];
   child.event({type: 'catalog', games: [game]}); assert.deepEqual((await session.wait('homebrew-catalog')).games, [game]);
@@ -533,8 +652,8 @@ test('OunceCake catalog selection and FTP endpoint belong to the attached sessio
   session.send({action: 'select-ouncecake-game', titleId: game.titleId});
   await until(() => child.input.split('\n').filter(Boolean).length === 2);
   assert.deepEqual(JSON.parse(child.input.trim().split('\n')[1]), {action: 'select-game', titleId: game.titleId});
-  child.event({type: 'running', host: '192.0.2.9', port: 2121, ftpURL: 'ftp://192.0.2.9:2121'});
-  assert.equal((await session.wait('homebrew-running')).ftpURL, 'ftp://192.0.2.9:2121');
+  child.event({type: 'running', host: '192.0.2.9', port: 2121, httpURL: 'http://192.0.2.9:2121/'});
+  assert.equal((await session.wait('homebrew-running')).httpURL, 'http://192.0.2.9:2121/');
   session.send({action: 'select-ouncecake-game', titleId: game.titleId}); await session.wait('action-rejected', 2);
   session.send({action: 'finish'}); assert.equal(await session.done, 0);
 });
@@ -546,16 +665,16 @@ test('invalid or duplicate OunceCake catalogs are rejected before selection', as
   await session.wait('homebrew-stopped'); assert.equal(session.events.some(row => row.type === 'homebrew-catalog'), false);
   session.send({action: 'finish'}); assert.equal(await session.done, 1);
 });
-test('OunceCake cannot publish FTP readiness before selection or for a different endpoint', async t => {
+test('OunceCake cannot publish WebDAV readiness before selection or for a different endpoint', async t => {
   const session = fixture(t); await session.attach(); session.send({action: 'launch-ouncecake', consoleAddress: '192.0.2.9'});
-  await session.wait('homebrew-started'); session.children[0].event({type: 'running', host: '192.0.2.9', port: 2121, ftpURL: 'ftp://192.0.2.9:2121'});
+  await session.wait('homebrew-started'); session.children[0].event({type: 'running', host: '192.0.2.9', port: 2121, httpURL: 'http://192.0.2.9:2121/'});
   await session.wait('homebrew-stopped'); assert.equal(session.events.some(row => row.type === 'homebrew-running'), false);
   session.send({action: 'finish'}); assert.equal(await session.done, 1);
 });
-for (const endpoint of [{host: '192.0.2.10', port: 2121, ftpURL: 'ftp://192.0.2.10:2121'},
-  {host: '192.0.2.9', port: 5000, ftpURL: 'ftp://192.0.2.9:5000'},
-  {host: '192.0.2.9', port: 2121, ftpURL: 'ftp://other.example:2121'}])
-test('selected OunceCake game rejects mismatched endpoint ' + endpoint.ftpURL, async t => {
+for (const endpoint of [{host: '192.0.2.10', port: 2121, httpURL: 'http://192.0.2.10:2121/'},
+  {host: '192.0.2.9', port: 5000, httpURL: 'http://192.0.2.9:5000/'},
+  {host: '192.0.2.9', port: 2121, httpURL: 'http://other.example:2121/'}])
+test('selected OunceCake game rejects mismatched endpoint ' + endpoint.httpURL, async t => {
   const session = fixture(t); await session.attach(); session.send({action: 'launch-ouncecake', consoleAddress: '192.0.2.9'});
   await session.wait('homebrew-started'); const child = session.children[0]; child.event({type: 'catalog', games: [game]});
   await session.wait('homebrew-catalog'); session.send({action: 'select-ouncecake-game', titleId: game.titleId});
@@ -563,7 +682,7 @@ test('selected OunceCake game rejects mismatched endpoint ' + endpoint.ftpURL, a
   await session.wait('homebrew-stopped'); assert.equal(session.events.some(row => row.type === 'homebrew-running'), false);
   session.send({action: 'finish'}); assert.equal(await session.done, 1);
 });
-for (const application of ['ouncecake', 'izlauncher', 'mintbrew']) test(application + ' uncertain native cleanup is retained when the local helper is detached', async t => {
+for (const application of ['ouncecake', 'izlauncher', 'mintbrew', 'native-hblauncher']) test(application + ' uncertain native cleanup is retained when the local helper is detached', async t => {
   const session = fixture(t); await session.attach(); session.send({action: 'launch-' + application, consoleAddress: '192.0.2.9'});
   await session.wait('homebrew-started');
   session.children[0].event({type: 'failed', cleanupBlocked: true, message: 'Native join was not confirmed.'});

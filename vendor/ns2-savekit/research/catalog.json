@@ -1,0 +1,726 @@
+{
+  "revision": "700814ff37fa8f11f12e77b65dc8a33d421e8dd1",
+  "tools": [
+    {
+      "category": "Current SaveKit tools",
+      "name": "accounts.cjs",
+      "path": "current/tools/accounts.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "artemis-http.cjs",
+      "path": "current/tools/artemis-http.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Connects to the Artemis HTTP service on the console. Some commands change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "artemis-launcher.cjs",
+      "path": "current/tools/artemis-launcher.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Install and restore need a live patched RPC host. Stage and plan can run offline."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "artemis-save.py",
+      "path": "current/tools/artemis-save.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "build-editor-manifest.py",
+      "path": "current/tools/build-editor-manifest.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "build-stage.sh",
+      "path": "current/tools/build-stage.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "build-untethered.sh",
+      "path": "current/tools/build-untethered.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "diagnose-ns2jb-acquisition.cjs",
+      "path": "current/tools/diagnose-ns2jb-acquisition.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Reads local acquisition logs and reports stage 2 diagnosis."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "fetch-editor-save.sh",
+      "path": "current/tools/fetch-editor-save.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "find-save-uid.cjs",
+      "path": "current/tools/find-save-uid.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "inject-launcher.sh",
+      "path": "current/tools/inject-launcher.sh",
+      "execution": "shell",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "inventory.cjs",
+      "path": "current/tools/inventory.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "kit.cjs",
+      "path": "current/tools/kit.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "list-apps.cjs",
+      "path": "current/tools/list-apps.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "manifest-from-dir.cjs",
+      "path": "current/tools/manifest-from-dir.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "nso-verify.cjs",
+      "path": "current/tools/nso-verify.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "pull-all.cjs",
+      "path": "current/tools/pull-all.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "pull-inventory.cjs",
+      "path": "current/tools/pull-inventory.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "pulled-dates.py",
+      "path": "current/tools/pulled-dates.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "save-delete-root.cjs",
+      "path": "current/tools/save-delete-root.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "save-inventory.cjs",
+      "path": "current/tools/save-inventory.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "save-pull-root.cjs",
+      "path": "current/tools/save-pull-root.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "save-restore.sh",
+      "path": "current/tools/save-restore.sh",
+      "execution": "shell",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "save-write-root.cjs",
+      "path": "current/tools/save-write-root.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "save-write-stage.cjs",
+      "path": "current/tools/save-write-stage.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "saves-report.cjs",
+      "path": "current/tools/saves-report.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "smb-meta.cjs",
+      "path": "current/tools/smb-meta.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "verify-save-manifest.cjs",
+      "path": "current/tools/verify-save-manifest.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "Pinned upstream source. Console operations require a live patched RPC host; writes change save data."
+    },
+    {
+      "category": "Current SaveKit tools",
+      "name": "transports/artemis-http.cjs",
+      "path": "current/tools/transports/artemis-http.cjs",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "HTTP transport implementation used by artemis-http.cjs."
+    },
+    {
+      "category": "Current Artemis payloads",
+      "name": "ns2jb-boot.lua",
+      "path": "current/payloads/ns2jb-boot.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "Pinned upstream Lua source; install only with a verified save backup."
+    },
+    {
+      "category": "Current Artemis payloads",
+      "name": "ns2jb-launcher.lua",
+      "path": "current/payloads/ns2jb-launcher.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "Pinned upstream Lua source; install only with a verified save backup."
+    },
+    {
+      "category": "Current Artemis payloads",
+      "name": "ns2jb-metadata.lua",
+      "path": "current/payloads/ns2jb-metadata.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "Pinned upstream Lua source; install only with a verified save backup."
+    },
+    {
+      "category": "Current Artemis payloads",
+      "name": "ns2jb-stub.lua",
+      "path": "current/payloads/ns2jb-stub.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "Pinned upstream Lua source; install only with a verified save backup."
+    },
+    {
+      "category": "Current Artemis payloads",
+      "name": "ns2jb.lua",
+      "path": "current/payloads/ns2jb.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "Pinned upstream Lua source; install only with a verified save backup."
+    },
+    {
+      "category": "Current Artemis payloads",
+      "name": "nso-verify.lua",
+      "path": "current/payloads/nso-verify.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "Pinned upstream Lua source; install only with a verified save backup."
+    },
+    {
+      "category": "Current host patch",
+      "name": "apply.sh",
+      "path": "current/patches/apply.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "Pinned upstream host patch source; review before applying."
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "kit.cjs",
+      "path": "tools/kit.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "list-apps.cjs",
+      "path": "tools/list-apps.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "inventory.cjs",
+      "path": "tools/inventory.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "save-pull-root.cjs",
+      "path": "tools/save-pull-root.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "save-write-stage.cjs",
+      "path": "tools/save-write-stage.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "save-delete-root.cjs",
+      "path": "tools/save-delete-root.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "save-write-root.cjs",
+      "path": "tools/save-write-root.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "verify-save-manifest.cjs",
+      "path": "tools/verify-save-manifest.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "pull-all.cjs",
+      "path": "tools/pull-all.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "pull-host-save.cjs",
+      "path": "tools/pull-host-save.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "build-editor-manifest.py",
+      "path": "tools/build-editor-manifest.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Save workflow CLI",
+      "name": "fetch-editor-save.sh",
+      "path": "tools/fetch-editor-save.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "live patched RPC for console operations; write and delete tools change save data"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "accounts.cjs",
+      "path": "tools/accounts.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "find-save-uid.cjs",
+      "path": "tools/find-save-uid.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "probe-commands.cjs",
+      "path": "tools/probe-commands.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "probe-info-reader.cjs",
+      "path": "tools/probe-info-reader.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "probe-sd.cjs",
+      "path": "tools/probe-sd.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "save-list.cjs",
+      "path": "tools/save-list.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Live RPC research",
+      "name": "save-pull.cjs",
+      "path": "tools/save-pull.cjs",
+      "execution": "node",
+      "requiresRun": true,
+      "requirements": "live patched RPC; exploratory calls may interrupt the session"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "artemis-save.py",
+      "path": "tools/artemis-save.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "build-stage.sh",
+      "path": "tools/build-stage.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "build-untethered.sh",
+      "path": "tools/build-untethered.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "pulled-dates.py",
+      "path": "tools/pulled-dates.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "smb-meta.cjs",
+      "path": "tools/smb-meta.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "nso-verify.cjs",
+      "path": "tools/nso-verify.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Artemis and local save research",
+      "name": "ftp-mirror.py",
+      "path": "tools/ftp-mirror.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local files; some tools need Lua 5.1, Pluto, Python packages or network access"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "asset-triage.py",
+      "path": "tools/asset-triage.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "bfres10.py",
+      "path": "tools/bfres10.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "bfres10_anim.py",
+      "path": "tools/bfres10_anim.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "bntx_batch.py",
+      "path": "tools/bntx_batch.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "bntx_decode.py",
+      "path": "tools/bntx_decode.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "bntx_ounce.py",
+      "path": "tools/bntx_ounce.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Asset analysis",
+      "name": "mkw_export.py",
+      "path": "tools/mkw_export.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "local extracted assets; Python packages or zstd may be required"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "capture-daemon.command",
+      "path": "tools/capture-daemon.command",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "cycle.py",
+      "path": "tools/cycle.py",
+      "execution": "python3",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "esp32-flash-usb.sh",
+      "path": "tools/esp32-flash-usb.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "harness.cjs",
+      "path": "tools/harness.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "hid-type.cjs",
+      "path": "tools/hid-type.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "loop.cjs",
+      "path": "tools/loop.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "switch-type.cjs",
+      "path": "tools/switch-type.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "unwedge.cjs",
+      "path": "tools/unwedge.cjs",
+      "execution": "node",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "vision/ocr",
+      "path": "tools/vision/ocr",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "vision/ocr.swift",
+      "path": "tools/vision/ocr.swift",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "esp32_hid/esp32_hid.ino",
+      "path": "tools/esp32_hid/esp32_hid.ino",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "esp32_gc/esp32_gc.ino",
+      "path": "tools/esp32_gc/esp32_gc.ino",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Hardware and automation",
+      "name": "esp32_pro/esp32_pro.ino",
+      "path": "tools/esp32_pro/esp32_pro.ino",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "manual hardware setup; inspect upstream instructions and hardcoded paths before use"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "ns2jb-boot.lua",
+      "path": "payloads/ns2jb-boot.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "ns2jb-launcher.lua",
+      "path": "payloads/ns2jb-launcher.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "ns2jb-map.lua",
+      "path": "payloads/ns2jb-map.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "ns2jb-probe.lua",
+      "path": "payloads/ns2jb-probe.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "ns2jb-stub.lua",
+      "path": "payloads/ns2jb-stub.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "ns2jb.lua",
+      "path": "payloads/ns2jb.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Lua payload samples",
+      "name": "nso-verify.lua",
+      "path": "payloads/nso-verify.lua",
+      "execution": "source",
+      "requiresRun": false,
+      "requirements": "experimental Artemis Lua sample; inspect before installing"
+    },
+    {
+      "category": "Legacy Host patches",
+      "name": "apply.sh",
+      "path": "patches/apply.sh",
+      "execution": "shell",
+      "requiresRun": false,
+      "requirements": "patch a separate ns2jb checkout before starting a new run; mac2jb uses its own private patched host"
+    }
+  ],
+  "legacyRevision": "56ad6d96c0af49dc29d6617a4c4a24e6e7f9f387"
+}

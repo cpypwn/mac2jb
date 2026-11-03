@@ -4,7 +4,7 @@
   "id": "ouncecake",
   "name": "OunceCake",
   "version": "0.1.0",
-  "description": "Browse installed game files through a read-only FTP connection",
+  "description": "Browse installed game files through read-only WebDAV",
   "service": "ouncecake-v1",
   "transition": "none",
   "icon": "icon.png",

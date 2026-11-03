@@ -1,0 +1,23 @@
+{
+  "format": "hblauncher-native-app/1",
+  "kind": "launcher",
+  "codeBase": "0x08000000",
+  "dataBase": "0x0A000000",
+  "codeBytes": 65356,
+  "dataBytes": 0,
+  "bssStart": "0xa000000",
+  "bssEnd": "0xa000560",
+  "entry": "0x8000000",
+  "codeSha256": "283331ace5cea7911135f79dfe67d02e463baedd52c15f76ad7b3dc4d657cd51",
+  "dataSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "abi": 3,
+  "symbols": {
+    "__bss_end": "0xa000560",
+    "__bss_start": "0xa000000",
+    "_start": "0x8000000",
+    "hbx_app_main": "0x8000050",
+    "hbx_launcher_draw": "0x8002bdc",
+    "hbx_ui_init": "0x80073e4",
+    "launcher_display_create": "0x8004de4"
+  }
+}

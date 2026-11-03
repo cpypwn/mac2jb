@@ -1,0 +1,11 @@
+zstandard-0.25.0.dist-info/RECORD,,
+zstandard-0.25.0.dist-info/WHEEL,sha256=oqGJCpG61FZJmvyZ3C_0aCv-2mdfcY9e3fXvyUNmWfM,136
+zstandard-0.25.0.dist-info/top_level.txt,sha256=J-wj94pPadY4ipFaanrYBlrMblOSegEYS8o_LdogrpU,10
+zstandard-0.25.0.dist-info/METADATA,sha256=A9N3NrJrmuSEUd0XAm2T3_vSUvtwjBoqmuG-DAlm3pI,3275
+zstandard-0.25.0.dist-info/licenses/LICENSE,sha256=eI_oXlNySkCymQUcSryc901Csn55aDJbgIkcJfea20s,1484
+zstandard/_cffi.cpython-313-darwin.so,sha256=jrLnXX2mdC-bCFhzRM7o2NPMJYni9aeJ5STTbPK-TR4,884776
+zstandard/__init__.pyi,sha256=j589lb3jaNdIPHOijCT63BTfaWc_FFcDNG09MnrIoDA,13973
+zstandard/__init__.py,sha256=XdkJ4LYKlGoLCN6vV1RdF9wET130BAvuxV9-9sb-zRE,7235
+zstandard/backend_cffi.py,sha256=CyaK5RXVEVMfHG52BoEj77j3JbT2JISqEeiH-twZdc4,152627
+zstandard/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+zstandard/backend_c.cpython-313-darwin.so,sha256=Yxp1N3kQJBL7DcFd5_sn2ktLJsV8m3lgGe__VXs4Cf4,761424

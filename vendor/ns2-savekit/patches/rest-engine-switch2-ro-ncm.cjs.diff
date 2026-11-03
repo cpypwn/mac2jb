@@ -1,0 +1,62 @@
+diff --git a/engine/switch2/ro/ncm.cjs b/engine/switch2/ro/ncm.cjs
+index a3dd5b8..b65341d 100644
+--- a/engine/switch2/ro/ncm.cjs
++++ b/engine/switch2/ro/ncm.cjs
+@@ -7,10 +7,10 @@ const check = (ok, message) => {if (!ok) throw Error(message);};
+ const CAPACITY = 1024;
+ const KEY_SIZE = 16;
+ 
+-function listInput() {
++function listInput(metaType = 1, installType = 0) {
+   const data = Buffer.alloc(32);
+-  data[0] = 1; // NcmContentMetaType_SystemProgram
+-  data[1] = 0; // NcmContentInstallType_Full
++  data[0] = metaType; // NcmContentMetaType
++  data[1] = installType; // NcmContentInstallType
+   data.writeBigUInt64LE(0xffffffffffffffffn, 24);
+   return data;
+ }
+@@ -23,10 +23,8 @@ function parse(reply, bytes) {
+   const keys = [];
+   for (let i = 0; i < written; i++) {
+     const at = i * KEY_SIZE;
+-    check(bytes[at + 12] === 1 && bytes[at + 13] === 0,
+-      'NCM returned an unexpected metadata/install type');
+     keys.push({id: '0x' + bytes.readBigUInt64LE(at).toString(16).padStart(16, '0'),
+-      version: bytes.readUInt32LE(at + 8), type: 1, installType: 0});
++      version: bytes.readUInt32LE(at + 8), type: bytes[at + 12], installType: bytes[at + 13]});
+   }
+   check(new Set(keys.map(item => item.id)).size === keys.length, 'NCM returned duplicate title IDs');
+   return {total, written, complete: total === written, keys};
+@@ -40,7 +38,9 @@ async function listSystem(context, request, state) {
+     'Firmware inventory requires a dedicated output directory');
+   check(state.services?.some(item => item.name === 'ncm' && item.handle === handle) && s.handles.has(handle) &&
+     !s.threads.size, 'NCM enumeration requires an owned service and idle native worker');
+-  const opened = await s.ipc('NCM OpenContentMetaDatabase BuiltInSystem', handle, 5, Buffer.from([3]));
++  const storage = Number(request.storage ?? 3), metaType = Number(request.metaType ?? 1);
++  const installType = Number(request.installType ?? 0);
++  const opened = await s.ipc('NCM OpenContentMetaDatabase ' + storage, handle, 5, Buffer.from([storage]));
+   check(!opened.result && opened.moves.length === 1 && !opened.copies.length,
+     'NCM built-in-system database did not open');
+   const database = opened.moves[0], address = s.base + 0x4000;
+@@ -49,16 +49,16 @@ async function listSystem(context, request, state) {
+   try {
+     check(address + length <= s.base + s.bytes, 'Owned NCM output allocation is too small');
+     await s.write(address, Buffer.alloc(length));
+-    const reply = await s.ipc('NCM List full system programs', database, 5, listInput(),
++    const reply = await s.ipc('NCM List content meta', database, 5, listInput(metaType, installType),
+       {receive: [{address, size: length, mode: 0}]});
+     const bytes = await s.readOwned(address, length);
+     safeToClose = true;
+     const listed = parse(reply, bytes);
+     const rawFile = request.dumpOutput ? path.join(dumpDirectory, 'ncm-system-programs.bin') :
+-      path.join(__dirname, live.session + '-ncm-system-programs.bin');
+-    await fs.writeFile(rawFile, bytes, {flag: 'wx', mode: 0o600});
++      path.join(__dirname, live.session + '-ncm-' + storage + '-' + metaType + '.bin');
++    await fs.writeFile(rawFile, bytes, {mode: 0o600});
+     const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+-    const result = {at: new Date().toISOString(), storage: 3, metaType: 1, installType: 0,
++    const result = {at: new Date().toISOString(), storage, metaType, installType,
+       ...listed, rawFile, sha256};
+     (state.ncmInventories ||= []).push(result);
+     await save();

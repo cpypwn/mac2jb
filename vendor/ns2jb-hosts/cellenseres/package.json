@@ -1,0 +1,13 @@
+{
+  "name": "ns2jb-cellenseres",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ns2jb with retained RPC, extended native IPC and host tooling",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test test.cjs engine/**/*.test.cjs",
+    "build:check": "node engine/build-payload.cjs --check"
+  }
+}

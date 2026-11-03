@@ -5,12 +5,27 @@ const { success, idBytes, fixedOutput, pathRequest, resultError, withCleanup, cl
 
 const inactive = new Set([0x21005, 0x20a05]);
 
-async function discoverInstalled({ s, domain, service, title, metaType, kind }) {
-  const label = metaType === 0x80 ? 'application' : metaType === 0x82 ? 'DLC' : 'update';
+// User-installable storages: BuiltInUser (4), SdCard (5), GameCard (2).
+const USER_STORAGES = [4, 5, 2];
+// System storage: BuiltInSystem (3) — holds firmware applets and system data archives.
+const SYSTEM_STORAGES = [3];
+
+/// Human-readable label for an NcmContentMetaType value.
+function metaLabel(metaType) {
+  if (metaType === 0x80) return 'application';
+  if (metaType === 0x81) return 'update';
+  if (metaType === 0x82) return 'DLC';
+  if (metaType === 1) return 'system program';
+  if (metaType === 2) return 'system data';
+  return 'content';
+}
+
+async function discoverInstalled({ s, domain, service, title, metaType, kind, storages = USER_STORAGES }) {
+  const label = metaLabel(metaType);
   const ncm = await service('ncm');
   const records = [];
 
-  for (const storage of [4, 5, 2]) {
+  for (const storage of storages) {
     let database;
 
     try {
@@ -121,13 +136,30 @@ const discoverDlc = (options) => discoverInstalled({ ...options, metaType: 0x82,
 const discoverApplications = (options) =>
   discoverInstalled({ ...options, title: '0000000000000000', metaType: 0x80, kind: 'applications' });
 
-// Resolve a pinned Program or DLC Data record without mounting its filesystem.
+// System-side enumerators: walk BuiltInSystem only, with the two system meta-types.
+const discoverSystemPrograms = (options) =>
+  discoverInstalled({
+    ...options,
+    title: '0000000000000000',
+    metaType: 1,
+    kind: 'system programs',
+    storages: SYSTEM_STORAGES,
+  });
+const discoverSystemData = (options) =>
+  discoverInstalled({
+    ...options,
+    title: '0000000000000000',
+    metaType: 2,
+    kind: 'system data',
+    storages: SYSTEM_STORAGES,
+  });
+
+// Resolve a pinned Program or Data record without mounting its filesystem.
+// contentType = 1 (Program) or 2 (Data). SystemData archives always use 2.
 
 
 
-async function resolveContent({ s, domain, service, title, storage, update, dlc, contentType = 1 }) {
-  const contentName = { 1: 'Program', 2: 'Data', 3: 'Control' }[contentType];
-
+async function resolveContent({ s, domain, service, title, storage, update, dlc, contentType = 1, allowDlc = false }) {
   const handles = [];
   const own = (reply) => {
     const h = domain.oneHandle(reply);
@@ -137,25 +169,46 @@ async function resolveContent({ s, domain, service, title, storage, update, dlc,
 
   return withCleanup(async () => {
     const ncm = await service('ncm');
-    const database = own(
-      success(
-        await s.ipc('OpenContentMetaDatabase', ncm, 5, Buffer.from([storage])),
-        'OpenContentMetaDatabase',
-      ),
-    );
     const selected = dlc || update;
     const contentTitle = selected ? selected.contentTitle : title;
-    const latest = success(
-      await s.ipc('GetLatestContentMetaKey', database, 6, idBytes(contentTitle)),
-      'GetLatestContentMetaKey',
-    );
-    const key = Buffer.from(latest.data.subarray(0, 16));
+    // Search installed storages only when no storage was selected.
+    const candidates = [...new Set(storage === undefined || storage === null ?
+      [4, 5, 2, 3] : [storage])];
+    let database, key, usedStorage, failure;
+    for (const candidate of candidates) {
+      const opened = await s.ipc('OpenContentMetaDatabase storage ' + candidate,
+        ncm, 5, Buffer.from([candidate]));
+      if (opened.result && inactive.has(opened.result & 0x3fffff)) {
+        failure = opened;
+        continue;
+      }
+      const handle = own(success(opened, 'OpenContentMetaDatabase'));
+      const latest = await s.ipc('GetLatestContentMetaKey storage ' + candidate, handle, 6,
+        idBytes(contentTitle));
+      if (!latest.result) {
+        database = handle;
+        usedStorage = candidate;
+        key = Buffer.from(latest.data.subarray(0, 16));
+        break;
+      }
+      if ((latest.result & 0x3fffff) !== 0xe05) throw resultError('GetLatestContentMetaKey', latest.result);
+      failure = latest;
+    }
+    if (usedStorage === undefined)
+      throw resultError('GetLatestContentMetaKey for ' + contentTitle, failure?.result || 0xe05);
+    storage = usedStorage;
 
-    if (dlc || update) {
+    const directDlc = allowDlc && !dlc && !update && key[12] === 0x82;
+    if (directDlc) contentType = 2;
+    const contentName = { 1: 'Program', 2: 'Data', 3: 'Control' }[contentType];
+    let applicationTitle = title;
+
+    if (dlc || update || directDlc) {
       const owner = success(
-        await s.ipc('Verify selected ' + (dlc ? 'DLC' : 'update') + ' application', database, 22, key),
+        await s.ipc('Verify selected ' + (dlc || directDlc ? 'DLC' : 'update') + ' application', database, 22, key),
         'GetOwnerApplicationId',
       );
+      if (directDlc) applicationTitle = owner.data.readBigUInt64LE().toString(16).padStart(16, '0');
     }
 
     const input = Buffer.alloc(24);
@@ -209,10 +262,10 @@ async function resolveContent({ s, domain, service, title, storage, update, dlc,
       });
     }
 
-    if (dlc) {
+    if (dlc || directDlc) {
       Object.assign(source, {
         selection: 'dlc',
-        applicationTitle: title,
+        applicationTitle,
         contentTitle,
       });
     }
@@ -227,6 +280,9 @@ const resolveControlContent = (options) =>
 const resolveDlcContent = (options) => {
   return resolveContent({ ...options, contentType: 2 });
 };
+/// Resolve a SystemData archive's Data NCA path. No update/DLC chain, no owner check.
+const resolveSystemDataContent = (options) =>
+  resolveContent({ ...options, update: undefined, dlc: undefined, contentType: 2 });
 
 async function findOriginalContent(options) {
   for (const storage of [4, 5, 2]) {
@@ -414,6 +470,8 @@ async function discoverGames({ s, root, domain, service, filesystem, shouldStop 
 
 module.exports = {
   discoverGames, discoverUpdates, discoverDlc,
-  resolveProgramContent, resolveDlcContent, findOriginalContent,
+  discoverSystemPrograms, discoverSystemData,
+  resolveContent, resolveProgramContent, resolveControlContent, resolveDlcContent, resolveSystemDataContent, findOriginalContent,
   isInstalledUpdate, programMatchesApplication,
+  USER_STORAGES, SYSTEM_STORAGES,
 };

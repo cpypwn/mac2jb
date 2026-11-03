@@ -1,6 +1,6 @@
 {
   "format": "mac2jb-host-profiles-v1",
-  "default": "kurumuz",
+  "default": "cellenseres",
   "profiles": [
     {
       "id": "pepsipu",
@@ -27,7 +27,7 @@
       "revision": "81d5bb114c856109dadaf1077d927a9f297fe58d",
       "upstream": "https://gitlab.com/kurumuz/ns2jb",
       "sourceDirectory": "vendor/ns2jb-hosts/kurumuz",
-      "sourceSha256": "d1b2b2901423862c7d74d55dbd95a08c7d5c6de4d3309d0f030644b9e2da439f",
+      "sourceSha256": "61a2b211e0be030a0c8a42637254a2c10946b1fe1ce634e8a87eee516b8fa958",
       "bootstrap": "assets/hosts/kurumuz/bootstrap.bas",
       "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
       "startArgumentCount": 5,
@@ -36,6 +36,28 @@
       "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
       "distributionManifest": "vendor/ns2jb-hosts/kurumuz/SHA256SUMS",
       "upstreamManifest": "packaging/ns2jb-kurumuz-81d5bb1-SHA256SUMS.upstream",
+      "localPatch": "packaging/ns2jb-kurumuz-abi3-range-patch.json",
+      "supportedSmileBASIC": [
+        "4.4.9 full",
+        "4.4.6 demo"
+      ]
+    },
+    {
+      "id": "cellenseres",
+      "label": "Cellenseres",
+      "revision": "2f686045ff88e5a97f959d19752e00ef3b62011f",
+      "upstream": "https://github.com/Cellenseres/ns2jb",
+      "sourceDirectory": "vendor/ns2jb-hosts/cellenseres",
+      "sourceSha256": "8f821acf526afa481b01b3c3faf22e56b99d650759e0023aaaf3159075453415",
+      "bootstrap": "assets/hosts/cellenseres/bootstrap.bas",
+      "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
+      "startArgumentCount": 5,
+      "supportsHeldRPC": true,
+      "supportsDemo": true,
+      "licenseStatus": "No license file supplied by this pinned upstream; README and provenance are retained.",
+      "distributionManifest": "vendor/ns2jb-hosts/cellenseres/SHA256SUMS",
+      "upstreamManifest": "packaging/ns2jb-cellenseres-2f68604-SHA256SUMS.upstream",
+      "localPatch": "packaging/ns2jb-cellenseres-abi3-range-patch.json",
       "supportedSmileBASIC": [
         "4.4.9 full",
         "4.4.6 demo"

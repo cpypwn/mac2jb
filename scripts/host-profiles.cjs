@@ -17,7 +17,7 @@ function sourceDirectory(root, profile) {
   const original = path.join(root, 'source', profile.sourceDirectory);
   return fs.existsSync(original) ? original : path.join(root, profile.sourceDirectory);
 }
-function sourceDigest(folder, profile) {
+function sourceDigest(folder, profile, replacements = {}) {
   if (profile?.engine === 'izmysh') {
     const names = [];
     function walkIZMYSH(directory, relative = '') {
@@ -43,7 +43,8 @@ function sourceDigest(folder, profile) {
     }
   }
   walk('engine');
-  return hash(JSON.stringify(names.sort().map(name => [name, hash(fs.readFileSync(path.join(folder, name)))])));
+  return hash(JSON.stringify(names.sort().map(name => [name,
+    replacements[name] ?? hash(fs.readFileSync(path.join(folder, name)))])));
 }
 function selectedProfile(root) {
   let selected;

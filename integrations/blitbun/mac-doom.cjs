@@ -1,7 +1,7 @@
 const fs=require('node:fs'),fsp=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto'),{spawn}=require('node:child_process');
 
 const WIDTH=320,HEIGHT=200,FRAME_BYTES=WIDTH*HEIGHT*2;
-const FRAME_TIMEOUT_MS=5000;
+const FRAME_TIMEOUT_MS=10000,STARTUP_FRAME_TIMEOUT_MS=30000;
 const ENGINE_SHA256='9521f644a40ad6b020b79a6579a4621710baee562c0002b9e489f90d6cd9efc9';
 const WAD_SHA256='7323bcc168c5a45ff10749b339960e98314740a734c30d4b9f3337001f9e703d';
 const KEY={left:0xac,up:0xad,right:0xae,down:0xaf,strafeLeft:0xa0,strafeRight:0xa1,use:0xa2,fire:0xa3,run:0xb6,enter:13,escape:27,shotgun:51};
@@ -64,9 +64,12 @@ async function checked(file,expected){
   if(!stat.isFile()||stat.isSymbolicLink()||sha(await fsp.readFile(file))!==expected)throw Error('Bundled Freedoom file failed verification: '+path.basename(file));
 }
 
-async function create(directory,{capture=true,headless=true,audio=false,launch=spawn,frameTimeoutMs=FRAME_TIMEOUT_MS}={}){
+async function create(directory,{capture=true,headless=true,audio=false,launch=spawn,
+  frameTimeoutMs=FRAME_TIMEOUT_MS,startupFrameTimeoutMs=STARTUP_FRAME_TIMEOUT_MS}={}){
   if(!capture||!headless)throw Error('Bundled Freedoom requires headless capture');
-  if(!Number.isInteger(frameTimeoutMs)||frameTimeoutMs<1)throw Error('Invalid Freedoom frame timeout');
+  if(!Number.isInteger(frameTimeoutMs)||frameTimeoutMs<1||
+    !Number.isInteger(startupFrameTimeoutMs)||startupFrameTimeoutMs<1)
+    throw Error('Invalid Freedoom frame timeout');
   const source=path.join(__dirname,'../doom/doom-headless'),wad=path.join(__dirname,'../doom/freedoom1.wad');
   await Promise.all([checked(source,ENGINE_SHA256),checked(wad,WAD_SHA256)]);
   const engine=path.join(directory,'doom-headless');
@@ -102,8 +105,16 @@ async function create(directory,{capture=true,headless=true,audio=false,launch=s
       request.timer=setTimeout(()=>setImmediate(()=>{
         if(pending!==request)return;
         const elapsedMs=+(performance.now()-request.started).toFixed(2);
-        report.timeout={requestedAt:request.at,sequence:request.sequence,elapsedMs,eventLoopOverrunMs:+Math.max(0,elapsedMs-timeoutMs).toFixed(2),frameBytesReceived:offset,stdinQueuedBytes:child.stdin.writableLength,childPid:child.pid??null,childExitCode:child.exitCode??null};
-        failed(Error('Bundled Freedoom engine did not produce a frame'));
+        const phase=report.frames===0?'startup':'stream';
+        report.timeout={phase,requestedAt:request.at,sequence:request.sequence,budgetMs:timeoutMs,
+          elapsedMs,eventLoopOverrunMs:+Math.max(0,elapsedMs-timeoutMs).toFixed(2),
+          frameBytesReceived:offset,frameBytesExpected:FRAME_BYTES,lastFrameAt:report.lastFrameAt||null,
+          stdinQueuedBytes:child.stdin.writableLength,childPid:child.pid??null,
+          childExitCode:child.exitCode??null};
+        failed(Error('Bundled Freedoom '+phase+' frame timed out after '+Math.round(elapsedMs)+
+          ' ms ('+offset+'/'+FRAME_BYTES+' bytes received; engine '+
+          (child.exitCode==null?'process alive':'exited '+child.exitCode)+
+          '). See doom-engine.json and doom-host.log'));
       }),timeoutMs);
       if(child.stdin.writableLength>4096)return failed(Error('Doom input pipe stopped draining'));
       child.stdin.write(Buffer.from([2,0,0]));
@@ -125,7 +136,7 @@ async function create(directory,{capture=true,headless=true,audio=false,launch=s
     if(!report.exited){await Promise.race([new Promise(resolve=>child.once('exit',resolve)),wait(1000)]);if(!report.exited)child.kill('SIGKILL');}
     await reportWrite.catch(()=>{});
   }
-  try{await nextFrame();}catch(error){await close();throw error;}
+  try{await nextFrame(startupFrameTimeoutMs);}catch(error){await close();throw error;}
   return {report,video,audio:null,nextFrame,input,close};
 }
 
@@ -153,4 +164,5 @@ function start({remote,stream,onError=()=>{}}){
   return {done,async close(){if(stopped)return;stopped=true;abort.abort();await done;}};
 }
 
-module.exports={WIDTH,HEIGHT,FRAME_BYTES,FRAME_TIMEOUT_MS,ENGINE_SHA256,WAD_SHA256,KEY,decodeButtons,keyTransitions,create,start};
+module.exports={WIDTH,HEIGHT,FRAME_BYTES,FRAME_TIMEOUT_MS,STARTUP_FRAME_TIMEOUT_MS,
+  ENGINE_SHA256,WAD_SHA256,KEY,decodeButtons,keyTransitions,create,start};

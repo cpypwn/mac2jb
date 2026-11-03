@@ -4,7 +4,7 @@ const {promisify}=require('node:util');
 const {inflateSync}=require('node:zlib');
 const run=promisify(execFile);
 const ROOT=path.resolve(__dirname,'../apps'),MAX_APPS=32,SLOT_BYTES=131072,ATLAS_BYTES=1024*2048;
-const DEFAULT_ORDER=new Map(['stremio-experimental','izdoom','froggy-road','ouncecake','ftpd-sb','cpu-gpu-probe','hello-world'].map((id,index)=>[id,index]));
+const DEFAULT_ORDER=new Map(['stremio-experimental','izdoom','froggy-road','ouncecake','iz-exchange','ftpd-sb','cpu-gpu-probe','hello-world'].map((id,index)=>[id,index]));
 const order=id=>DEFAULT_ORDER.get(id)??DEFAULT_ORDER.size;
 const check=(v,m)=>{if(!v)throw Error(m);};
 async function asset(root,name,max){
@@ -21,19 +21,35 @@ async function readApp(directory,{validate=true}={}){
  check(typeof m.version==='string'&&m.version.length<=32,'Invalid version');
  check(typeof m.description==='string'&&m.description.length<=160,'Invalid description');
  check(m.transition===undefined||m.transition==='none'||m.transition==='fade','Invalid transition');
+ check(m.shaderEncoding===undefined||m.shaderEncoding==='deflate','Unsupported shader encoding');
  check(m.service===undefined||(m.id==='ouncecake'&&m.service==='ouncecake-v1'),
   'Unsupported host service');
+ check(m.hostRuntime===undefined||(m.id==='iz-exchange'&&m.hostRuntime==='module:iz-exchange/runtime'),
+  'Unsupported host runtime');
  require('../sdk/host/runtime.cjs').validateManifest(m.sdk);
  const files={},hash=crypto.createHash('sha256');hash.update(manifestAsset.bytes);
  if(m.computeSequence!==undefined){check(m.computeSequence&&Number.isInteger(m.computeSequence.repeat)&&m.computeSequence.repeat>=1&&m.computeSequence.repeat<=512,'Invalid compute sequence repeat');check(typeof m.computeSequence.begin==='string'&&typeof m.computeSequence.after==='string','Invalid compute sequence shaders');}
  const stages=[['vertex',0,m.shaders?.vertex],['fragment',4,m.shaders?.fragment],['compute',5,m.shaders?.compute]];
  if(m.computeSequence)stages.push(['computeBegin',5,m.computeSequence.begin],['computeAfter',5,m.computeSequence.after]);
  for(const [stage,model,name] of stages){
-  const item=await asset(root,name,1048576),b=item.bytes;
+  const item=await asset(root,name,1048576);
+  if(m.shaderEncoding==='deflate'){
+   try{item.bytes=inflateSync(item.bytes,{maxOutputLength:1048576});}
+   catch{throw Error('Invalid compressed SPIR-V '+stage);}
+  }
+  const b=item.bytes;
   check(b.length>=20&&b.length%4===0&&b.readUInt32LE()===0x07230203,'Invalid SPIR-V '+stage);
   let entry=false;for(let i=5;i<b.length/4;){const word=b.readUInt32LE(i*4),count=word>>>16,op=word&65535;check(count>0&&i+count<=b.length/4,'Malformed SPIR-V instruction');if(op===15&&count>=4&&b.readUInt32LE((i+1)*4)===model){const name=b.subarray((i+3)*4,(i+count)*4).toString('utf8').split('\0')[0];if(name==='main')entry=true;}i+=count;}
   check(entry,'Missing '+stage+' main entry point');
-  if(validate)await run(require('../scripts/toolchain.cjs').tool('SPIRV_VAL','spirv-val'),['--target-env','vulkan1.0',item.file],{timeout:10000,maxBuffer:65536});
+  if(validate){
+   let temporary;
+   try{
+    const file=m.shaderEncoding==='deflate'?
+     path.join(temporary=await fs.mkdtemp(path.join(require('node:os').tmpdir(),'mintbrew-shader-')),'module.spv'):item.file;
+    if(temporary)await fs.writeFile(file,b);
+    await run(require('../scripts/toolchain.cjs').tool('SPIRV_VAL','spirv-val'),['--target-env','vulkan1.0',file],{timeout:10000,maxBuffer:65536});
+   }finally{if(temporary)await fs.rm(temporary,{recursive:true,force:true});}
+  }
   files[stage]=item;hash.update(stage).update(b);
  }
  files.state=await asset(root,m.initialState,1024);check(files.state.bytes.length===1024,'Initial state must be 1024 bytes');hash.update(files.state.bytes);

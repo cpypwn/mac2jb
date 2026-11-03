@@ -68,15 +68,62 @@ async function json(file) {await privatePath(file); return JSON.parse(await fs.r
 function writeJSON(file, value, exclusive = false) {
   return fs.writeFile(file, JSON.stringify(value,null,2)+'\n', {mode:0o600,flag:exclusive?'wx':'w'});
 }
+async function patchedHostSource(root, directory) {
+  const runs = path.dirname(directory), host = path.dirname(runs);
+  const vendor = await fs.realpath(path.join(root, 'vendor'));
+  if (path.basename(runs) !== 'runs' || path.dirname(host) !== vendor ||
+      !/^ns2-savekit-host-[A-Za-z0-9]{6}$/.test(path.basename(host))) return null;
+  await privatePath(host, true);
+  await privatePath(runs, true);
+  const {selectedProfile, sourceDigest} = require('./host-profiles.cjs');
+  const profile = selectedProfile(root);
+  check(['kurumuz', 'cellenseres'].includes(profile.id),
+    'The patched host requires a selected Kurumuz or Cellenseres source.');
+  const original = require('./prepare-seedsow-host.cjs').verify(root, true).source;
+  const overlays = new Set([
+    'engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+    'engine/switch2/app/mounted-save.cjs'
+  ]);
+  const hash = file => crypto.createHash('sha256').update(sync.readFileSync(file)).digest('hex');
+  function compare(relative = '') {
+    const entries = folder => sync.readdirSync(path.join(folder, relative), {withFileTypes: true})
+      .filter(entry => relative || entry.name !== 'runs').sort((a, b) => a.name.localeCompare(b.name));
+    const expected = entries(original), actual = entries(host);
+    check(expected.length === actual.length, 'The patched host source contains unexpected files.');
+    for (let index = 0; index < expected.length; index++) {
+      const entry = expected[index], found = actual[index];
+      const name = path.join(relative, entry.name), file = path.join(host, name);
+      const info = sync.lstatSync(file);
+      check(entry.name === found.name && entry.isDirectory() === found.isDirectory() &&
+        entry.isFile() === found.isFile() && !info.isSymbolicLink() &&
+        info.uid === process.getuid() && (info.mode & 0o022) === 0 &&
+        sync.realpathSync(file) === file, 'The patched host source contains an untrusted path: ' + name);
+      if (entry.isDirectory()) compare(name);
+      else {
+        check(entry.isFile() && found.isFile(), 'The patched host source contains an unexpected entry: ' + name);
+        const reference = overlays.has(name) ? path.join(root, 'vendor/ns2-savekit/overlay', name) :
+          path.join(original, name);
+        check(hash(file) === hash(reference), 'The patched host source changed: ' + name);
+      }
+    }
+  }
+  compare();
+  return {directory: host, digest: sourceDigest(host, profile), profileId: profile.id};
+}
 async function validateRun(root, candidate, verifySession) {
   const directory = await privatePath(candidate,true);
   const runs = await fs.realpath(path.join(root,'vendor/ns2jb/runs')).catch(error=>{
     if(error.code==='ENOENT')return null;throw error;
   });
-  if(path.dirname(directory)!==runs)
+  const patched = path.dirname(directory) === runs ? null : await patchedHostSource(root, directory);
+  if(path.dirname(directory)!==runs && !patched)
     await require('./rpc-attachment.cjs').validateManifest(root,directory);
   const proof = await verifySession(directory);
   const connection = await json(path.join(directory,'connection.json'));
+  if (patched) {
+    const result = await json(path.join(directory, 'result.json'));
+    check(result.sourceSha256 === patched.digest, 'The held run does not match its patched host source.');
+  }
   check(proof.root === directory && proof.session === path.basename(directory) &&
     Number.isSafeInteger(connection.port) && connection.port >= 1 && connection.port <= 65535 &&
     connection.addresses?.session === proof.session && connection.addresses?.target === 'switch2' &&
@@ -84,7 +131,9 @@ async function validateRun(root, candidate, verifySession) {
   for (const name of ['scratch','main','sdk','backing','controller'])
     check(Number.isSafeInteger(connection.addresses[name]) && connection.addresses[name] >= 4096 &&
       connection.addresses[name] < 2 ** 39, 'Invalid held native address: ' + name);
-  return {directory,proof,connection};
+  return {directory,proof,connection,...(patched ? {trustedSource: {
+    profileId: patched.profileId, directory: patched.directory, sourceSha256: patched.digest
+  }} : {})};
 }
 function proxyHandler({token, request, live = () => true}) {
   return async (req,res) => {
@@ -275,6 +324,8 @@ async function preflightCustomApp(root, folder, options={}) {
   } catch(error) {await fs.rm(directory,{recursive:true,force:true}).catch(()=>{});throw error;}
 }
 async function preflightCustomHomebrew(root,folder,options={}) {
+  check(typeof folder==='string'&&path.isAbsolute(folder)&&folder.length<=4096&&!/[\x00\r\n]/.test(folder),
+    'Choose a local built homebrew folder.');
   const rpcManifest=path.join(folder,'mac2jb-rpc-app.json');
   const ouncecakeImage=path.join(folder,'engine/oz-code/native.bin');
   if(await fs.lstat(rpcManifest).then(()=>true,error=>{
@@ -282,6 +333,23 @@ async function preflightCustomHomebrew(root,folder,options={}) {
   })||await fs.lstat(ouncecakeImage).then(()=>true,error=>{
     if(error.code==='ENOENT')return false;throw error;
   }))return require('./custom-rpc-package.cjs').preflight(root,folder,options);
+  const gpuManifest=path.join(folder,'app.json');
+  if(await fs.lstat(gpuManifest).then(()=>true,error=>{
+    if(error.code==='ENOENT')return false;throw error;
+  }))return {...await preflightCustomApp(root,folder,options),kind:'gpu-app'};
+  const izManifest=path.join(folder,'module.json');
+  if(await fs.lstat(izManifest).then(()=>true,error=>{
+    if(error.code==='ENOENT')return false;throw error;
+  })){
+    const staged=await (options.stageIZModule||require('./stage-custom-izmodule.cjs').stage)(root,folder);
+    return {...staged,kind:'iz-module',moduleId:staged.id,
+      app:{id:staged.id,name:staged.name,version:staged.version,fingerprint:staged.sha256}};
+  }
+  const nativeManifest=path.join(folder,'manifest.json');
+  if(await fs.lstat(nativeManifest).then(()=>true,error=>{
+    if(error.code==='ENOENT')return false;throw error;
+  }))return (options.preflightNativeApp||
+    require('../integrations/mintbrew-native/host.cjs').preflightCustomNativeApp)(root,folder);
   const launcherFile=path.join(folder,launcherManifestName);
   if(!await fs.lstat(launcherFile).then(()=>true,error=>{
     if(error.code==='ENOENT')return false;throw error;
@@ -500,6 +568,16 @@ async function main(args = process.argv.slice(2), options = {}) {
       }catch(error){failure ||= error;}
     }
     await proxy?.close();
+    let attemptProof;
+    if(!failure&&running){
+      try{
+        check(live(),'The held RPC session ended before launcher shutdown was verified.');
+        const marker=await fs.readFile(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'));
+        check(JSON.stringify(JSON.parse(marker))===JSON.stringify(attempt),'The launch attempt marker changed.');
+        attemptProof={cleanupVerified:true,attemptMarkerSha256:crypto.createHash('sha256').update(marker).digest('hex'),
+          attemptMarkers:['.mac2jb-hblauncher-attempt.json']};
+      }catch(error){failure ||= error;}
+    }
     report.completed=new Date().toISOString();report.status=failure?'failed':'stopped';
     if(failure)report.error=failure.message;await save();
     process.removeListener('SIGTERM',stop);process.removeListener('SIGINT',stop);
@@ -516,7 +594,8 @@ async function main(args = process.argv.slice(2), options = {}) {
     if(failure)safeEmit('failed',{retrySafe,message:failure.message+(retrySafe?
       ' The held RPC session is still available; choose another app or retry.':
       ' This launch was not retried. Finish RPC and restart the console.')});
-    else safeEmit('stopped',{message:selected.name+' stopped. Graphics allocations remain owned by this console session.'});
+    else safeEmit('stopped',{message:selected.name+' stopped. Graphics allocations remain owned by this console session.',
+      ...attemptProof});
   }
   if(failure){failure.homebrewReported=true;throw failure;}
   return {directory,stopped:true};

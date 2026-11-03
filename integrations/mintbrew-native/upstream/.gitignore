@@ -1,0 +1,57 @@
+# Generated output
+build/
+**/build/
+!launcher/build/
+launcher/build/*
+!launcher/build/code.bin
+!launcher/build/data.bin
+!launcher/build/report.json
+!apps/hello-cpu/build/
+apps/hello-cpu/build/*
+!apps/hello-cpu/build/code.bin
+!apps/hello-cpu/build/data.bin
+!apps/hello-cpu/build/report.json
+!apps/gpu-triangle/build/
+apps/gpu-triangle/build/*
+!apps/gpu-triangle/build/code.bin
+!apps/gpu-triangle/build/data.bin
+!apps/gpu-triangle/build/report.json
+!apps/mintnes/build/
+apps/mintnes/build/*
+!apps/mintnes/build/code.bin
+!apps/mintnes/build/data.bin
+!apps/mintnes/build/report.json
+node_modules/
+__pycache__/
+*.py[cod]
+*.o
+*.elf
+*.a
+*.bin.tmp
+*.log
+tests/preview/out/
+release/
+
+# Local state and external checkouts
+.env
+.env.*
+!.env.example
+*.local.json
+run/
+saves/
+reference/
+
+# App payloads and user-supplied media
+apps/*/code.bin
+apps/*/data.bin
+apps/*/assets/
+*.nes
+!apps/mintnes/assets/
+!apps/mintnes/assets/Diamond Chase.nes
+*.z64
+*.nsp
+*.xci
+*.wad
+*.iso
+*.nds
+*.keys

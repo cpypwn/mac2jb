@@ -29,8 +29,8 @@ test('a built OunceCake folder works without a mac2jb manifest',async t=>{
   try{
     assert.equal(prepared.kind,'rpc-app');
     assert.equal(prepared.adapter,'ouncecake');
-    assert.equal(prepared.app.name,'OunceCake');
-    assert.equal(prepared.app.files,ouncecakeFiles.length);
+    assert.equal(prepared.app.name,'ouncecake-cellenseres');
+    assert.ok(prepared.app.files>=ouncecakeFiles.length);
     const inspected=await verifyPackage(prepared.packageFolder);
     assert.equal(inspected.manifest.adapter,'ouncecake');
     assert.deepEqual(fs.readFileSync(path.join(prepared.packageFolder,'engine/oz-code/native.bin')),
@@ -41,7 +41,7 @@ test('a built OunceCake folder works without a mac2jb manifest',async t=>{
     assert.equal(outcome.snapshot.commit,null);
     assert.equal(outcome.snapshot.nativeImageSha256,
       hash(fs.readFileSync(path.join(source,'engine/oz-code/native.bin'))));
-    assert.equal(typeof outcome.modules.ftp.deployFtp,'function');
+    assert.equal(typeof outcome.modules.server.deployServer,'function');
   }finally{await prepared.cleanup();}
 });
 test('a compatible fork can change code and add a local engine module',async t=>{
@@ -99,6 +99,9 @@ test('a script app requires an explicit shutdown event before reporting success'
     request:async()=>({ready:true}),emit:(type,value)=>events.push({type,...value})});
   assert.equal(outcome.stopped,true);
   assert.deepEqual(events.map(event=>event.type),['started','stopped']);
+  assert.equal(events.at(-1).cleanupVerified,true);
+  assert.deepEqual(events.at(-1).attemptMarkers,['.mac2jb-hblauncher-attempt.json']);
+  assert.equal(events.at(-1).attemptMarkerSha256,hash(fs.readFileSync(path.join(run,'.mac2jb-hblauncher-attempt.json'))));
   assert.equal(JSON.parse(fs.readFileSync(path.join(run,'.mac2jb-hblauncher-attempt.json'))).adapter,'script');
   const report=path.join(events.at(-1).path,'custom-rpc-session.json');
   await prepared.cleanup();

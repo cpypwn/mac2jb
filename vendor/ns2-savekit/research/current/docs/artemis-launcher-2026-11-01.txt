@@ -1,0 +1,252 @@
+# 2026-11-01 hardware transcript (sanitised)
+
+Console: retail Switch 2, firmware 23.0.1, Seedsow Lullaby Demo 1.0.0.
+Upstream: `alula/switch-artemis-launcher` @ `b9e6de82934dfda1f2c6219aaf305ed980a3d1ba`.
+Host: macOS, node 25.2.1, python3. Console address is written as `$CONSOLE`
+(the real value was a private LAN address). Account uid is not recorded.
+
+## 1. Live session and backup
+
+```
+$ node tools/list-apps.cjs ~/ns2jb-rpc/runs/switch2-rIh6OU
+9 installed applications (BuiltInUser)
+0x010012900d38a000
+0x010042d022aea000
+...
+
+$ node tools/save-pull-root.cjs <run> 010042d022aea000 \
+    saves/Seedsow-Lullaby-demo/user-<uid8>/2026-11-01_2055 <uid>
+done: 290 files, 4665778 bytes -> saves/Seedsow-Lullaby-demo/user-<uid8>/2026-11-01_2055
+```
+
+Per-file SHA-256 in that directory's `manifest.json`. Key rows:
+
+```
+/save9999.dat   28405  d149d71bf87f160825084c952575c620802ca562db894962be2ca0cc818ab342
+/system.dat      5572  36a85e2271f0775c80dd9cc782c327dcb00f01bb88cb0ae14e4d2c6bcbfc1fd0
+/saveg.dat       4635  8c4cc5ab72fbb9cb33d27c4a9927f32c51cf7d064672f64cf65029c3312ecb8a
+```
+
+## 2. Staging plan
+
+```
+$ node tools/artemis-launcher.cjs stage --title 010042d022aea000 \
+    --backup saves/Seedsow-Lullaby-demo/user-<uid8>/2026-11-01_2055
+Seedsow Lullaby (demo) (010042d022aea000)
+backup: ... (290 files, 4665778 bytes)
+add    6 file(s), replace 1 file(s)
+  add     /core.lua          19156  54d25862dc0d7969
+  add     /exploita.lua         20  a84bb1230b2edd73
+  add     /http.lua          10915  2985b8f7040fc40c
+  add     /inject.iet          501  bf79a739584de93d
+  add     /inject.lua         4036  fcc6b5877084df15
+  add     /proggy.ttf        41208  527d2a443ce051f9
+  replace /save9999.dat      28400  ca47241097a25061
+```
+
+`save9999.dat` was rebuilt from the backup (caret retargeted at
+`save:/inject.iet`, container v1003 kept), not taken from upstream.
+
+## 3. Install (one transaction)
+
+```
+replace ok: live /save9999.dat matches the backup (d149d71bf87f1608...)
+pre-check ok: ... backup has 291 entries
+mounted read-write; writing /core.lua 19156 bytes ...
+...
+mounted read-write; writing /save9999.dat 28400 bytes (sha256 ca47241097a25061...)
+commit -> 0x0
+  /core.lua                        19156  54d25862dc0d7969  ok
+  /exploita.lua                       20  a84bb1230b2edd73  ok
+  /http.lua                        10915  2985b8f7040fc40c  ok
+  /inject.iet                        501  bf79a739584de93d  ok
+  /inject.lua                       4036  fcc6b5877084df15  ok
+  /proggy.ttf                      41208  527d2a443ce051f9  ok
+  /save9999.dat                    28400  ca47241097a25061  ok
+```
+
+## 4. Post-install pull and hash comparison
+
+```
+$ node tools/save-pull-root.cjs <run> 010042d022aea000 <verify-dir> <uid> --space 1 --type 1
+done: 296 files, 4741609 bytes -> <verify-dir>
+
+$ node tools/verify-save-manifest.cjs <verify-dir> staging/manifest.json
+ok       /core.lua (19156 bytes)
+ok       /exploita.lua (20 bytes)
+ok       /http.lua (10915 bytes)
+ok       /inject.iet (501 bytes)
+ok       /inject.lua (4036 bytes)
+ok       /proggy.ttf (41208 bytes)
+ok       /save9999.dat (28400 bytes)
+VERIFIED 7 files, 104236 bytes from the manifest
+```
+
+Diff of the 290 pre-install files against the 296 post-install pull:
+
+```
+added   ['/core.lua', '/exploita.lua', '/http.lua', '/inject.iet', '/inject.lua', '/proggy.ttf']
+removed []
+changed ['/save9999.dat']
+unchanged 289
+```
+
+## 5. Launcher and Hello World (screen OCR)
+
+Boot -> Seedsow demo -> account -> launcher:
+
+```
+switch-artemis-launcher by alula
+Press a button on the controller to launch:
+A : slot 1 (exploit1.lua)
+B : slot 2 (exploit2.lua)
+Y : HTTP server
+```
+
+Press A:
+
+```
+seedsowhax by alula
+sending big thanks to: Gezine, kurumuz, zecoxao, DialingSpoon
+[+] setting up initial primitives...
+[+] testing arb rw
+[*] leaking module bases
+[+] main @ 0x2e24206000
+[+] sdk  @ 0x2e581bb000
+[*] running on: Ounce
+[+] TPIDRRO_EL0=0x573856b200
+hello world
+```
+
+## 6. HTTP server (button Y)
+
+```
+[D] socket initialize -> 0x0
+[D] socket fd=0
+HTTP server listening on http://CONSOLE_IP:8080
+```
+
+```
+$ curl -s -i http://$CONSOLE:8080/status
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+Content-Length: 117
+Connection: close
+
+nora2hax/seedsow HTTP server
+POST /eval body=<lua>
+PUT|POST /save?path=<name> body=<file>
+DELETE /delete?path=<name>
+```
+
+```
+$ curl -s -X POST http://$CONSOLE:8080/eval -d 'print("hello world")'
+status: ok
+output:
+hello world
+
+$ curl -s -X POST http://$CONSOLE:8080/eval --data-binary 'print(_G.n2h.platform)'
+status: ok
+output:
+Ounce
+```
+
+## 7. Save write/delete (uniquely named disposable file)
+
+```
+$ printf 'ns2-artemis-probe-...' > /tmp/artemis-probe-20261101.bin
+$ curl -s -X PUT --data-binary @/tmp/artemis-probe-20261101.bin \
+    'http://$CONSOLE:8080/save?path=save:/artemis-probe-20261101.bin'
+wrote 51 bytes to save:/artemis-probe-20261101.bin
+
+$ curl -s -X POST http://$CONSOLE:8080/eval --data-binary \
+    'local f=io.open("save:/artemis-probe-20261101.bin","rb") ...'
+status: ok
+output:
+51
+ns2-artemis-probe-20261101T2103Z-payload-0123456789
+EXISTS
+
+$ curl -s -X DELETE 'http://$CONSOLE:8080/delete?path=save:/artemis-probe-20261101.bin'
+deleted save:/artemis-probe-20261101.bin
+
+$ ... confirm ...
+GONE
+```
+
+## 8. Persistence
+
+- HOME -> X -> A (close software), relaunch -> launcher screen again.
+- fingerbot force-off (16 s) + boot press, navigate, launch -> launcher screen again.
+- minus at the launcher menu -> `[!] RECOVERY MODE (ignoring script updates)`.
+- minus held continuously through the resume, with an `inject2.lua` that writes
+  `save:/inject2-ran.txt`: `inject2-ran.txt` was **present** after boot both
+  times. The startup update bypass did not trigger; no hardware restore was run.
+
+## 9. Second HTTP validation — 2026-11-01 22:32 (no RPC session)
+
+The installed launcher was booted from the existing save; button Y started the
+server. No RPC session was involved. Console address is written as `$CONSOLE`.
+
+```
+GET /status                          -> 200, nora2hax/seedsow banner
+POST /eval print("hello world")      -> status: ok / output: hello world
+POST /eval print(_VERSION)           -> Lua 5.1
+POST /eval print(_G.n2h.platform)    -> Ounce
+POST /eval io/os/debug/loadstring    -> io=true os=true debug=true loadstring=true
+GET /nope                            -> 404 no such endpoint
+GET /eval                            -> 405 use POST /eval
+```
+
+Uniquely named disposable file (`artemis-http-20261101-2233.bin`, 39 bytes):
+
+```
+PUT   /save?path=save:/artemis-http-20261101-2233.bin
+      wrote 39 bytes to save:/artemis-http-20261101-2233.bin
+read  /eval io.open("save:/...") -> 39 bytes, exact content
+DEL   /delete?path=save:/artemis-http-20261101-2233.bin
+      deleted save:/artemis-http-20261101-2233.bin
+read  again -> GONE
+```
+
+Safety refusals:
+
+```
+PUT    /save?path=save:/core.lua    -> 400 attempted to modify protected file
+DELETE /delete?path=save:/core.lua  -> 400 attempted to modify protected file
+PUT    /save?path=../escape         -> 400 path escapes save:/
+```
+
+Installed-file integrity without RPC. A polynomial hash
+(`h = (h*131 + byte) mod 2^32`) was computed identically by the console's Lua
+and locally over the staged payload:
+
+```
+file            size    console hash   staged hash
+core.lua        19156   1619833061     1619833061
+exploita.lua       20   3396816408     3396816408
+http.lua        10915   2751963712     2751963712
+inject.iet        501   1964970987     1964970987
+inject.lua       4036   1893777622     1893777622
+proggy.ttf      41208    635907845      635907845
+save9999.dat    28400   3714976867     3714976867
+```
+
+Relaunch: HOME -> X -> A (close software), relaunch, launcher screen again,
+Y -> `GET /status` 200 and `POST /eval` -> `relaunch ok Ounce`.
+
+## 10. Temporary test artifacts, live check — 2026-11-01 22:50
+
+Booted the installed launcher and started the HTTP server (Y), then queried the
+save directly. This is a current check, not the earlier delete log:
+
+```
+POST /eval
+  inject2.lua ABSENT
+  inject2-ran.txt ABSENT
+  core.lua true
+  http status Ounce
+```
+
+So the recovery-test update files are not present in the save, and the launcher
+core is.

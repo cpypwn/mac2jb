@@ -1,0 +1,49 @@
+{
+  "format": "mac2jb-native-build/1",
+  "upstreamCommit": "18b4748ba98eeac7df17beb5d3418985eb74897c",
+  "toolchain": {
+    "llvm": "23.1.4",
+    "lld": "23.1.4",
+    "vulkanHeaders": "1.4.363.0"
+  },
+  "source": {
+    "files": 128,
+    "sha256": "6dd40adab10d112c964f0892f9ccfb7241e5c7fa72a5db41853bd6401fe03a55"
+  },
+  "buildToolSha256": "6263b1987c8adf83bc9ad24dfdd74646255eda338e740bf4fc78ed4f1845e284",
+  "launcher": {
+    "codeBytes": 65356,
+    "dataBytes": 0,
+    "codeSha256": "283331ace5cea7911135f79dfe67d02e463baedd52c15f76ad7b3dc4d657cd51",
+    "dataSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "apps": [
+    {
+      "id": "hello-cpu",
+      "name": "Hello CPU",
+      "version": "1.0.0",
+      "kind": "native",
+      "codeBytes": 10180,
+      "dataBytes": 0,
+      "codeSha256": "a8b8c780e125fcaf46d8ffc02a628e63145753eb14d59def300cc53a138981ec"
+    },
+    {
+      "id": "gpu-triangle",
+      "name": "GPU Triangle",
+      "version": "1.0.0",
+      "kind": "native",
+      "codeBytes": 5535,
+      "dataBytes": 0,
+      "codeSha256": "cd95fcb6c0a1e0f2cd91b9a63a629793f6c316e10fb003a76f0fd69d36fbc807"
+    },
+    {
+      "id": "mintnes",
+      "name": "MintNES",
+      "version": "0.3.0",
+      "kind": "native",
+      "codeBytes": 35272,
+      "dataBytes": 0,
+      "codeSha256": "ab437317ed4e2581be04c5e827390114589a7fc066b64fe93725a8b7d61d3495"
+    }
+  ]
+}

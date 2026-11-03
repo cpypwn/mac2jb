@@ -1,0 +1,16 @@
+{
+  "source": "packaging/ArtemisLauncher-v1.json",
+  "revision": "b9e6de82934dfda1f2c6219aaf305ed980a3d1ba",
+  "assets": {
+    "seedsow": {
+      "path": "integrations/artemis/seedsowhax-v1-mac2jb.zip",
+      "sourceSha256": "d9f3d0204860aa9764106c54b18d2b226dd525d72fbfea6bd7a706e9cfeef76e",
+      "sha256": "a08dc2b6467ed73d2f7ffd4e5cbcbeae048e73760787a0abc5b3d60f26525cb4"
+    },
+    "nora": {
+      "path": "integrations/artemis/norahax-v1-mac2jb.zip",
+      "sourceSha256": "8a66a5d67a196f9afbb72098fc233ffa354f5b201d8d230ad69673b2eab82b1f",
+      "sha256": "dc538e4d312af166d5fc117d11f3ca377ccbe5811e68dfafd63de6be14b6394b"
+    }
+  }
+}

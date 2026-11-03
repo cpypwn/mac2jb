@@ -10,7 +10,7 @@ const check=(value,message)=>{if(!value)throw Error(message);};
 const blocked=error=>Boolean(error?.cleanupBlocked||error?.errors?.some(blocked));
 const recoverableContentError=error=>!blocked(error)&&!(error instanceof AggregateError)&&
  error?.code!=='FTP_CANCELLED'&&Boolean(error?.nativeResult||
-  /^(Invalid RomFS:|Invalid FTP index:|Could not prepare |No installed base Program content was found|Content requires an original-content mount)/.test(error?.message||''));
+  /^(Invalid RomFS:|Invalid server index:|Could not prepare |No installed base Program content was found|Content requires an original-content mount)/.test(error?.message||''));
 
 function ipv4(data){
  check(Buffer.isBuffer(data)&&data.length>=layout.FIELD.network+24,
@@ -42,10 +42,10 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
   session:require(path.join(vendor,'engine/session.cjs')),
   content:require(path.join(vendor,'engine/content.cjs')),
   mounts:require(path.join(vendor,'engine/mounts.cjs')),
-  ftp:require(path.join(vendor,'engine/ftp.cjs')),
+  server:require(path.join(vendor,'engine/server.cjs')),
  };
  let started=false,stopping=false,selected=false,status=protocol.STATES.reading;
- let task,attachment,server,run,games=[],failure,closing,nativeImage,baselineHandles;
+ let task,attachment,server,zipServer,run,games=[],failure,closing,nativeImage,baselineHandles;
  const report={session:rpc.a.session,sourceSession,started:new Date().toISOString(),status:'reading',
   resourcesRetained:true};
  const save=()=>fs.writeFile(path.join(directory,'mintbrew-ouncecake.json'),
@@ -64,6 +64,7 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
  });
  const fail=async(error)=>{
   if(server&&!await live())error.cleanupBlocked=true;
+  if(zipServer){await zipServer.close();zipServer=null;}
   failure ||= error;report.error=error.message;report.cleanupBlocked ||= blocked(error);
   if(!report.cleanupBlocked){
    try{await publish(protocol.STATES.error,error.message);}catch(writeError){failure=writeError;report.cleanupBlocked=true;}
@@ -87,18 +88,19 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
  async function stopServer(){
   if(server){
    try{
-    check(await live(),'OunceCake lost its held session before FTP shutdown');
+    check(await live(),'OunceCake lost its held session before HTTP/WebDAV shutdown');
     const proof=await server.close();
     check(proof?.nativeStopped===true&&proof?.joined===true&&proof?.mappingsCleared===true,
-     'OunceCake could not prove native FTP shutdown');
+     'OunceCake could not prove native server shutdown');
     (report.shutdowns ||= []).push(proof);server=null;
    }catch(error){error.cleanupBlocked=true;report.cleanupBlocked=true;failure=error;await save();throw error;}
   }
+  if(zipServer){await zipServer.close();zipServer=null;}
  }
  async function releaseSelectedHandles(){
   check(attachment&&baselineHandles,'OunceCake game attachment is unavailable');
   try{
-   check(!server,'OunceCake FTP must stop before game handles close');
+   check(!server,'OunceCake server must stop before game handles close');
    check(attachment.s.threads.size===0,'OunceCake game worker did not stop');
    for(const handle of [...attachment.s.handles].reverse()){
     if(!baselineHandles.has(handle))await attachment.s.close(handle);
@@ -219,25 +221,30 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
     error.cleanupBlocked=true;throw error;
    }
    if(stopping)return;
-   check(await live(),'The held RPC session ended before FTP deployment');
-   server=await engine.ftp.deployFtp({attachment,image:nativeImage,...prepared,port:2121});
+   check(await live(),'The held RPC session ended before HTTP/WebDAV deployment');
+   zipServer=await require(path.join(vendor,'engine/zip-download.cjs')).startZipServer({
+    index:prepared.index,sourcePort:2121,title:games[index].name});
+   zipServer.setSourceAddress(address);
+   server=await engine.server.deployServer({attachment,image:nativeImage,...prepared,port:2121,
+    zipPort:zipServer.port});
    if(stopping)return;
-   check(await live(),'The held RPC session ended during FTP startup');
-   report.ftpURL='ftp://'+address+':2121';
-   await publish(protocol.STATES.running,'FTP://'+address+':2121');
-   onProgress('OunceCake: '+report.ftpURL);
+   check(!server.address||server.address===address,'OunceCake reported a different console address');
+   check(await live(),'The held RPC session ended during HTTP/WebDAV startup');
+   report.httpURL='http://'+address+':2121/';
+   await publish(protocol.STATES.running,report.httpURL);
+   onProgress('OunceCake: '+report.httpURL);
   })());
  }
  async function back(){
   check(started&&!stopping&&selected&&status===protocol.STATES.running,
-   'OunceCake FTP is not running');
-  await publish(protocol.STATES.closing,'Stopping the read-only FTP worker...');
+   'OunceCake HTTP/WebDAV is not running');
+  await publish(protocol.STATES.closing,'Stopping the read-only server...');
   const previous=task;
   track((async()=>{
    await previous;
    await releaseGameOwned();
    if(stopping)return;
-   selected=false;report.titleId=null;report.ftpURL=null;
+   selected=false;report.titleId=null;report.httpURL=null;
    await publish(protocol.STATES.catalog,'',games.length);
    await resumeTitleFtp();
    onProgress('OunceCake: choose another game on the Switch');

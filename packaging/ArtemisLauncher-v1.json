@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/alula/switch-artemis-launcher",
+  "revision": "b9e6de82934dfda1f2c6219aaf305ed980a3d1ba",
+  "release": "v1",
+  "license": "not specified upstream",
+  "assets": {
+    "seedsow": {
+      "title": "Seedsow Lullaby demo",
+      "titleId": "010042d022aea000",
+      "url": "https://github.com/alula/switch-artemis-launcher/releases/download/v1/seedsow_save.zip",
+      "sha256": "d9f3d0204860aa9764106c54b18d2b226dd525d72fbfea6bd7a706e9cfeef76e"
+    },
+    "nora": {
+      "title": "Nora, Princess and Crying Cat 2 demo",
+      "titleId": "010012900d38a000",
+      "url": "https://github.com/alula/switch-artemis-launcher/releases/download/v1/nora2_save.zip",
+      "sha256": "8a66a5d67a196f9afbb72098fc233ffa354f5b201d8d230ad69673b2eab82b1f"
+    }
+  }
+}

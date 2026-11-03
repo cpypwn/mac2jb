@@ -62,7 +62,7 @@ async function main(args=process.argv.slice(2),options={}) {
     !(controller==='auto'||/^usb-drd(?:[0-9]|1[0-5])$/.test(controller))||!/^\d+$/.test(text)||
     !Number.isInteger(timeout)||timeout<1||timeout>120||(preferredController!==undefined&&controller!=='auto'))throw Error('Invalid keyboard settings.');
   const candidates=controller==='auto'?autoControllers(preferredController):[controller];
-  let safeFailures=0;
+  let safeFailures=0,initFailures=0;
   const root=options.root||path.resolve(__dirname,'..'),input=options.input||process.stdin;
   let child,childDone,ready=false,stopping=false,pending='',written=false,stopTimer,failure='',outputClosed=false,textJob,textTask;
   let submittedReports=0,acknowledgedReports=0;
@@ -217,11 +217,13 @@ async function main(args=process.argv.slice(2),options={}) {
       if(stopping) {
         emit(released?'keyboard-stopped':'failed',{message:released?'Keyboard forwarding stopped. Held keys were released.':'Keyboard disconnected without confirmed key release. Reconnect the cable if a key repeats.'});return released?130:1;
       }
-      const initializationError=/^(?:Could not open USB keyboard\.|USB keyboard enumeration failed\b|libusbd_init failed\b|USB configuration failed\b|USB interface setup failed\b|USB enumeration error(?::|\s))/m.test(error);
+      const noGadgetInitialization=/^libusbd_init failed\b/m.test(error);
+      const initializationError=/^(?:Could not open USB keyboard\.|USB keyboard enumeration failed\b|USB configuration failed\b|USB interface setup failed\b|USB enumeration error(?::|\s))/m.test(error);
       const safeEnumerationFailure=!sawReady&&!released&&!written&&!spawnError&&!initializationError&&
-        ((enumerationTimedOut&&(['SIGTERM','SIGKILL'].includes(outcome.signal)||[1,130].includes(outcome.code)))||
+        ((controller==='auto'&&noGadgetInitialization&&!outcome.signal&&outcome.code===1)||
+          (enumerationTimedOut&&(['SIGTERM','SIGKILL'].includes(outcome.signal)||[1,130].includes(outcome.code)))||
           (!outcome.signal&&outcome.code===1&&/^USB host did not enumerate a keyboard\.$/m.test(error)));
-      if(safeEnumerationFailure){safeFailures++;continue;}
+      if(safeEnumerationFailure){safeFailures++;if(noGadgetInitialization)initFailures++;continue;}
       if(spawnError||enumerationTimedOut||outcome.code!==0||outcome.signal||!sawReady||!released) {
         emit('failed',{message:sawReady?'Keyboard input stopped. Inspect the Switch before reconnecting.'+
           (released?' Held keys were released.':' Key release could not be confirmed; reconnect the cable if a key repeats.'):
@@ -230,7 +232,9 @@ async function main(args=process.argv.slice(2),options={}) {
       emit('keyboard-stopped',{message:'Keyboard forwarding stopped. Held keys were released.'});return 0;
     }
     if(stopping)return 130;
-    emit('failed',{...(safeFailures===candidates.length?{retrySafe:true}:{}),message:'No USB controller connected. Check the cable and power direction.'});return 1;
+    emit('failed',{...(safeFailures===candidates.length?{retrySafe:true}:{}),message:initFailures===candidates.length
+      ? 'USB initialization failed on every controller. Check that the approved usbgadget driver is installed and loaded.'
+      : 'No USB controller connected. Check the cable and power direction.'});return 1;
   } catch {
     rejectInput('The keyboard helper could not continue. Inspect the Switch before reconnecting.');
     if(childDone)await childDone;

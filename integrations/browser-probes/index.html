@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mac2jb browser probes</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="./probes.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Browser probes</h1>
+        <p>Local diagnostics for the Switch browser</p>
+      </div>
+      <span class="badge">mac2jb</span>
+    </header>
+    <section class="panel">
+      <h2>Choose a probe</h2>
+      <div id="probes" class="probe-list" role="group" aria-label="Available probes"></div>
+      <p id="description" class="muted"></p>
+      <div class="actions">
+        <button id="run" type="button">Run selected probe</button>
+        <button id="copy" type="button" disabled>Copy results</button>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Results</h2>
+      <p id="status" class="muted">Choose a probe, then run it on this browser</p>
+      <pre id="results" aria-live="polite"></pre>
+    </section>
+  </main>
+</body>
+</html>

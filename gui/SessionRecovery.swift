@@ -2,7 +2,7 @@ import Foundation
 
 enum SessionPhase: String {
     case preparing, ready, bootstrap, awaitingSave, savingBootstrap, hostStarting, commands
-    case waitingForConsole, rpcAttaching, rpcHeld, rpcDetached, dumpingFirmware, rpcFinishing
+    case waitingForConsole, rpcAttaching, rpcHeld, rpcDetached, dumpingFirmware, installingSave, rpcFinishing
     case launchingHomebrew, homebrewRunning, homebrewStopped
     case keyboardConnecting, keyboardForwarding
     case verified, commandsSent, failed, cancelled
@@ -30,6 +30,8 @@ enum SessionRecovery {
                 ? append("A partial system-code dump may remain; keep the logs and dump folder.", to: message)
                 : message
             return addingRestart(to: recovery, liveSession: true)
+        case .installingSave:
+            return addingRestart(to: append("Keep the Seedsow save backup and check the install log before trying again.", to: message), liveSession: true)
         case .launchingHomebrew, .homebrewRunning:
             let recovery = message.range(of: "homebrew logs", options: .caseInsensitive) == nil
                 ? append("Keep the homebrew logs; the app may have been interrupted.", to: message)

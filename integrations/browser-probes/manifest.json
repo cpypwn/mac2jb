@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "probes": [
+    {"id": "runtime", "title": "Runtime", "description": "JavaScript, timing and browser environment"},
+    {"id": "media", "title": "Media", "description": "Video, audio and media API availability"},
+    {"id": "network", "title": "Network", "description": "Local request timing and network API availability"},
+    {"id": "boundaries", "title": "Boundaries", "description": "Bounded arrays, text encoding and structured data"},
+    {"id": "fonts", "title": "Fonts", "description": "Font API and generic text rendering"},
+    {"id": "webkit", "title": "WebKit", "description": "Rendering and browser feature inventory"},
+    {"id": "fontenv", "title": "Font environment", "description": "Generic font measurements and status"}
+  ]
+}

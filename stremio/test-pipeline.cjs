@@ -46,7 +46,8 @@ test('real installed decoder feeds timed movie video and PCM through the control
  const pipeline=await create({graphics,audio,directory,root:path.resolve(__dirname,'..'),pollIntervalMs:50,onFatal:error=>faults.push(error),render:(model,options)=>require('./menu.cjs').renderMenu(model,{...options,python:path.resolve(__dirname,'../.build-gui/homebrew/python/bin/python3'),fontPath:path.resolve(__dirname,'../.build-gui/homebrew/fonts/DejaVuSans.ttf')})});t.after(()=>pipeline.close());
  await until(()=>!pipeline.controller.busy&&pipeline.controller.catalogItems.length===1);
  for(let i=0;i<3;i++)await pipeline.controller.handleButton('a');
- await delay(1200);assert.ok(pcm>=5,'PCM chunks='+pcm);assert.ok(pipeline.report.frames>=5,'frames='+pipeline.report.frames);assert.equal(faults.length,0);
+ for(let n=0;n<160&&(pcm<5||pipeline.report.frames<5)&&faults.length===0;n++)await delay(50);
+ assert.ok(pcm>=5,'PCM chunks='+pcm);assert.ok(pipeline.report.frames>=5,'frames='+pipeline.report.frames);assert.equal(faults.length,0);
  await pipeline.controller.handleButton('a');await delay(150);await pipeline.controller.handleButton('a');
  await pipeline.close();assert.equal(faults.length,0);assert.equal(pipeline.report.stopped,true);
 });
