@@ -151,7 +151,15 @@ private struct GUIEvent: Decodable {
     @Published private(set) var bootstrapSaveCommandSent = false
     @Published var isEnumerating = false
     @Published var addresses: [NetworkAddress] = []
-    @Published var selectedAddress = ""
+    @Published var selectedAddress = "" {
+        didSet {
+            guard !refreshingNetworkSelection,
+                  let choice = addresses.first(where: { $0.address == selectedAddress }) else { return }
+            preferredNetworkInterface = choice.interface
+            networkDefaults.set(choice.interface, forKey: "preferredNetworkInterface")
+            networkDefaults.set(choice.address, forKey: "preferredNetworkAddress")
+        }
+    }
     @Published private(set) var activeAddress = ""
     @Published private(set) var networkNotice: String?
     @Published var controller = "auto"
@@ -209,12 +217,15 @@ private struct GUIEvent: Decodable {
     @Published private(set) var activeEdition: SmileBASICEdition = .full
     @Published var selectedEdition: SmileBASICEdition = .full
     var fullInstall: Bool { runMode == .bootstrapOnly }
-    @Published var keyDelayMs = 10
-    @Published var enumerationTimeoutSeconds = 4
-    @Published var loadWaitMs = 1000
-    @Published var runWaitMs = 0
-    @Published var removeWaitMs = 0
-    @Published var loadConfirmWaitMs = 0
+    @Published var keyDelayMs = 10 { didSet { saveTimingPreferences() } }
+    @Published var enumerationTimeoutSeconds = 4 { didSet { saveTimingPreferences() } }
+    @Published var loadWaitMs = 1000 { didSet { saveTimingPreferences() } }
+    @Published var runWaitMs = 0 { didSet { saveTimingPreferences() } }
+    @Published var removeWaitMs = 0 { didSet { saveTimingPreferences() } }
+    @Published var loadConfirmWaitMs = 0 { didSet { saveTimingPreferences() } }
+    @Published var keyHoldMs = 0 { didSet { saveTimingPreferences() } }
+    @Published var enterSettleMs = 0 { didSet { saveTimingPreferences() } }
+    @Published var pollInterval = 10 { didSet { saveTimingPreferences() } }
     var effectiveLoadConfirmWaitMs: Int { activeEdition.requiresLoadConfirmation ? loadConfirmWaitMs : 0 }
     @Published var driverStatus = "Checking the USB gadget driver…"
     @Published var driverInstalled = false
@@ -298,20 +309,72 @@ private struct GUIEvent: Decodable {
     private var bootstrapTimer: Timer?
     private var hasEnumeratedSuccessfully = false
     private let addressProvider: () -> [NetworkAddress]
+    private let networkDefaults: UserDefaults
+    private var preferredNetworkInterface: String?
+    private var refreshingNetworkSelection = false
+    private let timingPreferences: UserDefaults
+    private var restoringTimingPreferences = false
+    private static let timingPreferenceKey = "usbTimingSettings"
     private var networkRefreshTimer: Timer?
     private var exploitLogRefreshDate = Date.distantPast
     private var hostReadyReceived = false
     private var hasHIDEvidence = false
     private var preflightNetworkFailureHandled = false
 
-    init(addressProvider: @escaping () -> [NetworkAddress] = { NetworkSelection.localAddresses() }, runtime: BundledRuntime? = nil, edition: SmileBASICEdition? = nil) {
+    init(addressProvider: @escaping () -> [NetworkAddress] = { NetworkSelection.localAddresses() }, runtime: BundledRuntime? = nil, edition: SmileBASICEdition? = nil, timingDefaults: UserDefaults = .standard, networkDefaults: UserDefaults = .standard) {
         self.addressProvider = addressProvider
+        self.networkDefaults = networkDefaults
+        preferredNetworkInterface = networkDefaults.string(forKey: "preferredNetworkInterface")
+        selectedAddress = networkDefaults.string(forKey: "preferredNetworkAddress") ?? ""
+        self.timingPreferences = timingDefaults
         self.runtime = runtime
         selectedHost = runtime?.host ?? HostProfile.saved()
         activeHost = selectedHost
         if !selectedHost.supportsHeldRPC { runMode = .exploitOnly }
         if let edition { activeEdition = edition; selectedEdition = edition }
         workflowProgress.selectMode(fullInstall: false)
+        restoreTimingPreferences()
+    }
+
+    private func saveTimingPreferences() {
+        guard !restoringTimingPreferences else { return }
+        timingPreferences.set([
+            "keyDelayMs": keyDelayMs, "keyHoldMs": keyHoldMs, "enterSettleMs": enterSettleMs,
+            "pollInterval": pollInterval, "enumerationTimeoutSeconds": enumerationTimeoutSeconds,
+            "loadConfirmWaitMs": loadConfirmWaitMs, "loadWaitMs": loadWaitMs,
+            "runWaitMs": runWaitMs, "removeWaitMs": removeWaitMs
+        ], forKey: Self.timingPreferenceKey)
+    }
+
+    private func restoreTimingPreferences() {
+        let saved = timingPreferences.dictionary(forKey: Self.timingPreferenceKey) ?? [:]
+        func value(_ key: String, _ fallback: Int, _ range: ClosedRange<Int>) -> Int {
+            guard let number = saved[key] as? NSNumber,
+                  number.doubleValue == Double(number.intValue), range.contains(number.intValue) else { return fallback }
+            return number.intValue
+        }
+        restoringTimingPreferences = true
+        keyDelayMs = value("keyDelayMs", 10, 1...2000)
+        keyHoldMs = value("keyHoldMs", 0, 0...2000)
+        enterSettleMs = value("enterSettleMs", 0, 0...2000)
+        pollInterval = value("pollInterval", 10, 1...16)
+        enumerationTimeoutSeconds = value("enumerationTimeoutSeconds", 4, 1...120)
+        loadConfirmWaitMs = value("loadConfirmWaitMs", 0, 0...120000)
+        loadWaitMs = value("loadWaitMs", 1000, 0...120000)
+        runWaitMs = value("runWaitMs", 0, 0...120000)
+        removeWaitMs = value("removeWaitMs", 0, 0...120000)
+        restoringTimingPreferences = false
+    }
+
+    func useStockTiming() {
+        keyDelayMs = 10; keyHoldMs = 0; enterSettleMs = 0; pollInterval = 10
+        enumerationTimeoutSeconds = 4
+        loadConfirmWaitMs = 0; loadWaitMs = 1000; runWaitMs = 0; removeWaitMs = 0
+    }
+
+    func useExperimentalTypingTiming() {
+        // Opt-in experimental profile measured with representative short typing samples.
+        pollInterval = 6; keyHoldMs = 10; keyDelayMs = 5; enterSettleMs = 100
     }
 
     deinit { networkRefreshTimer?.invalidate() }
@@ -359,7 +422,9 @@ private struct GUIEvent: Decodable {
         !driverSetupRunning && runtime != nil
     }
     private var typingSettingsValid: Bool {
-        (1...2000).contains(keyDelayMs) && (1...120).contains(enumerationTimeoutSeconds) &&
+        (1...2000).contains(keyDelayMs) && (0...2000).contains(keyHoldMs) &&
+        (0...2000).contains(enterSettleMs) && (1...16).contains(pollInterval) &&
+        (1...120).contains(enumerationTimeoutSeconds) &&
         [loadWaitMs, runWaitMs, removeWaitMs, effectiveLoadConfirmWaitMs].allSatisfy { (0...120000).contains($0) }
     }
     func canStartCommandsOnly(commands: [PostBootstrapCommand] = [.load, .run, .remove], startCommand: String? = nil, startPrefix: Bool = false) -> Bool {
@@ -625,8 +690,14 @@ private struct GUIEvent: Decodable {
 
     @discardableResult private func refreshNetworkAddresses() -> NetworkSelection.Refresh {
         let previous = selectedAddress
-        let refresh = NetworkSelection.refresh(selected: previous, previous: addresses, available: addressProvider())
+        let refresh = NetworkSelection.refresh(selected: previous, previous: addresses, available: addressProvider(), lockedInterface: preferredNetworkInterface)
+        refreshingNetworkSelection = true
         addresses = refresh.addresses; selectedAddress = refresh.selected
+        refreshingNetworkSelection = false
+        if let preferredNetworkInterface, !refresh.selected.isEmpty {
+            networkDefaults.set(preferredNetworkInterface, forKey: "preferredNetworkInterface")
+            networkDefaults.set(refresh.selected, forKey: "preferredNetworkAddress")
+        }
         if refresh.changed, !previous.isEmpty {
             networkNotice = "The Mac’s network address changed. Review the current address, confirm the Switch is ready, then press Start again."
         }
@@ -733,7 +804,7 @@ private struct GUIEvent: Decodable {
         resetBootstrapTiming()
         hostStageLabel = "Waiting for the Switch to connect over the local network"
         hostStageProgress = nil
-        append("\(AppBuildIdentity.diagnosticLabel); mode=\(activeRunMode.rawValue); edition=\(activeEdition.rawValue); controller=\(controller); address=\(activeAddress); keyDelayMs=\(keyDelayMs); enumerationTimeoutSeconds=\(enumerationTimeoutSeconds); loadConfirmWaitMs=\(effectiveLoadConfirmWaitMs); loadWaitMs=\(loadWaitMs); runWaitMs=\(runWaitMs); removeWaitMs=\(removeWaitMs). Starting \(activeRunMode.title).")
+        append("\(AppBuildIdentity.diagnosticLabel); mode=\(activeRunMode.rawValue); edition=\(activeEdition.rawValue); controller=\(controller); address=\(activeAddress); keyDelayMs=\(keyDelayMs); keyHoldMs=\(keyHoldMs); enterSettleMs=\(enterSettleMs); pollInterval=\(pollInterval); enumerationTimeoutSeconds=\(enumerationTimeoutSeconds); loadConfirmWaitMs=\(effectiveLoadConfirmWaitMs); loadWaitMs=\(loadWaitMs); runWaitMs=\(runWaitMs); removeWaitMs=\(removeWaitMs). Starting \(activeRunMode.title).")
     }
 
     func startCommandsOnly(commands: [PostBootstrapCommand] = [.load, .run, .remove], startCommand: String? = nil, startPrefix: Bool = false) {
@@ -1489,10 +1560,12 @@ private struct GUIEvent: Decodable {
         }
         phase = kind == "bootstrap" ? .bootstrap : kind == "save-bootstrap" ? .savingBootstrap : .commands
         status = kind == "bootstrap" ? "Connecting the USB keyboard" : "Waiting for USB keyboard…"
-        detail = kind == "bootstrap" ? "Keep Make a Program open until the entire bootstrap has finished typing. Using \(keyDelayMs) ms per key." : "Keep the command screen focused. The expected Out of memory message after REMOVE is normal."
+        detail = kind == "bootstrap" ? "Keep Make a Program open until the entire bootstrap has finished typing. Using a \(keyDelayMs) ms release gap." : "Keep the command screen focused. The expected Out of memory message after REMOVE is normal."
         progress = 0; progressLabel = "Waiting for the USB keyboard"; isEnumerating = true
         var arguments = ["hid", kind, controller, String(keyDelayMs),
             "--enumeration-timeout", String(enumerationTimeoutSeconds),
+            "--key-hold-ms", String(keyHoldMs), "--enter-settle-ms", String(enterSettleMs),
+            "--poll-interval", String(pollInterval),
             "--load-wait-ms", String(loadWaitMs), "--run-wait-ms", String(runWaitMs),
             "--remove-wait-ms", String(removeWaitMs), "--load-confirm-wait-ms",
             String(loadConfirmWaitMs)]

@@ -528,3 +528,7 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 - [Northernside](https://github.com/Northernside) — [PR #9](https://github.com/cpypwn/mac2jb/pull/9), measured keystroke timing for the bootstrap ETA.
 
 see the bundled notices, licenses and upstream documentation for attribution and reuse terms.
+
+## Local development workflow
+
+USB timing and the selected network interface are remembered across launches. See [USB timing and verification](docs/USB_TIMING.md) for the advanced controls and [local MCP tools](docs/MCP.md) for optional bootstrap preflight and held-session diagnostics. The [optional bootstrap helpers](docs/BOOTSTRAP_KIT.md) add profile/help/state commands and a guarded connection preset in a separately saved experimental variant.
