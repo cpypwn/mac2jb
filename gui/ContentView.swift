@@ -75,7 +75,9 @@ struct ContentView: View {
     }
     private var driverSetupBlocked: Bool { model.runtime == nil || configurationLocked || updater.blocksNewSession }
     private var timingSettingsValid: Bool {
-        (1...2000).contains(model.keyDelayMs) && (1...120).contains(model.enumerationTimeoutSeconds) &&
+        (1...2000).contains(model.keyDelayMs) && (0...2000).contains(model.keyHoldMs) &&
+        (0...2000).contains(model.enterSettleMs) && (1...16).contains(model.pollInterval) &&
+        (1...120).contains(model.enumerationTimeoutSeconds) &&
         [model.effectiveLoadConfirmWaitMs, model.loadWaitMs, model.runWaitMs, model.removeWaitMs]
             .allSatisfy { (0...120000).contains($0) }
     }
@@ -965,7 +967,7 @@ struct ContentView: View {
                         .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                     HStack {
                         Button("Send text") { model.sendKeyboardText() }.disabled(!model.canSendKeyboardText)
-                        Text("\(model.keyDelayMs) ms per key").font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                        Text("\(model.keyDelayMs) ms release gap").font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                     }
                     if !model.keyboardTextStatus.isEmpty {
                         Text(model.keyboardTextStatus).font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
@@ -993,7 +995,18 @@ struct ContentView: View {
                 Text("Will try \(controller) first.")
                     .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             }
-            timingField("Delay per key", units: "ms", value: $model.keyDelayMs, range: 1...2000)
+            HStack {
+                Button("Experimental fast profile") { model.useExperimentalTypingTiming() }
+                Button("Stock defaults") { model.useStockTiming() }
+            }
+            Text("Typing settings are saved. The fast profile is experimental. Verify the transferred text before saving.")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+            timingField("Release gap", units: "ms", value: $model.keyDelayMs, range: 1...2000)
+            timingField("Key hold", units: "ms", value: $model.keyHoldMs, range: 0...2000)
+            timingField("After Enter", units: "ms", value: $model.enterSettleMs, range: 0...2000)
+            timingField("USB polling interval", units: "bInterval", value: $model.pollInterval, range: 1...16)
+            Text("At high speed: 6 = 4 ms polling; 10 = 64 ms. Applies to bootstrap and command typing.")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
             timingField("Enumeration timeout per controller", units: "s", value: $model.enumerationTimeoutSeconds, range: 1...120)
             Divider()
             timingField("Before confirming LOAD / LOADV", units: "ms", value: $model.loadConfirmWaitMs, range: 0...120000)
@@ -1001,13 +1014,10 @@ struct ContentView: View {
             timingField("After RUN → before REMOVE", units: "ms", value: $model.runWaitMs, range: 0...120000)
             timingField("After REMOVE → before START", units: "ms", value: $model.removeWaitMs, range: 0...120000)
             HStack {
-                Text("Defaults: 10 ms/key · 4 s connection · 1 s after LOAD confirmation; other command waits are 0.")
+                Text("Stock: 10 ms release gap · no added hold or Enter wait · polling interval 10 · 4 s connection · 1 s after LOAD.")
                     .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                 Spacer(minLength: 8)
-                Button("Reset defaults") {
-                    model.keyDelayMs = 10; model.enumerationTimeoutSeconds = 4
-                    model.loadConfirmWaitMs = 0; model.loadWaitMs = 1000; model.runWaitMs = 0; model.removeWaitMs = 0
-                }.font(.system(size: 10))
+
             }
             if !timingSettingsValid { Text("Enter values within the ranges shown before starting.").font(.system(size: 11)).foregroundStyle(.orange) }
         }.disabled(configurationLocked)

@@ -9,13 +9,14 @@ const {selectedProfile, profileById, validStartCommand, incompatibleLegacyStartH
 const {autoControllers} = require('./usb-controllers.cjs');
 const root = path.resolve(__dirname, '..');
 const timingDefaults = Object.freeze({delay: 10, enumerationTimeout: 4, loadWaitMs: 1000,
-  runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0});
+  runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0, keyHoldMs: 0, enterSettleMs: 0, pollInterval: 10});
 function hidSettings(args) {
   const settings = {...timingDefaults};
   const values = [...args];
   if (values.length && !values[0].startsWith('--')) settings.delay = Number(values.shift());
   const options = {'--enumeration-timeout': 'enumerationTimeout', '--load-wait-ms': 'loadWaitMs',
-    '--run-wait-ms': 'runWaitMs', '--remove-wait-ms': 'removeWaitMs', '--load-confirm-wait-ms': 'loadConfirmWaitMs'};
+    '--run-wait-ms': 'runWaitMs', '--remove-wait-ms': 'removeWaitMs', '--load-confirm-wait-ms': 'loadConfirmWaitMs',
+    '--key-hold-ms': 'keyHoldMs', '--enter-settle-ms': 'enterSettleMs', '--poll-interval': 'pollInterval'};
   while (values.length) {
     const option = values.shift();
     if (option === "--demo") {
@@ -32,8 +33,8 @@ function hidSettings(args) {
   }
   for (const name of Object.keys(timingDefaults)) {
     const value = settings[name];
-    const minimum = name === 'delay' || name === 'enumerationTimeout' ? 1 : 0;
-    const maximum = name === 'delay' ? 2000 : name === 'enumerationTimeout' ? 120 : 120000;
+    const minimum = name === 'delay' || name === 'enumerationTimeout' || name === 'pollInterval' ? 1 : 0;
+    const maximum = ['delay', 'keyHoldMs', 'enterSettleMs'].includes(name) ? 2000 : name === 'pollInterval' ? 16 : name === 'enumerationTimeout' ? 120 : 120000;
     if (!Number.isInteger(value) || value < minimum || value > maximum) throw Error(`Invalid ${name}: use ${minimum}..${maximum}.`);
   }
   return settings;
@@ -248,7 +249,10 @@ async function hid(kind, controller, settings = timingDefaults) {
         ...(settings.startPrefix?['--start-prefix']:settings.startCommand?['--start-command',settings.startCommand]:[])] : [])];
     current = spawn(executable, args, {cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
       env: {...process.env, MAC2JB_AUTO_WORKER: '1', MAC2JB_CONTROLLER: candidate,
-        MAC2JB_ENUMERATION_TIMEOUT_SECONDS: String(enumerationTimeout)}});
+        MAC2JB_ENUMERATION_TIMEOUT_SECONDS: String(enumerationTimeout),
+        MAC2JB_KEY_HOLD_MS: String(settings.keyHoldMs ?? timingDefaults.keyHoldMs),
+        MAC2JB_ENTER_SETTLE_MS: String(settings.enterSettleMs ?? timingDefaults.enterSettleMs),
+        MAC2JB_POLL_INTERVAL: String(settings.pollInterval ?? timingDefaults.pollInterval)}});
     const child = current;
     let output = '', typing = false, timedOut = false, announced = false, commandStep = 0, nativeEvents = false, nativeLineEvents = false,prefixCompleted=false;
     const completedCommands=new Set();

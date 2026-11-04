@@ -243,6 +243,7 @@ static int type_selected(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep, int del
 #endif
 
 int main(int argc, char **argv) {
+    if (read_usb_timing() < 0) return 2;
     int delay_ms=10;
     bool dry_run=false;
     bool automatic=false;
@@ -468,7 +469,7 @@ int main(int argc, char **argv) {
     hid_desc[8]=(uint8_t)(sizeof(hid_report_desc)>>8);
     libusbd_iface_standard_desc(ctx,iface,0x21,0xF,hid_desc,sizeof(hid_desc));
     libusbd_iface_nonstandard_desc(ctx,iface,0x22,0xF,hid_report_desc,sizeof(hid_report_desc));
-    if (libusbd_iface_add_endpoint(ctx,iface,USB_EPATTR_TTYPE_INTR,USB_EP_DIR_IN,8,10,0,&ep)<0 ||
+    if (add_keyboard_endpoint(ctx, iface, &ep)<0 ||
         libusbd_iface_finalize(ctx,iface)<0) {
         fprintf(stderr, "USB interface setup failed\n"); goto done;
     }
