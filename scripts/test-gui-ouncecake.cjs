@@ -127,3 +127,14 @@ for(const scenario of ['cycle','small','badAddress'])test('program-map '+scenari
  const f=await mapFixture(t,{[scenario]:true});await assert.rejects(f.run(),/invalid node, cycle or traversal bound/);
  assert.equal(f.operations,0);assert.ok(f.reads.length<=2);
 });
+test('native game card with zero FS606 RightsId skips ES account ELicense lookup',async()=>{
+ const {prepareNativeInstalledLicense}=require('../vendor/OunceCake/engine/native-license.cjs');
+ let esCalled=false;
+ const result=await prepareNativeInstalledLicense({
+  s:{threads:new Set(),async ipc(label,handle,command){assert.equal(command,606);return {result:0,data:Buffer.alloc(16)};}},
+  root:1,domain:{},service:async()=>{esCalled=true;throw Error('ES should not be queried when FS606 RightsId is zero');},
+  programId:'0400341027e14000',storage:2,optional:false
+ });
+ assert.equal(result,false);
+ assert.equal(esCalled,false);
+});
