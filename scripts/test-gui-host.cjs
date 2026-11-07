@@ -184,7 +184,7 @@ test('ordinary host cannot call a bind failure safe after '+prefix.trim(),{timeo
 });
 test('timing defaults and independent range limits are validated', () => {
   assert.deepEqual(hidSettings([]), {delay: 10, enumerationTimeout: 4,
-    loadWaitMs: 1000, runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0});
+    loadWaitMs: 1000, runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0, keyHoldMs: 0, enterSettleMs: 0, pollInterval: 10});
   assert.equal(hidSettings(['2000', '--enumeration-timeout', '120', '--load-wait-ms', '0']).loadWaitMs, 0);
   for (const args of [['0'], ['2001'], ['50', '--enumeration-timeout', '0'],
     ['50', '--enumeration-timeout', '121'], ['50', '--run-wait-ms', '120001'],
@@ -739,3 +739,27 @@ for (const kind of ['commands', 'commands-only']) for (const demo of [false, tru
     assert.equal(forwarded.includes('--demo'),demo);
   });
 }
+
+
+test('USB timing controls are validated before any helper starts', () => {
+  const defaults = hidSettings([]);
+  assert.equal(defaults.pollInterval, 10); assert.equal(defaults.keyHoldMs, 0); assert.equal(defaults.enterSettleMs, 0);
+  assert.deepEqual(hidSettings(['5', '--key-hold-ms', '10', '--enter-settle-ms', '100', '--poll-interval', '6']),
+    {...defaults, delay: 5, keyHoldMs: 10, enterSettleMs: 100, pollInterval: 6});
+  for (const args of [['--poll-interval', '0'], ['--poll-interval', '17'], ['--key-hold-ms', '2001'], ['--enter-settle-ms', '-1'], ['--key-hold-ms', '1.5']])
+    assert.throws(() => hidSettings(args));
+});
+test('selected USB timings reach both text and command helpers', async t => {
+  const root = fixture(t, `
+    require('fs').writeFileSync('timing.json', JSON.stringify({hold: process.env.MAC2JB_KEY_HOLD_MS,
+      enter: process.env.MAC2JB_ENTER_SETTLE_MS, poll: process.env.MAC2JB_POLL_INTERVAL}));
+    console.log('Keyboard enumerated. Sending...'); console.log('Sent line 1');
+  `);
+  for (const kind of ['bootstrap', 'save-bootstrap']) {
+    const result = await run(root, ['hid', kind, 'usb-drd0', '5', '--key-hold-ms', '10', '--enter-settle-ms', '100', '--poll-interval', '6']).done;
+    // SAVE's independent completion protocol may reject this intentionally minimal mock;
+    // the test only asserts that the actual child received the requested timing values.
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'timing.json'))), {hold: '10', enter: '100', poll: '6'});
+    if (kind === 'bootstrap') assert.equal(result.code, 0, result.error);
+  }
+});

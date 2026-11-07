@@ -243,8 +243,8 @@ async function main(args, options = {}) {
       require('../../scripts/host-profiles.cjs').trustedProfileForDigest)(root, result.sourceSha256);
     check(!run.trustedSource || result.sourceSha256 === run.trustedSource.sourceSha256,
       'The held run does not match its validated patched host source');
-    check(['kurumuz', 'cellenseres'].includes(trusted.profile.id),
-      'Native HBLauncher requires a held Kurumuz or Cellenseres RPC session');
+    check(['kurumuz', 'cellenseres', 'astral'].includes(trusted.profile.id),
+      'Native HBLauncher requires a supported held RPC session');
     verifySource(source, trusted.sourceDirectory);
     if (config.appFolder) {
       const staged = await stageCustomNativeApp(directory, appsDir, config.appFolder);

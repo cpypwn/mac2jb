@@ -10,6 +10,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
 
 @MainActor final class SetupFixture {
     let root: URL
+    let timingSuiteName = "mac2jb-test-timing-" + UUID().uuidString
     let model: SessionModel
 
     init(edition: SmileBASICEdition, host: HostProfile = .kurumuz,
@@ -288,7 +289,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try Data(worker.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         try Data("{\"id\":\"\(host.rawValue)\"}".utf8).write(to: root.appendingPathComponent("selected-host.json"))
-        model = SessionModel(addressProvider: addressProvider, runtime: BundledRuntime(root: root), edition: edition)
+        model = SessionModel(addressProvider: addressProvider, runtime: BundledRuntime(root: root), edition: edition, timingDefaults: UserDefaults(suiteName: timingSuiteName)!, networkDefaults: UserDefaults(suiteName: timingSuiteName)!)
         model.phase = .ready; model.driverLoaded = true
     }
 
@@ -299,6 +300,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             .split(separator: "\n").compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String:Any] }
     }
     func dispose() {
+        UserDefaults(suiteName: timingSuiteName)?.removePersistentDomain(forName: timingSuiteName)
         if let log = model.diagnosticLogURL, log.deletingLastPathComponent() != root,
            log.deletingLastPathComponent().lastPathComponent.hasPrefix("mac2jb-gui-error-") {
             try? FileManager.default.removeItem(at: log.deletingLastPathComponent())

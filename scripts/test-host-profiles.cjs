@@ -10,9 +10,9 @@ const {profiles,profileById,selectedProfile,sourceDigest,trustedProfileForDigest
 const {verifyProfile,selectHost} = require('./prepare-host-profiles.cjs');
 const root = path.resolve(__dirname,'..');
 
-test('five pinned host sources preserve their original bootstraps and capabilities', async () => {
-  assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','Cellenseres','BermTheSequel','IZMYSH']);
-  assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,5);
+test('pinned host sources preserve their bootstraps and capabilities', async () => {
+  assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','Cellenseres','BermTheSequel','IZMYSH','Astral (custom)']);
+  assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,6);
   assert.equal(selectedProfile(root).id,'cellenseres');
   for (const profile of profiles) {
     const folder=verifyProfile(root,profile);

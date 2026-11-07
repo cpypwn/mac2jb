@@ -74,6 +74,9 @@ done < <(otool -L integrations/blitbun/doom-engine/doom-headless | tail -n +2 | 
 "$NODE_BINARY" scripts/check-webkit-research.cjs
 "$NODE_BINARY" --test scripts/test-check-webkit-research.cjs
 bash scripts/test-webkit-staging.sh
+bash scripts/test-usb-typing-timing.sh
+bash scripts/test-typing-preferences.sh
+bash scripts/test-network-selection.sh
 osacompile -o "$BUILD/dnswitch.scpt" scripts/dnswitch-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
 "$NODE_BINARY" --test integrations/civswitch/probe.test.cjs integrations/civswitch/send-hello.test.cjs scripts/test-civswitch-hid.cjs
