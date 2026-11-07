@@ -31,8 +31,11 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                   hasHIDWorker: flags.2, hasHIDEvidence: flags.3, postRunActive: flags.4), "deny safe recovery after any connection/input evidence")
         }
 
+        let suiteName = "mac2jb-network-tests-" + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         var live = [current], reads = 0
-        let model = SessionModel(addressProvider: { reads += 1; return live })
+        let model = SessionModel(addressProvider: { reads += 1; return live }, networkDefaults: defaults)
         check(model.runMode == .heldRPC && model.activeRunMode == .heldRPC && !model.fullInstall,
               "actual model defaults to Held RPC")
         check(!model.workflowProgress.selectedFullInstall, "sidebar mode agrees with Held RPC default")
@@ -53,7 +56,23 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         check(reads == 2 && model.selectedAddress == current.address, "idle monitor cannot mutate an active held session")
         check(!model.handleNetworkUnavailable("not safe", retrySafe: true), "bind recovery cannot override held RPC")
         model.phase = .ready; model.refreshNetworkAddressesIfIdle()
-        check(reads == 3 && model.selectedAddress == other.address, "idle refresh updates picker without reopening the app")
+        check(reads == 3 && model.selectedAddress.isEmpty, "disconnected selected interface blocks instead of switching to another interface")
+        check(defaults.string(forKey: "preferredNetworkInterface") == "en0", "disconnect retains the interface lock")
+        let relaunched = SessionModel(addressProvider: { [other] }, networkDefaults: defaults)
+        relaunched.phase = .ready
+        relaunched.refreshNetworkAddressesIfIdle()
+        check(relaunched.selectedAddress.isEmpty, "relaunch with saved Ethernet absent does not choose Wi-Fi")
+        model.start()
+        check(!model.hasLiveWorkers && model.selectedAddress.isEmpty, "Start refuses disconnected locked interface")
+        live = [other, current]
+        model.refreshNetworkAddressesIfIdle()
+        check(model.selectedAddress == current.address, "reconnected locked interface is restored")
+        let restored = SessionModel(addressProvider: { [other, current] }, networkDefaults: defaults)
+        restored.phase = .ready; restored.refreshNetworkAddressesIfIdle()
+        check(restored.selectedAddress == current.address, "selection survives app relaunch despite Wi-Fi sorting first")
+        restored.selectedAddress = other.address
+        check(defaults.string(forKey: "preferredNetworkInterface") == "en1", "explicit user selection can change the lock")
+        defaults.removePersistentDomain(forName: suiteName)
         model.phase = .hostStarting
         check(model.handleNetworkUnavailable("The selected Mac address changed. Review its network address.", retrySafe: true),
               "provably pre-input bind failure returns to configuration")
@@ -89,7 +108,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try Data(fakeHost.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         var liveHostAddresses = [current]
-        let hostModel = SessionModel(addressProvider: { liveHostAddresses }, runtime: BundledRuntime(root: folder))
+        let hostModel = SessionModel(addressProvider: { liveHostAddresses }, runtime: BundledRuntime(root: folder), networkDefaults: defaults)
         hostModel.phase = .ready; hostModel.driverLoaded = true
         hostModel.addresses = [current]; hostModel.selectedAddress = current.address
         hostModel.start()
@@ -104,8 +123,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         while hostModel.hasLiveWorkers && Date() < deadline { try await Task.sleep(nanoseconds: 10_000_000) }
         check(!hostModel.hasLiveWorkers && hostModel.phase == .ready && hostModel.error == nil,
               "real safe event plus nonzero worker exit does not become a generic exploit failure")
-        check(hostModel.selectedAddress == other.address && hostModel.activeAddress == current.address,
-              "safe recovery refreshes the next selection without rewriting attempt history")
+        check(hostModel.selectedAddress.isEmpty && hostModel.activeAddress == current.address,
+              "safe recovery blocks the missing interface without rewriting attempt history")
         check(hostModel.networkNotice?.contains("Mac address changed") == true &&
               !hostModel.detail.localizedCaseInsensitiveContains("restart the console") && hostModel.diagnosticLogURL == nil,
               "safe bind failure has network guidance and no fallback crash/cleanup log")
