@@ -2,7 +2,8 @@
 // In particular, do not invoke SDK GetService: it has a hidden x8 return ABI.
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const imports = require('./display-imports.json');
+const retailImports = require('./display-imports.json');
+const demoImports = require('./display-imports-demo.json');
 
 async function main(directory) {
   directory = path.resolve(directory);
@@ -11,6 +12,15 @@ async function main(directory) {
   const save = () => fs.writeFile(path.join(directory, 'display-inspection.json'),
     JSON.stringify(report, null, 2), {mode: 0o600});
   try {
+    const demoInit = demoImports._ZN2nn2vi10InitializeEv;
+    const demoThunk = await rpc.read(rpc.a.main + demoInit.plt, 16);
+    const isDemo = demoThunk.toString('hex') === demoInit.bytes;
+
+    const imports = isDemo ? demoImports : retailImports;
+    const resolverOffset = isDemo ? 0x29b9a0 : 0x29b850;
+    report.application = isDemo ? 'demo-4.4.6' : 'retail';
+    report.resolverOffset = resolverOffset;
+
     for (const [name, entry] of Object.entries(imports)) {
       const thunk = await rpc.read(rpc.a.main + entry.plt, 16);
       if (thunk.toString('hex') !== entry.bytes) throw Error('Application import changed: ' + name);
@@ -18,7 +28,7 @@ async function main(directory) {
       if (!Number.isSafeInteger(target) || !target) throw Error('Invalid import address: ' + name);
       const region = await rpc.query(target);
       if ((region.permissions & 5) !== 5) throw Error('Import is not executable: ' + name);
-      const unresolved = target === rpc.a.main + 0x29b850;
+      const unresolved = target === rpc.a.main + resolverOffset;
       report.imports[name] = {target, unresolved, region};
       if (!unresolved) {
         const size = Math.min(0x1000, region.address + region.size - target);
