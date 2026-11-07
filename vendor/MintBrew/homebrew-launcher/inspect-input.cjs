@@ -47,10 +47,10 @@ async function findPlt(rpc, slotAddress) {
   return null;
 }
 
-async function resolveImport(rpc, slot, args, name) {
+async function resolveImport(rpc, slot, args, name, resolverOffset = RESOLVER_OFFSET) {
   const address = rpc.a.main + slot;
   let target = Number((await rpc.read(address, 8)).readBigUInt64LE());
-  if (target !== rpc.a.main + RESOLVER_OFFSET) return {target};
+  if (target !== rpc.a.main + resolverOffset) return {target};
   const plt = await findPlt(rpc, address);
   if (!plt) throw Error('Could not locate the PLT entry for ' + name);
   // call-address only accepts functions whose exact instructions were checked.
@@ -58,7 +58,7 @@ async function resolveImport(rpc, slot, args, name) {
     hex: plt.bytes.toString('hex')});
   await rpc.callAddress(plt.address, args);
   target = Number((await rpc.read(address, 8)).readBigUInt64LE());
-  if (!Number.isSafeInteger(target) || !target || target === rpc.a.main + RESOLVER_OFFSET)
+  if (!Number.isSafeInteger(target) || !target || target === rpc.a.main + resolverOffset)
     throw Error('Import did not resolve: ' + name);
   return {target, plt: plt.address};
 }
@@ -66,8 +66,22 @@ async function resolveImport(rpc, slot, args, name) {
 async function main(directory) {
   directory = path.resolve(directory);
   const rpc = require(path.join(directory, 'shared/rpc.cjs'));
-  const imports = require('./input-imports.json');
-  const report = {session: rpc.a.session, started: new Date().toISOString(), imports: {}};
+  let isDemo = false;
+  try {
+    const displayReport = JSON.parse(await fs.readFile(path.join(directory, 'display-inspection.json'), 'utf8'));
+    isDemo = displayReport.application === 'demo-4.4.6' || displayReport.resolverOffset === 0x29b9a0;
+  } catch {}
+  if (!isDemo) {
+    const demoInitPlt = 2736976;
+    try {
+      const thunk = await rpc.read(rpc.a.main + demoInitPlt, 16);
+      if (thunk.toString('hex') === '703900b011be43f910e21d9120021fd6') isDemo = true;
+    } catch {}
+  }
+  const resolverOffset = isDemo ? 0x29b9a0 : RESOLVER_OFFSET;
+  const imports = isDemo ? require('./input-imports-demo.json') : require('./input-imports.json');
+  const report = {session: rpc.a.session, application: isDemo ? 'demo-4.4.6' : 'retail',
+    resolverOffset, started: new Date().toISOString(), imports: {}};
   const saveBase = rpc.a.scratch + WARM_OFFSET;
   const buffer = rpc.a.scratch + WARM_BUFFER_OFFSET;
   const id = rpc.a.scratch + WARM_ID_OFFSET;
@@ -82,10 +96,10 @@ async function main(directory) {
       if (!Number.isSafeInteger(target) || !target)
         throw Error('Invalid input import: ' + name);
       let plt;
-      if (target === rpc.a.main + RESOLVER_OFFSET) {
+      if (target === rpc.a.main + resolverOffset) {
         if (name === PAD || name === TOUCH) {
           const resolved = await resolveImport(rpc, slot,
-            name === PAD ? [buffer, id] : [buffer], name);
+            name === PAD ? [buffer, id] : [buffer], name, resolverOffset);
           target = resolved.target;
           plt = resolved.plt;
         } else {
@@ -112,3 +126,4 @@ if (require.main === module) main(process.argv[2]).catch(error => {
   console.error(error);
   process.exitCode = 1;
 });
+module.exports = {main, decodePltSlot, findPlt};
