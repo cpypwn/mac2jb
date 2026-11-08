@@ -2,6 +2,10 @@
 
 an all-in-one ns2 jailbreaking tool for Mac.
 
+**First time? Start with the [beginner walkthrough](docs/BEGINNER-GUIDE.md).**
+It explains Direct/Edit Mode, exactly which Switch buttons to press, what to
+click on the Mac, and what you should see before continuing.
+
 ## what you need
 
 - an apple silicon Mac with macOS 14 or newer and a usb-c data cable.
