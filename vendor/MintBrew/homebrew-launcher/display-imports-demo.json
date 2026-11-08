@@ -1,0 +1,42 @@
+{
+  "_ZN2nn2vi10InitializeEv": {
+    "slot": 10262392,
+    "plt": 2736976,
+    "bytes": "703900b011be43f910e21d9120021fd6"
+  },
+  "_ZN2nn2vi18OpenDefaultDisplayEPPNS0_7DisplayE": {
+    "slot": 10262400,
+    "plt": 2736992,
+    "bytes": "703900b011c243f910021e9120021fd6"
+  },
+  "_ZN2nn2vi11CreateLayerEPPNS0_5LayerEPNS0_7DisplayE": {
+    "slot": 10262408,
+    "plt": 2737008,
+    "bytes": "703900b011c643f910221e9120021fd6"
+  },
+  "_ZN2nn2vi12DestroyLayerEPNS0_5LayerE": {
+    "slot": 10262416,
+    "plt": 2737024,
+    "bytes": "703900b011ca43f910421e9120021fd6"
+  },
+  "_ZN2nn2vi12CloseDisplayEPNS0_7DisplayE": {
+    "slot": 10262424,
+    "plt": 2737040,
+    "bytes": "703900b011ce43f910621e9120021fd6"
+  },
+  "_ZN2nn2vi8FinalizeEv": {
+    "slot": 10262432,
+    "plt": 2737056,
+    "bytes": "703900b011d243f910821e9120021fd6"
+  },
+  "_ZN2nn2vi15GetNativeWindowEPPvPNS0_5LayerE": {
+    "slot": 10265896,
+    "plt": 2743984,
+    "bytes": "703900b0119642f910a2149120021fd6"
+  },
+  "nvnBootstrapLoader": {
+    "slot": 10265904,
+    "plt": 2744000,
+    "bytes": "703900b0119a42f910c2149120021fd6"
+  }
+}
