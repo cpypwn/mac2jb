@@ -1424,10 +1424,8 @@ struct ContentView: View {
                         .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                 }
                 Spacer(minLength: 8)
-                if !model.seedsowInstallCompleted || model.savekitChoiceFinished {
-                    Button("Start SaveKit") { model.startSaveKit() }
-                        .disabled(!model.canStartSaveKit)
-                }
+                Button("Start SaveKit") { model.startSaveKit() }
+                    .disabled(!model.canStartSaveKit)
             }
         }
         .font(.system(size: 11))
@@ -1671,11 +1669,8 @@ struct ContentView: View {
                                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                         }
                         Spacer(minLength: 8)
-                        if (!model.savekitChoiceStarted || model.savekitChoiceFinished) &&
-                           (!model.seedsowInstallCompleted || model.savekitChoiceFinished) {
-                            Button("Start SaveKit") { model.startSaveKit() }
-                                .disabled(!model.canStartSaveKit)
-                        }
+                        Button("Start SaveKit") { model.startSaveKit() }
+                            .disabled(!model.canStartSaveKit)
                     }
                     if model.activeRunMode == .hostOnlyHeld && model.phase == .rpcHeld &&
                        !model.savekitChoiceFinished && !model.postRun.homebrewAttempted &&
