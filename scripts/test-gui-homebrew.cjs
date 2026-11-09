@@ -385,7 +385,7 @@ test('foreign runs, wrong native identity and public connection files cannot att
   fs.writeFileSync(connection,JSON.stringify(original));fs.chmodSync(connection,0o644);
   await assert.rejects(validateRun(f.root,f.directory,f.api.verifySession),/private owned/);
 });
-for(const hostId of ['kurumuz','cellenseres'])
+for(const hostId of ['kurumuz','cellenseres','astral'])
 test('SaveKit-patched '+hostId+' run is trusted only with its pinned source and digest',async t=>{
   const repository=path.resolve(__dirname,'..');
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-savekit-homebrew-')));

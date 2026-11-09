@@ -77,8 +77,8 @@ async function patchedHostSource(root, directory) {
   await privatePath(runs, true);
   const {selectedProfile, sourceDigest} = require('./host-profiles.cjs');
   const profile = selectedProfile(root);
-  check(['kurumuz', 'cellenseres'].includes(profile.id),
-    'The patched host requires a selected Kurumuz or Cellenseres source.');
+  check(profile.supportsSaveKit,
+    'The patched host requires a selected SaveKit-capable source.');
   const original = require('./prepare-seedsow-host.cjs').verify(root, true).source;
   const overlays = new Set([
     'engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',

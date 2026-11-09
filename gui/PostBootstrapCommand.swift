@@ -14,7 +14,7 @@ struct PostBootstrapCommandSelection: Equatable {
     static let standard = PostBootstrapCommandSelection(commands: [.load, .run, .remove])!
 
     init?(commands: [PostBootstrapCommand], startCommand: String? = nil, startPrefix: Bool = false,
-          host: HostProfile = .cellenseres) {
+          host: HostProfile = .defaultHost) {
         guard !commands.isEmpty, Set(commands).count == commands.count,
               commands == PostBootstrapCommand.allCases.filter({ commands.contains($0) }) else { return nil }
         self.commands = commands
@@ -39,7 +39,7 @@ struct PostBootstrapCommandSelection: Equatable {
         (startPrefix ? ["--start-prefix"] : startCommand.map { ["--start-command", $0] } ?? [])
     }
 
-    static func validStartCommand(_ command: String, host: HostProfile = .cellenseres) -> Bool {
+    static func validStartCommand(_ command: String, host: HostProfile = .defaultHost) -> Bool {
         guard command.hasPrefix("V=START("), command.hasSuffix(")") else { return false }
         let fields = command.dropFirst(8).dropLast().split(separator: ",", omittingEmptySubsequences: false)
         guard fields.count == host.startArgumentCount, fields[0] == String(host.startPort) else { return false }

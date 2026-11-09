@@ -34,9 +34,9 @@ function completeJSONRecords(output) {
   if (newline < 0) return [];
   return output.slice(0, newline).split('\n').filter(Boolean).map(JSON.parse);
 }
-function held() {
+function held(hostId = 'kurumuz') {
   return {verified:true,
-    sourceSha256:require('../packaging/host-profiles.json').profiles.find(profile=>profile.id==='kurumuz').sourceSha256,
+    sourceSha256:require('../packaging/host-profiles.json').profiles.find(profile=>profile.id===hostId).sourceSha256,
     fs:{verified:true, restored:true, retainedEndpoint:{ready:true,session:'switch2-test'},
     cleanup:{deferred:true,donor:{cleanedUp:true}}}, rpc:{mode:'held',state:'listening'}};
 }
@@ -51,6 +51,10 @@ function fixture(t, options = {}) {
     path.join(root,'integrations/mintbrew-native/sd-roms.cjs'));
   fs.mkdirSync(path.join(root,'packaging'));
   fs.copyFileSync(path.join(__dirname,'../packaging/host-profiles.json'),path.join(root,'packaging/host-profiles.json'));
+  if(options.hostId) {
+    const profile=require('../packaging/host-profiles.json').profiles.find(profile=>profile.id===options.hostId);
+    fs.writeFileSync(path.join(root,'selected-host.json'),JSON.stringify(profile));
+  }
   fs.writeFileSync(path.join(host,'worker.cjs'),[
     "const fs=require('fs');",
     "process.on('SIGTERM',()=>{fs.writeFileSync('group-signal.txt','wrong');process.exit(7);});",
@@ -65,7 +69,7 @@ function fixture(t, options = {}) {
     "process.stdout.write(evidence+'Error: listen EADDRNOTAVAIL: address not available 127.0.0.1:39380\\n    at Server.setupListenHandle (node:net:1:1)\\n'+(options.latePairing?'V=START(39380,127,0,0,1)\\n':''));setInterval(()=>{},1000);",
     "}else{",
     "const directory=path.join(__dirname,'runs/switch2-test');fs.mkdirSync(directory,{recursive:true});",
-    'let result='+JSON.stringify(held())+';',
+    'let result='+JSON.stringify(held(options.hostId))+';',
     'if(options.invalid)result.fs.restored=false;',
     "const save=()=>fs.writeFileSync(path.join(directory,'result.json'),JSON.stringify(result));",
     "fs.writeFileSync(path.join(directory,'connection.json'),JSON.stringify({port:12345,addresses:{session:options.wrongSession?'wrong':'switch2-test',target:'switch2'}}));",
@@ -222,10 +226,11 @@ test('held proof requires restoration, a live endpoint and deferred donor cleanu
     const value=held();modify(value);assert.equal(heldResult(value),false);
   }
 });
-test('Modloader waits for held Cellenseres RPC, then leaves a verified game handoff for Finish',{timeout:10000},async t=>{
-  const session=fixture(t);await session.wait('post-run-ready');
+for(const hostId of ['kurumuz','cellenseres']) {
+test('Modloader waits for held '+hostId+' RPC, then leaves a verified game handoff for Finish',{timeout:10000},async t=>{
+  const session=fixture(t,hostId==='kurumuz'?{}:{hostId});await session.wait('post-run-ready');
   session.send({action:'modloader-install',modsFolder:'/tmp/mods'});
-  assert.match((await session.wait('action-rejected')).message,/free Cellenseres held RPC/);
+  assert.match((await session.wait('action-rejected')).message,/free Kurumuz or Cellenseres held RPC/);
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
   session.send({action:'modloader-install',modsFolder:'/tmp/bad'});
   assert.match((await session.wait('action-rejected',2)).message,/Invalid mod root/);
@@ -239,13 +244,22 @@ test('Modloader waits for held Cellenseres RPC, then leaves a verified game hand
   assert.match(session.events().find(event=>event.type==='verified').message,/without restarting the Switch/);
   assert.equal(fs.readFileSync(path.join(session.host,'runs/switch2-test/modloader-invoked'),'utf8'),'yes');
 });
-test('Modloader preflight failure keeps held RPC available for MintBrew',{timeout:10000},async t=>{
-  const session=fixture(t,{modloaderRetrySafe:true});await session.wait('post-run-ready');
+test('Modloader preflight failure keeps held '+hostId+' RPC available for MintBrew',{timeout:10000},async t=>{
+  const session=fixture(t,{...(hostId==='kurumuz'?{}:{hostId}),modloaderRetrySafe:true});await session.wait('post-run-ready');
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
   session.send({action:'modloader-install',modsFolder:'/tmp/mods'});
   const failed=await session.wait('modloader-failed');
   assert.equal(failed.retrySafe,true);
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
+  session.send({action:'finish'});assert.equal((await session.done).code,0);
+});
+}
+test('Modloader does not use an Astral held session without a verified Modloader capability',{timeout:10000},async t=>{
+  const session=fixture(t,{hostId:'astral'});await session.wait('post-run-ready');
+  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
+  session.send({action:'modloader-install',modsFolder:'/tmp/mods'});
+  assert.match((await session.wait('action-rejected')).message,/Kurumuz or Cellenseres/);
+  assert.equal(fs.existsSync(path.join(session.host,'runs/switch2-test/modloader-invoked')),false);
   session.send({action:'finish'});assert.equal((await session.done).code,0);
 });
 test('held adapter bind failure preserves the Mac error without pairing, HID or replay',{timeout:10000},async t=>{

@@ -17,6 +17,14 @@ const rangeFiles = new Set([
   'engine/switch2/ro/payload/manifest.json'
 ]);
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+test('Astral inherits the pinned Kurumuz native range and SaveKit overlay inputs', () => {
+  const root = path.resolve(__dirname, '..');
+  for (const name of [...rangeFiles, 'engine/switch2/process/client.cjs',
+    'engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+    'engine/switch2/app/mounted-save.cjs'])
+    assert.equal(sha(fs.readFileSync(path.join(root, 'vendor/ns2jb-hosts/astral', name))),
+      sha(fs.readFileSync(path.join(root, 'vendor/ns2jb-hosts/kurumuz', name))), name);
+});
 const originalLoad = Module._load;
 Module._load = function(request, parent, main) {
   if (parent?.filename.endsWith('/process/client.cjs') && request === '../tools/fs-memory.cjs')

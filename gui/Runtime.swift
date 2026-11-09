@@ -12,8 +12,8 @@ struct BundledRuntime {
     var host: HostProfile {
         guard let data = try? Data(contentsOf: root.appendingPathComponent("selected-host.json")),
               let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let id = value["id"] as? String else { return .cellenseres }
-        return HostProfile(rawValue: id) ?? .cellenseres
+              let id = value["id"] as? String else { return .defaultHost }
+        return HostProfile(rawValue: id) ?? .defaultHost
     }
 
     enum RuntimeError: LocalizedError {
@@ -25,7 +25,7 @@ struct BundledRuntime {
 
     // Each launch has its own host files and pairing state. A prior session's
     // pairing command can never be consumed by a new GUI launch.
-    static func prepare(sessionParent: URL? = nil, host: HostProfile = .cellenseres) throws -> BundledRuntime {
+    static func prepare(sessionParent: URL? = nil, host: HostProfile = .defaultHost) throws -> BundledRuntime {
         umask(0o077)
         guard let bytes = embeddedPayloadBytes(), embeddedPayloadSize() > 0 else {
             throw RuntimeError.invalid("The offline runtime is missing from this app. Rebuild or download a complete app.")

@@ -13,7 +13,7 @@ const root = path.resolve(__dirname,'..');
 test('pinned host sources preserve their bootstraps and capabilities', async () => {
   assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','Cellenseres','BermTheSequel','IZMYSH','Astral (custom)']);
   assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,6);
-  assert.equal(selectedProfile(root).id,'cellenseres');
+  assert.equal(selectedProfile(root).id,'kurumuz');
   for (const profile of profiles) {
     const folder=verifyProfile(root,profile);
     assert.equal(sourceDigest(folder,profile),profile.sourceSha256);
@@ -31,6 +31,11 @@ test('pinned host sources preserve their bootstraps and capabilities', async () 
   assert.equal(profileById('kurumuz').supportsDemo,true);
   assert.equal(profileById('cellenseres').supportsDemo,true);
   assert.equal(profileById('cellenseres').supportsHeldRPC,true);
+  assert.equal(profileById('kurumuz').supportsModloader,true);
+  assert.equal(profileById('cellenseres').supportsModloader,true);
+  assert.equal(profileById('astral').supportsModloader,undefined);
+  assert.equal(profileById('astral').supportsHeldRPC,true);
+  assert.equal(profileById('astral').supportsSaveKit,true);
   assert.equal(profileById('BermTheSequel').supportsDemo,true);
   assert.equal(profileById('izmysh').startPort,39395);
   assert.equal(profileById('izmysh').saveName,'NS2I');

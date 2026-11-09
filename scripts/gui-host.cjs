@@ -431,15 +431,15 @@ async function hid(kind, controller, settings = timingDefaults) {
 async function main(args = process.argv.slice(2)) {
   if (args[0] === 'host' && args.length === 4 && args[2] === '--post-run-options' &&
       args[3] === '--seedsow-save') {
-    if (!['kurumuz', 'cellenseres'].includes(selectedProfile(root).id))
-      throw Error('Seedsow save installation requires the Kurumuz or Cellenseres host.');
+    if (!selectedProfile(root).supportsSaveKit)
+      throw Error('Seedsow save installation requires a SaveKit-capable host.');
     return require('./gui-session.cjs').main({root, address: args[1], emit, lines,
       verifiedResult, seedsowSave: true, savekitTools: true});
   }
   if (args[0] === 'host' && args.length === 4 && args[2] === '--post-run-options' &&
       args[3] === '--savekit-tools') {
-    if (!['kurumuz', 'cellenseres'].includes(selectedProfile(root).id))
-      throw Error('SaveKit tools require the Kurumuz or Cellenseres host.');
+    if (!selectedProfile(root).supportsSaveKit)
+      throw Error('SaveKit tools require a SaveKit-capable host.');
     return require('./gui-session.cjs').main({root, address: args[1], emit, lines,
       verifiedResult, savekitTools: true});
   }

@@ -476,9 +476,10 @@ async function main(options = {}) {
         safeEmit('action-rejected', {action:command.action,message:'This homebrew option is unavailable in this build.'}); return;
       }
       if (command.action === 'launch-native-hblauncher' &&
-          !['kurumuz', 'cellenseres'].includes(context.profileId)) {
+          !require('./host-profiles.cjs').profiles.some(profile =>
+            profile.id === context.profileId && profile.supportsNativeHBLauncher)) {
         safeEmit('action-rejected', {action:command.action,
-          message:'Native HBLauncher requires a held Kurumuz or Cellenseres RPC session.'}); return;
+          message:'Native HBLauncher requires a supported held RPC session.'}); return;
       }
       let selection;
       try {selection = launchConfiguration(command);} catch (error) {safeEmit('action-rejected', {message: error.message}); return;}
@@ -497,8 +498,9 @@ async function main(options = {}) {
             if (!availableHomebrew(root,target))
               throw Error('The selected homebrew runtime is unavailable in this build.');
             if (target === 'native-hblauncher' &&
-                !['kurumuz', 'cellenseres'].includes(context.profileId))
-              throw Error('Native HBLauncher apps require a held Kurumuz or Cellenseres RPC session.');
+                !require('./host-profiles.cjs').profiles.some(profile =>
+                  profile.id === context.profileId && profile.supportsNativeHBLauncher))
+              throw Error('Native HBLauncher apps require a supported held RPC session.');
             const staged = prepared;
             const selected = target === 'izlauncher' ? {
               application:target,script:applications['launch-izlauncher'][1],

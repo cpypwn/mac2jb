@@ -239,8 +239,8 @@ private struct GUIEvent: Decodable {
     @Published private(set) var sdBusy = false
     @Published private(set) var sdRunning = false
     @Published private(set) var sdMessage = "Hold RPC to browse the Switch SD card read-only"
-    @Published private(set) var selectedHost: HostProfile = .cellenseres
-    @Published private(set) var activeHost: HostProfile = .cellenseres
+    @Published private(set) var selectedHost: HostProfile = .defaultHost
+    @Published private(set) var activeHost: HostProfile = .defaultHost
     @Published var existingRPCRunPath = ""
     @Published private(set) var rpcDiscoveryRunning = false
     @Published private(set) var rpcDiscoveredSessions: [RPCDiscoveryCandidate] = []
@@ -367,7 +367,7 @@ private struct GUIEvent: Decodable {
         selectedAddress = networkDefaults.string(forKey: "preferredNetworkAddress") ?? ""
         self.timingPreferences = timingDefaults
         self.runtime = runtime
-        selectedHost = runtime?.host ?? HostProfile.saved()
+        selectedHost = runtime?.host ?? .defaultHost
         activeHost = selectedHost
         if !selectedHost.supportsHeldRPC { runMode = .exploitOnly }
         if let edition { activeEdition = edition; selectedEdition = edition }
@@ -532,7 +532,7 @@ private struct GUIEvent: Decodable {
         homebrewApp != .modloader && postRun.canStopHomebrew && !homebrewStopPending &&
         hostProcess?.isRunning == true && hostInput != nil
     }
-    var canLaunchModloader: Bool { canLaunchHomebrew && !isAttachedRPCSession && activeHost == .cellenseres }
+    var canLaunchModloader: Bool { canLaunchHomebrew && !isAttachedRPCSession && activeHost.supportsModloader }
     var canLaunchNativeHBLauncher: Bool {
         canLaunchHomebrew && activeHost.supportsNativeHBLauncher && nativeHBLauncherRuntimeAvailable
     }
@@ -651,7 +651,6 @@ private struct GUIEvent: Decodable {
         guard canChangeHost, host != selectedHost else { return }
         isInitialPreparation = false
         selectedHost = host
-        UserDefaults.standard.set(host.rawValue, forKey: HostProfile.preferenceKey)
         if !host.supportsDemo { selectedEdition = .full }
         runMode = host.supportsHeldRPC ? .heldRPC : .exploitOnly
         activeRunMode = runMode; activeHost = host; attachedRunDirectory = nil

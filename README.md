@@ -132,7 +132,7 @@ mac2jb types this command and presses enter twice to accept ok, then waits
 3. click **Jailbreak with ns2jb**. in the setup popup, tick the demo checkbox
    if you use the demo, or leave it off for the full version.
 4. confirm the Switch is ready and connected by usb, then click **Start jailbreak**.
-5. keep SmileBASIC focused and wait for 4/4 verification. the default Cellenseres
+5. keep SmileBASIC focused and wait for 4/4 verification. the default kurumuz
    host holds rpc open and offers MintBrew, SaveKit, and Artemis launcher saves
    or native HBLauncher. launch
    one homebrew at a time while rpc is held.
@@ -208,7 +208,7 @@ start the payload, or B to return to Control Center without starting it.
 
 install the Seedsow Lullaby, Nora Princess 2, Nora, Princess and Stray Cat HD,
 or Hamidashi Creative demo and create a normal save first. close the selected
-game, run the ns2jb jailbreak with Cellenseres or kurumuz, and wait for held
+game, run the ns2jb jailbreak with kurumuz, Cellenseres or Astral, and wait for held
 rpc. choose its matching **Install seedsowhax**, **Install nora2hax**,
 **Install norahax**, or **Install hamihax** button. these use bundled save
 packages without downloading them. the Seedsow, Nora 2, and Hamidashi packages
@@ -294,7 +294,7 @@ Lua REPL on port 9026 and FTP on ports 5000/5001.
 
 ## save data and research tools
 
-after a regular jailbreak with Cellenseres or kurumuz, **Start SaveKit** opens
+after a regular jailbreak with kurumuz, Cellenseres or Astral, **Start SaveKit** opens
 the full set of save actions in the held session: account, title and archive
 lists; inspection and verified backups; and the experimental write, restore,
 delete and verify controls. the bundled research source catalog is available
@@ -455,13 +455,13 @@ keep your originals elsewhere; each new session has a fresh app library.
 success** for a built GPU app,
 IZlauncher module, native HBLauncher ABI 3 app, launcher folder or supported
 RPC package in the current held session. choose the built folder after 4/4
-verification. native apps require Cellenseres or kurumuz. an
+verification. native apps require kurumuz, Cellenseres or Astral. an
 OunceCake-compatible WebDAV package also needs the Switch's IPv4 address. launch formats are validated before
 transfer; an unsupported folder is rejected while RPC remains held.
 
 ## modloader
 
-with a microSD card inserted and ns2jb holding a verified 4/4 RPC session,
+with a microSD card inserted and kurumuz or Cellenseres holding a verified 4/4 RPC session,
 choose **Modloader** and select a folder on the Mac containing `contents/`
 and, optionally, `exefs_patches/`. put RomFS or ExeFS files under
 `contents/<TITLE_ID>/romfs/` or `contents/<TITLE_ID>/exefs/`, where `TITLE_ID`
@@ -486,14 +486,14 @@ saving the bootstrap does not preserve a live jailbreak connection.
 
 ## developer options
 
-- choose pepsipu, kurumuz, Cellenseres, BermTheSequel or IZMYSH as the host. use
+- choose pepsipu, kurumuz, Cellenseres, Astral, BermTheSequel or IZMYSH as the host. use
   its matching saved bootstrap, or type and save one if needed. pepsipu uses the original
   nine-argument pairing command and does not support held rpc; kurumuz,
-  Cellenseres and BermTheSequel support held rpc and the demo. IZMYSH uses its NS2I bootstrap,
+  Cellenseres, Astral and BermTheSequel support held rpc and the demo. IZMYSH uses its NS2I bootstrap,
   port 39395 and a nine-argument pairing command; this GUI profile verifies the
   native session and closes it without exposing held rpc or homebrew controls.
-  Cellenseres is the default and supports SaveKit, Artemis save installation
-  and native HBLauncher alongside kurumuz. kurumuz supports the microSD Express
+  kurumuz is the default and supports SaveKit, Artemis save installation
+  and native HBLauncher alongside Cellenseres and Astral. kurumuz supports the microSD Express
   update identified by `(B)` beside item 3 under system settings →
   support/health & safety.
 - in additional tools, run host only starts the selected host and waits for
@@ -575,7 +575,7 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 - [Luminger](https://github.com/Luminger) — [Balatro Switch RCE](https://github.com/Luminger/balatro-switch-rce), the Balatro save and native Lua/FTP research used by Gravity Circuit Switch RCE.
 - [smarkyie](https://github.com/smarkyie) — [NSP-Box](https://github.com/smarkyie/NSP-Box), the extracted-snapshot packager adapted for Mac.
 - [a55uka](https://github.com/a55uka) — [nup](https://github.com/a55uka/nup), the NUP format and reference tool fetched on request.
-- [Cellenseres](https://github.com/Cellenseres) — the default [ns2jb host](https://github.com/Cellenseres/ns2jb) with retained rpc and native IPC handling, and the updated [OunceCake fork](https://github.com/Cellenseres/OunceCake) for read-only HTTP and WebDAV game browsing.
+- [Cellenseres](https://github.com/Cellenseres) — the [ns2jb host](https://github.com/Cellenseres/ns2jb) with retained rpc and native IPC handling, and the updated [OunceCake fork](https://github.com/Cellenseres/OunceCake) for read-only HTTP and WebDAV game browsing.
 - [SebaaMG](https://github.com/SebaaMG) — [ns2jb-modloader](https://github.com/SebaaMG/ns2jb-modloader), the RomFS and ExeFS loader integrated for held RPC sessions.
 - [ravensclawx](https://github.com/ravensclawx) — [HBLauncher](https://github.com/ravensclawx/HBLauncher), the SmileBASIC gpu app launcher and sdk, and [ftpd-sb](https://github.com/ravensclawx/ftpd-sb), bundled with MintBrew and the base for the MintFTP prototype.
 - [niftynova](https://github.com/NiftyNova) — [gpubrewlauncher](https://github.com/NiftyNova/GPUBrewLauncher), the updated gpu app launcher.

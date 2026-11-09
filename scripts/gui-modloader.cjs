@@ -110,11 +110,11 @@ async function install(run, modsFolder) {
   try {
     result = await require('./gui-homebrew.cjs').validateRun(root, run,
       require('./gui-dump.cjs').verifiedSession);
-    const profile = require('./host-profiles.cjs').profileById('cellenseres');
+    const profiles = require('./host-profiles.cjs').profiles.filter(profile => profile.supportsModloader);
     const report = JSON.parse(fs.readFileSync(path.join(result.directory, 'result.json'), 'utf8'));
-    check(report.sourceSha256 === profile.sourceSha256 ||
-      result.trustedSource?.profileId === 'cellenseres' && result.trustedSource.sourceSha256 === report.sourceSha256,
-    'Modloader requires a held Cellenseres RPC session.');
+    check(profiles.some(profile => report.sourceSha256 === profile.sourceSha256 ||
+      result.trustedSource?.profileId === profile.id && result.trustedSource.sourceSha256 === report.sourceSha256),
+    'Modloader requires a held Kurumuz or Cellenseres RPC session.');
     staged = stage(result.directory, modsFolder);
   } catch (error) {
     error.retrySafe = true;

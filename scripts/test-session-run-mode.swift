@@ -9,9 +9,11 @@ import Foundation
         precondition(SessionRunMode.seedsowSave.startTitle == "Start jailbreak")
         precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options", "--seedsow-save"])
         precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--seedsow-save"])
+        precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "astral") == ["host", address, "--post-run-options", "--seedsow-save"])
         precondition(SessionRunMode.seedsowSave.postRunAction?.keepRPC == true)
         precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options", "--savekit-tools"])
         precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--savekit-tools"])
+        precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "astral") == ["host", address, "--post-run-options", "--savekit-tools"])
         precondition(SessionRunMode.savekitTools.postRunAction?.keepRPC == true)
 
         var bootstrap = WorkflowProgress()
@@ -34,7 +36,7 @@ import Foundation
         precondition(SessionRunMode.existingRPC.hostArguments(address: address, host: "kurumuz") == nil && SessionRunMode.existingRPC.postRunAction == nil)
         for mode in [SessionRunMode.hostOnly, .hostOnlyHeld] {
             precondition(mode.isHostOnly && mode.requiresHost && mode.requiresNetworkAddress)
-            for host in ["kurumuz", "cellenseres"] {
+            for host in ["kurumuz", "cellenseres", "astral"] {
                 precondition(mode.hostArguments(address: address, host: host) == ["host", address] +
                     (mode == .hostOnlyHeld ? ["--post-run-options", "--savekit-tools"] : []))
             }

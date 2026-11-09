@@ -178,7 +178,7 @@ test('wrong source, changed copied code and added executable code are rejected b
   assert.equal(f.requests.length, 0); assert.equal(f.retainedRequests.length, 0);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres'])
+for (const hostId of ['kurumuz', 'cellenseres', 'astral'])
 test(hostId+' held source attaches across the current host picker using its own pinned code', async t => {
   const f = await fixture(t, hostId), context = await f.attach();
   assert.match(context.description, new RegExp(hostId, 'i'));
@@ -186,7 +186,7 @@ test(hostId+' held source attaches across the current host picker using its own 
   assert.equal((await validateManifest(f.root, f.directory, context.manifestPath)).profileId, hostId);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres'])
+for (const hostId of ['kurumuz', 'cellenseres', 'astral'])
 test(hostId+' SaveKit patched host attaches only with the exact verified overlay', async t => {
   const f = await fixture(t, hostId, true), expected = expectedPatchedSource(f.root, hostId);
   const context = await f.attach();

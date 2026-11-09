@@ -78,7 +78,7 @@ enum SessionRunMode: String, CaseIterable, Identifiable {
     func hostArguments(address: String, host: String) -> [String]? {
         guard requiresHost, self != .existingRPC else { return nil }
         let useSaveKitHost = self == .savekitTools ||
-            (self == .hostOnlyHeld && ["kurumuz", "cellenseres"].contains(host))
+            (self == .hostOnlyHeld && ["kurumuz", "cellenseres", "astral"].contains(host))
         return ["host", address] + (postRunAction == nil ? [] : ["--post-run-options"]) +
             (self == .seedsowSave ? ["--seedsow-save"] : useSaveKitHost ? ["--savekit-tools"] : [])
     }

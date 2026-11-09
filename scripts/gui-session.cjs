@@ -167,8 +167,8 @@ async function main({root, address, emit, lines, verifiedResult, input = process
   preflightCustomApp, listIZlauncherModules}) {
   if (!net.isIPv4(address)) throw Error('Choose the Mac’s LAN IPv4 address.');
   if ((seedsowSave || savekitTools) &&
-      !require('./prepare-seedsow-host.cjs').supported.has(selectedProfile(root).id))
-    throw Error('Seedsow and SaveKit operations require a Kurumuz or Cellenseres host.');
+      !selectedProfile(root).supportsSaveKit)
+    throw Error('Seedsow and SaveKit operations require a SaveKit-capable host.');
   const folder = seedsowSave || savekitTools ? require('./prepare-seedsow-host.cjs').prepare(root) :
     path.join(root, 'vendor/ns2jb');
   const runs = path.join(folder, 'runs');
@@ -1026,12 +1026,12 @@ async function main({root, address, emit, lines, verifiedResult, input = process
           safeEmit('action-rejected', {action: command.action, message: 'Choose an unpacked mod folder.'});
           return;
         }
-        if (selectedProfile(root).id !== 'cellenseres' || !rpcHeldConfirmed ||
+        if (!selectedProfile(root).supportsModloader || !rpcHeldConfirmed ||
             homebrewAttempted || savekitSelected || savekitBusy || toolBusy ||
             savekitSaveTouched && !savekitFinishedForHomebrew || sdChild || helper ||
             statusBusy || preflightBusy || dumpBusy || cleanupBlocked || failure) {
           safeEmit('action-rejected', {action: command.action,
-            message: 'Modloader needs a free Cellenseres held RPC session owned by this app.'});
+            message: 'Modloader needs a free Kurumuz or Cellenseres held RPC session owned by this app.'});
           return;
         }
         try {require('./gui-modloader.cjs').validateModsFolder(command.modsFolder);}
@@ -1157,8 +1157,8 @@ async function main({root, address, emit, lines, verifiedResult, input = process
                 throw Error('The selected homebrew runtime is unavailable in this build.');
               if (target === 'native-hblauncher') {
                 const report = privateJSON(path.join(directory, 'result.json'));
-                const {profileById} = require('./host-profiles.cjs');
-                const nativeProfiles = ['kurumuz', 'cellenseres', 'astral'].map(profileById);
+                const {profiles} = require('./host-profiles.cjs');
+                const nativeProfiles = profiles.filter(profile => profile.supportsNativeHBLauncher);
                 if (!nativeProfiles.some(profile => report.sourceSha256 === profile.sourceSha256)) {
                   const run = await require('./gui-homebrew.cjs').validateRun(root, directory,
                     require('./gui-dump.cjs').verifiedSession);

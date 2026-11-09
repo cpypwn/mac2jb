@@ -349,25 +349,30 @@ with zipfile.ZipFile(archive) as z:
                 'cellenseres': '2f686045ff88e5a97f959d19752e00ef3b62011f',
                 'BermTheSequel': '9accf75508f4e7033ffc6912b2ebb7e0b6704e84',
                 'izmysh': 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b',
+                'astral': '81d5bb114c856109dadaf1077d927a9f297fe58d',
             }
             profiles = registry['profiles']
-            if (registry.get('format') != 'mac2jb-host-profiles-v1' or registry.get('default') != 'cellenseres'
-                    or len(profiles) != 5 or {row['id'] for row in profiles} != set(pins)):
+            if (registry.get('format') != 'mac2jb-host-profiles-v1' or registry.get('default') != 'kurumuz'
+                    or len(profiles) != 6 or {row['id'] for row in profiles} != set(pins)):
                 raise ValueError('invalid host profile registry')
             for row in profiles:
                 host = row['id']
                 folder = ('vendor/ns2jb-hosts/izmysh-legacy' if host == 'izmysh' else
                           'vendor/ns2jb' if host == 'BermTheSequel' else 'vendor/ns2jb-hosts/' + host)
-                label = 'IZMYSH' if host == 'izmysh' else 'Cellenseres' if host == 'cellenseres' else host
+                label = 'IZMYSH' if host == 'izmysh' else 'Cellenseres' if host == 'cellenseres' else 'Astral (custom)' if host == 'astral' else host
                 held = host not in ('pepsipu', 'izmysh')
-                demo = host in ('kurumuz', 'cellenseres', 'BermTheSequel')
+                demo = host in ('kurumuz', 'cellenseres', 'BermTheSequel', 'astral')
+                savekit = host in ('kurumuz', 'cellenseres', 'astral')
+                modloader = host in ('kurumuz', 'cellenseres')
                 arity = 9 if host in ('pepsipu', 'izmysh') else 5
                 port = 39395 if host == 'izmysh' else 39380
                 save_name = 'NS2I' if host == 'izmysh' else 'NS2'
                 if (row['label'] != label or row['revision'] != pins[host] or row['sourceDirectory'] != folder
                         or row['startArgumentCount'] != arity or row.get('startPort', 39380) != port
                         or row.get('saveName', 'NS2') != save_name or row['supportsHeldRPC'] != held
-                        or row['supportsDemo'] != demo or not row.get('licenseStatus')):
+                        or row['supportsDemo'] != demo or bool(row.get('supportsSaveKit')) != savekit
+                        or bool(row.get('supportsNativeHBLauncher')) != savekit
+                        or bool(row.get('supportsModloader')) != modloader or not row.get('licenseStatus')):
                     raise ValueError('changed host provenance or capabilities')
                 prefix = 'mac2jb/' + folder + '/'
                 if host == 'izmysh':

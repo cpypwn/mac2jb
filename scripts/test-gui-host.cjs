@@ -128,9 +128,9 @@ test('pepsipu selection accepts only its real token-bearing pairing and refuses 
     assert.equal(result.code,1);assert.equal(fs.existsSync(path.join(root,'unexpected-sender.txt')),false);
   }
 });
-test('Kurumuz and Cellenseres dispatch Seedsow and SaveKit post-run modes', async t => {
+test('SaveKit-capable hosts dispatch Seedsow and SaveKit post-run modes', async t => {
   const {profileById} = require('./host-profiles.cjs');
-  for (const hostId of ['kurumuz', 'cellenseres']) {
+  for (const hostId of ['kurumuz', 'cellenseres', 'astral']) {
     const root = fixture(t);
     fs.writeFileSync(path.join(root, 'selected-host.json'), JSON.stringify(profileById(hostId)));
     fs.writeFileSync(path.join(root, 'scripts/gui-session.cjs'),

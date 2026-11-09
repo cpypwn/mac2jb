@@ -1,6 +1,6 @@
 {
   "format": "mac2jb-host-profiles-v1",
-  "default": "cellenseres",
+  "default": "kurumuz",
   "profiles": [
     {
       "id": "pepsipu",
@@ -33,6 +33,9 @@
       "startArgumentCount": 5,
       "supportsHeldRPC": true,
       "supportsDemo": true,
+      "supportsSaveKit": true,
+      "supportsNativeHBLauncher": true,
+      "supportsModloader": true,
       "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
       "distributionManifest": "vendor/ns2jb-hosts/kurumuz/SHA256SUMS",
       "upstreamManifest": "packaging/ns2jb-kurumuz-81d5bb1-SHA256SUMS.upstream",
@@ -54,6 +57,9 @@
       "startArgumentCount": 5,
       "supportsHeldRPC": true,
       "supportsDemo": true,
+      "supportsSaveKit": true,
+      "supportsNativeHBLauncher": true,
+      "supportsModloader": true,
       "licenseStatus": "No license file supplied by this pinned upstream; README and provenance are retained.",
       "distributionManifest": "vendor/ns2jb-hosts/cellenseres/SHA256SUMS",
       "upstreamManifest": "packaging/ns2jb-cellenseres-2f68604-SHA256SUMS.upstream",
@@ -124,7 +130,8 @@
         "4.4.9 full",
         "4.4.6 demo"
       ],
-      "supportsSaveKit": false,
+      "supportsSaveKit": true,
+      "supportsNativeHBLauncher": true,
       "customVersion": "0.2.0-experimental"
     }
   ]

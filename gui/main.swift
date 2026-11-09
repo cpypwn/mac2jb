@@ -89,7 +89,7 @@ if CommandLine.arguments.contains("--self-test") {
             }
         }
         try FileManager.default.removeItem(at: runtime.root)
-        for host in HostProfile.allCases where host != .cellenseres {
+        for host in HostProfile.allCases where host != .defaultHost {
             let selected = try BundledRuntime.prepare(sessionParent: testParent, host: host)
             guard selected.host == host else {
                 throw BundledRuntime.RuntimeError.invalid("The prepared host does not match \(host.label).")

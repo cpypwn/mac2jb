@@ -1001,7 +1001,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               ["post-run", "launch-mintbrew", "finish"] && demo.invocations == ["host"],
               "chosen demo MintBrew reuses the original kurumuz host")
 
-        for savekitHost in [HostProfile.kurumuz, .cellenseres] {
+        for savekitHost in [HostProfile.kurumuz, .cellenseres, .astral] {
         let savekitChoice = try SetupFixture(edition: .demo, host: savekitHost, addressProvider: { [address] })
         defer { savekitChoice.dispose() }
         savekitChoice.model.addresses = [address]; savekitChoice.model.selectedAddress = address.address
@@ -1016,6 +1016,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try await until("SaveKit held RPC") {
             savekitChoice.model.phase == .rpcHeld && savekitChoice.model.canStartSaveKit
         }
+        check(savekitChoice.model.canLaunchModloader == savekitHost.supportsModloader,
+              "\(savekitHost.rawValue) held RPC follows the Modloader host capability")
         savekitChoice.model.startSaveKit()
         try await until("SaveKit selected") {
             savekitChoice.model.savekitChoiceStarted && savekitChoice.model.canUseSaveKitTools

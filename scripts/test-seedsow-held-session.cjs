@@ -53,16 +53,18 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
     fs.copyFileSync(path.join(__dirname, name), path.join(scripts, name));
   fs.writeFileSync(path.join(scripts, 'host-profiles.cjs'), `
     const profile = {id: ${JSON.stringify(options.hostId || 'kurumuz')}, supportsHeldRPC: true,
+      supportsSaveKit: true, supportsNativeHBLauncher: true,
       startPort: 39380, startArgumentCount: 5};
     exports.selectedProfile = () => profile;
     exports.profileById = () => profile;
+    exports.profiles = [profile];
     exports.incompatibleLegacyStartHint = () => false;
     exports.validStartCommand = () => true;
   `);
   fs.writeFileSync(path.join(scripts, 'prepare-seedsow-host.cjs'), `
     const path = require('node:path');
     exports.prepare = root => path.join(root, 'vendor/ns2-savekit-host-fixture');
-    exports.supported = new Set(['kurumuz', 'cellenseres']);
+    exports.supported = new Set(['kurumuz', 'cellenseres', 'astral']);
   `);
   fs.writeFileSync(path.join(host, 'run.cjs'), `
     const fs = require('node:fs');
@@ -291,7 +293,7 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
     send: value => child.stdin.write(JSON.stringify(value) + '\n')};
 }
 
-for (const hostId of ['kurumuz', 'cellenseres']) test(
+for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
   hostId + ' Seedsow install keeps rpc held for further verified save actions',
   {timeout: 15000}, async t => {
   const session = fixture(t, '--seedsow-save', {hostId});
@@ -690,7 +692,7 @@ test('unconfirmed title-name cleanup stops held RPC before another save action',
   assert.equal(JSON.parse(invocations[0]).action, 'titles');
 });
 
-for (const hostId of ['kurumuz', 'cellenseres']) test(
+for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
   hostId + ' host-only held rpc accepts savekit without installing seedsow',
   {timeout: 15000}, async t => {
   const session = fixture(t, '--savekit-tools', {hostId});
@@ -711,7 +713,7 @@ for (const hostId of ['kurumuz', 'cellenseres']) test(
   assert.equal(session.events().some(event => event.type === 'verified'), true);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres']) test(
+for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
   hostId + ' host-only held rpc installs Seedsow then returns to homebrew',
   {timeout: 15000}, async t => {
   const session = fixture(t, '--savekit-tools', {hostId});

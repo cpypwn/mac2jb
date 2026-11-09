@@ -378,14 +378,15 @@ for(const [folder,kind,claim,helper,argument] of [
 test('attached custom native app rejects a non-Kurumuz host before claiming',async t=>{
   const session=fixture(t,{profileId:'bermthesequel'});await session.attach();
   session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/ABI3App'});
-  assert.match((await session.wait('action-rejected')).message,/Kurumuz or Cellenseres/);
+  assert.match((await session.wait('action-rejected')).message,/supported held RPC/);
   assert.equal(session.calls.some(row=>row[0]==='claim'),false);
   assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
   session.send({action:'finish'});assert.equal(await session.done,0);
 });
-test('attached custom native app accepts a Cellenseres held session',async t=>{
-  const session=fixture(t,{profileId:'cellenseres'});await session.attach();
+for (const hostId of ['cellenseres', 'astral'])
+test('attached custom native app accepts a '+hostId+' held session',async t=>{
+  const session=fixture(t,{profileId:hostId});await session.attach();
   session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/ABI3App'});
   assert.equal((await session.wait('homebrew-accepted')).customHomebrewKind,'native-app');
   await session.wait('homebrew-running');
@@ -544,7 +545,7 @@ test('native SD ROM path is checked before claiming the held RPC session', async
 test('direct native HBLauncher rejects unsupported host without consuming held RPC', async t => {
   const session = fixture(t, {profileId: 'BermTheSequel'}); await session.attach();
   session.send({action: 'launch-native-hblauncher'});
-  assert.match((await session.wait('action-rejected')).message, /Kurumuz or Cellenseres/);
+  assert.match((await session.wait('action-rejected')).message, /supported held RPC/);
   assert.equal(session.calls.some(row => row[0] === 'claim'), false);
   session.send({action: 'launch-mintbrew'}); await session.wait('homebrew-running');
   session.send({action: 'finish'}); assert.equal(await session.done, 0);

@@ -9,6 +9,19 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         defer { defaults.removePersistentDomain(forName: name) }
         var checks = 0
         func check(_ condition: Bool, _ message: String) { precondition(condition, message); checks += 1 }
+        check(HostProfile.defaultHost == .kurumuz, "Kurumuz is the startup host")
+        let legacyHostKey = "developerHostProfile"
+        let previousHost = UserDefaults.standard.object(forKey: legacyHostKey)
+        defer {
+            if let previousHost { UserDefaults.standard.set(previousHost, forKey: legacyHostKey) }
+            else { UserDefaults.standard.removeObject(forKey: legacyHostKey) }
+        }
+        for oldHost in ["astral", "cellenseres"] {
+            UserDefaults.standard.set(oldHost, forKey: legacyHostKey)
+            let fresh = SessionModel(addressProvider: { [] }, timingDefaults: defaults, networkDefaults: defaults)
+            check(fresh.selectedHost == .kurumuz && fresh.activeHost == .kurumuz,
+                  "a previously selected \(oldHost) host does not override the next launch")
+        }
         let model = SessionModel(addressProvider: { [] }, timingDefaults: defaults, networkDefaults: defaults)
         check(model.keyDelayMs == 10 && model.keyHoldMs == 0 && model.enterSettleMs == 0 && model.pollInterval == 10, "stock transport defaults")
         model.useExperimentalTypingTiming()
@@ -27,6 +40,10 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         check(invalid.enumerationTimeoutSeconds == 4 && invalid.loadWaitMs == 1000 && invalid.runWaitMs == 0, "corrupt command preferences are rejected")
         check(!model.hasLiveWorkers && !reopened.hasLiveWorkers && !stock.hasLiveWorkers, "preference changes never start workers")
         check(HostProfile.allCases.count == 6 && HostProfile(rawValue: "astral") != nil, "all six host profiles remain available")
+        check(HostProfile.kurumuz.supportsModloader && HostProfile.cellenseres.supportsModloader &&
+              !HostProfile.astral.supportsModloader && !HostProfile.bermTheSequel.supportsModloader &&
+              !HostProfile.izmysh.supportsModloader && !HostProfile.pepsipu.supportsModloader,
+              "Modloader is offered only on supported hosts")
         print("Typing preference checks passed: \(checks). No runtime, USB or RPC started.")
     }
 }

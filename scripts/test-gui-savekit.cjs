@@ -598,7 +598,7 @@ test('Artemis backup proof rejects a different title before planning a write', a
     /selected title and account archive/);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres']) test('private ' + hostId +
+for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test('private ' + hostId +
   ' host overlays the savekit IPC patch', async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-seedsow-host-'));
   t.after(() => fs.rm(temp, {recursive: true, force: true}));

@@ -1655,7 +1655,8 @@ struct ContentView: View {
             ounceCakeRow
             Divider()
             modloaderRow
-            if showHostOnlyHomebrew && model.selectedHost.supportsSaveKit {
+            if showHostOnlyHomebrew &&
+               (canConfigure ? model.selectedHost : model.activeHost).supportsSaveKit {
                 artemisInstallerRow
                 customSeedsowEditorControl
                 Divider()
@@ -1728,8 +1729,8 @@ struct ContentView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(model.modloaderInstallReady ? teal : Mac2jbTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
-            } else if (model.postRun.isActive ? model.activeHost : model.selectedHost) != .cellenseres {
-                Text("Modloader requires a Cellenseres host session")
+            } else if !(model.postRun.isActive ? model.activeHost : model.selectedHost).supportsModloader {
+                Text("Modloader requires a Kurumuz or Cellenseres host session")
                     .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
             }
         }
