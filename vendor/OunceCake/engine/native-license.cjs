@@ -73,6 +73,14 @@ async function nativeOwners(ipc, application, {optional = false} = {}) {
 
 async function prepareNativeInstalledLicense({s, root, domain, service, programId, storage, optional = false}) {
   if (s.threads.size) throw new Error('Prepare native license before starting the server');
+  let esIpc;
+  let matches;
+  if (optional) {
+    const es = await service('es');
+    esIpc = licenseIpc(s, es);
+    matches = await nativeOwners(esIpc, programId, {optional});
+    if (!matches.length) return false;
+  }
   const input = Buffer.alloc(16);
   input[0] = storage;
   idBytes(programId).copy(input, 8);
@@ -80,10 +88,11 @@ async function prepareNativeInstalledLicense({s, root, domain, service, programI
   if (identity.data.length < 16) throw new Error('FS606: incomplete RightsId');
   const rights = Buffer.from(identity.data.subarray(0, 16));
   if (rights.equals(Buffer.alloc(16))) return false;
-  const es = await service('es');
-  const esIpc = licenseIpc(s, es);
-  const matches = await nativeOwners(esIpc, programId, {optional});
-  if (!matches.length) return false;
+  if (!esIpc) {
+    const es = await service('es');
+    esIpc = licenseIpc(s, es);
+    matches = await nativeOwners(esIpc, programId, {optional});
+  }
   const application = rights.subarray(0, 8).toString('hex');
   if (application !== programId) throw new Error('FS606 rights prefix differs from native ProgramId; cannot select its context');
   const rightsHex = rights.toString('hex');

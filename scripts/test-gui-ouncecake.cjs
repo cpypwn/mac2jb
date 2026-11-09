@@ -47,6 +47,19 @@ test('native game card with zero FS606 RightsId skips ES account ELicense lookup
  assert.equal(result,false);
  assert.equal(esCalled,false);
 });
+test('optional native license without an ES owner returns for legacy fallback before FS606',async()=>{
+ const {prepareNativeInstalledLicense}=require('../vendor/OunceCake/engine/native-license.cjs');
+ const calls=[];
+ const result=await prepareNativeInstalledLicense({
+  s:{threads:new Set(),bytes:0x80000,base:0,async write(){},async readOwned(address,size){return Buffer.alloc(size);},
+   async ipc(label,handle,command){calls.push(command);if(command===606)throw Error('FS606 unavailable');
+    assert.ok(command===1004||command===1005);return {result:0,data:Buffer.alloc(4)};}},
+  root:1,domain:{},service:async name=>{assert.equal(name,'es');return 2;},
+  programId:'0100000000001234',storage:4,optional:true
+ });
+ assert.equal(result,false);
+ assert.deepEqual(calls,[1004,1005,1004]);
+});
 test('game-card program path checks FS606 before ES and installed content still checks rights',async()=>{
  const calls=[];
  const programId='0400f5802371e000',identity=Buffer.alloc(8);
