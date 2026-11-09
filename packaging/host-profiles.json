@@ -103,6 +103,29 @@
       "supportedSmileBASIC": [
         "4.4.9 full"
       ]
+    },
+    {
+      "id": "astral",
+      "label": "Astral (custom)",
+      "revision": "81d5bb114c856109dadaf1077d927a9f297fe58d",
+      "upstream": "https://gitlab.com/kurumuz/ns2jb",
+      "sourceDirectory": "vendor/ns2jb-hosts/astral",
+      "sourceSha256": "75a1036ea4575174f994ac79d153ab2dabbf210237508dbc9f8138cc59e0015c",
+      "bootstrap": "assets/hosts/astral/bootstrap.bas",
+      "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
+      "startArgumentCount": 5,
+      "supportsHeldRPC": true,
+      "supportsDemo": true,
+      "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
+      "distributionManifest": "vendor/ns2jb-hosts/astral/SHA256SUMS",
+      "upstreamManifest": "packaging/ns2jb-kurumuz-81d5bb1-SHA256SUMS.upstream",
+      "localPatch": "packaging/ns2jb-kurumuz-abi3-range-patch.json",
+      "supportedSmileBASIC": [
+        "4.4.9 full",
+        "4.4.6 demo"
+      ],
+      "supportsSaveKit": false,
+      "customVersion": "0.2.0-experimental"
     }
   ]
 }

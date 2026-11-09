@@ -7,6 +7,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
 
 @MainActor private final class KeyboardTextFixture {
     let root: URL
+    let timingSuiteName = "mac2jb-test-timing-" + UUID().uuidString
     let model: SessionModel
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("mac2jb-keyboard-text-" + UUID().uuidString)
@@ -51,7 +52,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
         let executable = root.appendingPathComponent("node")
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-        model = SessionModel(addressProvider: { [] }, runtime: BundledRuntime(root: root))
+        model = SessionModel(addressProvider: { [] }, runtime: BundledRuntime(root: root), timingDefaults: UserDefaults(suiteName: timingSuiteName)!, networkDefaults: UserDefaults(suiteName: timingSuiteName)!)
         model.phase = .ready; model.driverLoaded = true
     }
     func put(_ name: String, _ value: String = "") throws { try Data(value.utf8).write(to: root.appendingPathComponent(name)) }
@@ -65,6 +66,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
             .split(separator: "\n").compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
     }
     func dispose() {
+        UserDefaults(suiteName: timingSuiteName)?.removePersistentDomain(forName: timingSuiteName)
         if model.hasLiveWorkers, let value = try? String(contentsOf: root.appendingPathComponent("fixture-pid"), encoding: .utf8),
            let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 { _ = kill(pid, SIGKILL) }
         if let log = model.diagnosticLogURL, log.deletingLastPathComponent().lastPathComponent.hasPrefix("mac2jb-gui-error-") {
