@@ -1,5 +1,5 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
-const MANIFEST_SHA256='e640d308eff16f195d2cd72a18b914c481b6f28857f0f723d1970ecb3faa1281';
+const MANIFEST_SHA256='7a5ad86fe21b111a925c350511b817363cce0c6d83fb5d4f52292d911e4f335f';
 const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 const check=(value,message)=>{if(!value)throw Error(message);};
 

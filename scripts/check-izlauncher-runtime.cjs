@@ -11,7 +11,8 @@ async function main(root=path.resolve(__dirname,'..')) {
   if(!compiler.stdout.includes('16.6.0'))throw Error('Unexpected offline IZlauncher shader compiler.');
   const catalog=require(path.join(info.directory,'core/services/app-catalog.cjs'));
   const data=await catalog.scan(env.HB_APPS_DIR);
-  const expected=JSON.parse(await fs.readFile(path.join(info.directory,'mac2jb-runtime.json'),'utf8')).modules;
+  const metadata=JSON.parse(await fs.readFile(path.join(info.directory,'mac2jb-runtime.json'),'utf8'));
+  const expected=[...new Set([...metadata.modules,...Object.keys(metadata.builtIns)])];
   if(data.rejected.length||JSON.stringify(data.apps.map(app=>app.id).sort())!==JSON.stringify([...expected].sort()))
     throw Error('Unexpected IZlauncher app catalog.');
   const registry=require(path.join(info.directory,'core/modules.cjs'));
@@ -21,6 +22,10 @@ async function main(root=path.resolve(__dirname,'..')) {
   await registry.verify(info.directory,expected);
   const entry=await registry.loadServer(info.directory,'iz-exchange');
   if(typeof entry.load('runtime').create!=='function')throw Error('File Exchange Mac runtime is unavailable.');
+  for(const id of ['iz-exchange-fs','book-reader']){
+    const module=await registry.loadServer(info.directory,id);
+    if(typeof module.load('runtime').create!=='function')throw Error(id+' Mac runtime is unavailable.');
+  }
   const blitbun=await registry.loadServer(info.directory,'blitbun');
   if(typeof blitbun.load('create').create!=='function')throw Error('BlitBun Mac browser host is unavailable.');
   const blitbunFolder=modules.modules.find(item=>item.id==='blitbun')?.folder;

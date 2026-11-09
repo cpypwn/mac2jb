@@ -55,13 +55,14 @@ struct ArtemisReleaseInfo: Decodable {
         struct Assets: Decodable {
             let seedsow: Asset
             let nora: Asset
+            let hamidashi: Asset
         }
         let repository: String
         let release: String
         let assets: Assets
 
         var expectedDigests: [String: String]? {
-            let records = [assets.seedsow, assets.nora]
+            let records = [assets.seedsow, assets.nora, assets.hamidashi]
             var result: [String: String] = [:]
             for record in records {
                 guard let name = URL(string: record.url)?.lastPathComponent,
@@ -79,7 +80,7 @@ struct ArtemisReleaseInfo: Decodable {
         guard !isChecking else { return }
         releasePage = nil
         guard let runtimeRoot,
-              let data = try? Data(contentsOf: runtimeRoot.appendingPathComponent("packaging/ArtemisLauncher-v1.json")),
+              let data = try? Data(contentsOf: runtimeRoot.appendingPathComponent("packaging/ArtemisLauncher-v2.json")),
               let manifest = try? JSONDecoder().decode(Manifest.self, from: data),
               manifest.repository == "https://github.com/alula/switch-artemis-launcher",
               manifest.release.range(of: "^[A-Za-z0-9._-]{1,64}$", options: .regularExpression) != nil,
@@ -109,7 +110,7 @@ struct ArtemisReleaseInfo: Decodable {
                 } else {
                     switch release.assetStatus(expected: expectedDigests) {
                     case .matches:
-                        message = "Pinned \(manifest.release) and both save archives match upstream."
+                        message = "Pinned \(manifest.release) and all three save archives match upstream."
                     case .changed:
                         message = "Upstream \(manifest.release) save archives changed or are missing. Installs still require the pinned hashes."
                     case .unavailable:

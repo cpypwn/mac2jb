@@ -2,7 +2,8 @@
   "format": "mac2jb-local-host-patch-v1",
   "upstreamRevision": "2f686045ff88e5a97f959d19752e00ef3b62011f",
   "upstreamManifest": "packaging/ns2jb-cellenseres-2f68604-SHA256SUMS.upstream",
-  "scope": "held RO process native ABI 3 range mapping for HBLauncher",
+  "scope": "held RO process native ABI 3 range mapping for HBLauncher and FS memory-control socket cleanup",
+  "cleanupPatch": "engine/switch2/memory/fs-memory-control.cjs",
   "commands": {
     "mapRX": "0x524f001a",
     "mapRW": "0x524f001b",
@@ -11,5 +12,5 @@
   "target": "transferred SmileBASIC current-process handle only",
   "maximumPagesPerRequest": 16384,
   "payloadSha256": "5d71430cd8ded9db849232c04649948c437a296f44385b2dded36938d0427bd2",
-  "sourceSha256": "8f821acf526afa481b01b3c3faf22e56b99d650759e0023aaaf3159075453415"
+  "sourceSha256": "c2d15929626bb1acf4739d484b353b58c04ba0c6a3206415ded7ad56267af0d5"
 }

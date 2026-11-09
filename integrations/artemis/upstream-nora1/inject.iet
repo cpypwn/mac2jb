@@ -1,0 +1,28 @@
+*inject
+
+[lua]
+function include_lua(engine)
+	e = engine
+
+	local update_path = "save:/inject2.lua"
+	local should_load_update = e:isFileExists(update_path)
+	_G.n2h_was_recovery = false
+
+	if e:isDown(114) then -- KEYS.MINUS
+		-- recovery mode
+		should_load_update = false
+		_G.n2h_was_recovery = true
+	end
+
+	if should_load_update then
+		print("loading update from " .. update_path)
+		e:include(update_path)
+	else
+		e:include("save:/inject.lua")
+	end
+end
+[/lua]
+
+[calllua function="include_lua"]
+
+[return]

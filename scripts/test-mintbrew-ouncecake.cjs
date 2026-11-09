@@ -58,15 +58,16 @@ test('console HTTP/WebDAV address is taken only from qualified Switch network st
  assert.equal(value.subarray(128,128+value.readUInt32LE(16)).toString(),'http://192.0.2.20:2121/');
 });
 
-function fixture(t,{serverStopError,handleCloseError,detachError,prepareGame}={}){
+function fixture(t,{serverStopError,handleCloseError,detachError,prepareGame,
+ realRaster=false,allowReattach=false,zipFailure}={}){
  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-ouncecake-service-'));
  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
- const events={attach:0,detach:0,deployed:0,stopped:0,mounted:0,closed:[],order:[],fatal:[],writes:[]};
+ const events={attach:0,detach:0,deployed:0,stopped:0,mounted:0,closed:[],order:[],fatal:[],writes:[],zipPorts:[]};
  const mapped=0x500000000,menu={controls:{mapped:0x600000000}};
  const rpc={a:{session:'mintbrew-test'},async write(address,bytes){events.writes.push({address,bytes:Buffer.from(bytes)});},
   async read(){return network();}};
  const modules={
-  session:{async attachGame(){events.attach++;assert.equal(events.attach,1);
+  session:{async attachGame(){events.attach++;if(!allowReattach)assert.equal(events.attach,1);
    const s={base:123,handles:new Set([1]),threads:new Set(),async close(handle){
     assert.ok(s.handles.has(handle));if(handleCloseError)throw handleCloseError;
     events.closed.push(handle);events.order.push('handle:'+handle);s.handles.delete(handle);
@@ -80,24 +81,43 @@ function fixture(t,{serverStopError,handleCloseError,detachError,prepareGame}={}
   mounts:{async prepareGame(options){if(prepareGame)return prepareGame(options);
    const handle=100+(++events.mounted);options.attachment.s.handles.add(handle);
    return {index:gameIndex(),sources:[{handle,kind:0,size:1}]};}},
-  server:{async deployServer({attachment}){events.deployed++;attachment.s.handles.add(200+events.deployed);
+  server:{async deployServer({attachment,zipPort}){events.deployed++;events.zipPorts.push(zipPort);events.order.push('http-started');attachment.s.handles.add(200+events.deployed);
    attachment.s.threads.add('server');
    return {async close(){events.stopped++;
    if(serverStopError)throw serverStopError;
    attachment.s.threads.delete('server');events.order.push('server-stopped');
    return {nativeStopped:true,joined:true,mappingsCleared:true};},address:'192.0.2.20'};}}
  };
- const instance=service.create({rpc,menu,gpu:{fingerprint:'abc',privateStorage:{mapped,bytes:protocol.STORAGE_BYTES}},
+ const options={rpc,menu,gpu:{fingerprint:'abc',privateStorage:{mapped,bytes:protocol.STORAGE_BYTES}},
   app:{id:'ouncecake',fingerprint:'abc',manifest:{service:'ouncecake-v1'}},directory,root,
   runDirectory:'/run/switch-test',sourceSession:'switch-test',modules,
   liveCheck:async()=>true,
   verifyHeld:async()=>({run:{directory:'/run/switch-test',proof:{session:'switch-test'},
    connection:{addresses:{session:'switch-test'}}},snapshot:{image:Buffer.from('native'),nativeImageSha256:'abc'}}),
-  rasterGames:async games=>Buffer.alloc(games.length*protocol.TILE_BYTES,0xf0),
+  ...(!realRaster?{rasterGames:async games=>Buffer.alloc(games.length*protocol.TILE_BYTES,0xf0)}:{}),
+  ...(zipFailure?{createZipServer:async()=>{throw Error(zipFailure);}}:{}),
+  createFtpBridge:async()=>{events.order.push('ftp-started');return {address:'127.0.0.1',port:2122,
+   async close(){events.order.push('ftp-stopped');}};},
   onGameList:async()=>{events.order.push('title-ftp-resumed');},
-  onFatal:error=>events.fatal.push(error)});
- return {instance,events};
+  onFatal:error=>events.fatal.push(error)};
+ return {instance:service.create(options),createAgain:()=>service.create(options),events,directory};
 }
+
+test('OunceCake can close and reopen in one MintBrew session with a fresh raster',async t=>{
+ const {instance,createAgain,events,directory}=fixture(t,{realRaster:true,allowReattach:true});
+ await instance.start();await waitFor(()=>instance.report.status,'catalog');
+ assert.match(instance.report.imageSha256,/^[a-f0-9]{64}$/);
+ await instance.close();
+ assert.equal(fs.readdirSync(directory).some(name=>name.startsWith('ouncecake-catalog-')),false);
+ const reopened=createAgain();
+ await reopened.start();await waitFor(()=>reopened.report.status,'catalog');
+ assert.match(reopened.report.imageSha256,/^[a-f0-9]{64}$/);
+ await reopened.close();
+ assert.equal(fs.readdirSync(directory).some(name=>name.startsWith('ouncecake-catalog-')),false);
+ assert.equal(events.attach,2);
+ assert.equal(events.detach,2);
+ assert.deepEqual(events.fatal,[]);
+});
 
 test('A selects one game; short B closes HTTP/WebDAV and allows another selection',async t=>{
  const {instance,events}=fixture(t);
@@ -105,10 +125,14 @@ test('A selects one game; short B closes HTTP/WebDAV and allows another selectio
  assert.equal(events.attach,1);assert.equal(events.detach,0);
  await instance.select(0);await waitFor(()=>instance.report.status,'running');
  assert.equal(instance.report.httpURL,'http://192.0.2.20:2121/');
+ assert.equal(instance.report.ftpURL,'ftp://127.0.0.1:2122/');
  const running=events.writes.map(row=>row.bytes).findLast(bytes=>bytes.length===protocol.HEADER_BYTES&&
   bytes.readUInt32LE(0)===protocol.MAGIC&&bytes.readUInt32LE(4)===protocol.STATES.running);
- assert.equal(running.subarray(128,128+running.readUInt32LE(16)).toString(),'http://192.0.2.20:2121/');
+ assert.equal(running.subarray(128,128+running.readUInt32LE(16)).toString(),'WebDAV http://192.0.2.20:2121/');
+ assert.equal(running.subarray(256,256+running.readUInt32LE(20)).toString(),
+  'FTP on this Mac ftp://127.0.0.1:2122/');
  await instance.back();await waitFor(()=>instance.report.status,'catalog');
+ assert.ok(events.order.indexOf('ftp-stopped')<events.order.indexOf('server-stopped'));
  assert.equal(events.stopped,1);assert.equal(events.detach,0);
  assert.deepEqual(events.closed.sort((a,b)=>a-b),[101,201]);
  assert.ok(events.order.indexOf('server-stopped')<events.order.indexOf('handle:201'));
@@ -119,6 +143,17 @@ test('A selects one game; short B closes HTTP/WebDAV and allows another selectio
  assert.equal(events.attach,1);assert.equal(events.stopped,2);assert.equal(events.detach,1);
  assert.equal(instance.report.status,'stopped');
  assert.equal(events.fatal.length,0);
+});
+
+test('ZIP catalog limit does not prevent read-only WebDAV from starting',async t=>{
+ const {instance,events}=fixture(t,{zipFailure:'Game has too many downloadable files'});
+ await instance.start();await waitFor(()=>instance.report.status,'catalog');
+ await instance.select(0);await waitFor(()=>instance.report.status,'running');
+ assert.equal(instance.report.zipUnavailable,'Game has too many downloadable files');
+ assert.deepEqual(events.zipPorts,[0]);
+ assert.equal(instance.report.httpURL,'http://192.0.2.20:2121/');
+ assert.equal(events.fatal.length,0);
+ await instance.close();
 });
 
 test('uncertain HTTP/WebDAV shutdown keeps the held session blocked',async t=>{
@@ -180,15 +215,18 @@ test('cancelled preparation still blocks when attachment cleanup cannot be prove
  assert.deepEqual(events.closed,[]);
 });
 
-test('bad game content releases selected handles and returns to the catalog',async t=>{
+for(const contentError of ['Invalid RomFS: header size','No installed account ELicense for 0400f5802371e000',
+ 'Game card content requires rights unavailable in this held RPC session'])
+test('bad game content '+contentError+' releases selected handles and returns to the catalog',async t=>{
  let attempts=0;
  const {instance,events}=fixture(t,{prepareGame:async({attachment})=>{
   const handle=100+(++attempts);attachment.s.handles.add(handle);
-  if(attempts===1)throw Error('Invalid RomFS: header size');
+  if(attempts===1)throw Object.assign(Error(contentError),contentError.startsWith('Game card')?
+   {code:'GAME_CARD_RIGHTS_UNAVAILABLE'}:{});
   return {index:gameIndex(),sources:[{handle,kind:0,size:1}]};
  }});
  await instance.start();await waitFor(()=>instance.report.status,'catalog');
- await instance.select(0);await waitFor(()=>instance.report.error,'Invalid RomFS: header size');
+ await instance.select(0);await waitFor(()=>instance.report.error,contentError);
  assert.equal(instance.report.status,'catalog');
  assert.equal(events.detach,0);
  assert.deepEqual(events.closed,[101]);

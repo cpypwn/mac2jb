@@ -80,12 +80,14 @@ test('fresh runtime selection installs actual selected code and keeps trusted or
     fs.mkdirSync(path.join(runtime,'source/vendor'),{recursive:true});
     fs.cpSync(path.join(root,'vendor/ns2jb'),path.join(runtime,'source/vendor/ns2jb'),{recursive:true});
     fs.cpSync(path.join(root,'vendor/IZ2S-Platform'),path.join(runtime,'source/vendor/IZ2S-Platform'),{recursive:true});
+    fs.cpSync(path.join(root,'vendor/ns2jb-hosts/izmysh-legacy'),
+      path.join(runtime,'source/vendor/ns2jb-hosts/izmysh-legacy'),{recursive:true});
     fs.mkdirSync(path.join(runtime,'vendor'),{recursive:true});
     fs.cpSync(path.join(root,'vendor/ns2jb'),path.join(runtime,'vendor/ns2jb'),{recursive:true});
     fs.cpSync(path.join(root,'vendor/ns2jb-hosts'),path.join(runtime,'vendor/ns2jb-hosts'),{recursive:true});
     fs.cpSync(path.join(root,'vendor/IZ2S-Platform'),path.join(runtime,'vendor/IZ2S-Platform'),{recursive:true});
     fs.mkdirSync(path.join(runtime,'packaging'),{recursive:true});
-    for (const name of ['IZ2S-Platform-SHA256SUMS','IZ2S-Platform-provenance.json'])
+    for (const name of ['IZ2S-Platform-SHA256SUMS','IZ2S-Platform-provenance.json','IZMYSH-legacy-SHA256SUMS'])
       fs.copyFileSync(path.join(root,'packaging',name),path.join(runtime,'packaging',name));
     fs.cpSync(path.join(root,'assets/hosts'),path.join(runtime,'assets/hosts'),{recursive:true});
     selectHost(runtime,profile.id);

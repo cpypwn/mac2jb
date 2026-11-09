@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/purple442/seedsow-lua-editor-pro",
+  "revision": "a836a7b",
+  "release": "v0.4.0",
+  "license": "not specified upstream",
+  "title": "Seedsow Lullaby demo",
+  "titleId": "010042d022aea000",
+  "asset": "integrations/seedsow-editor-pro/Seedsow_Pro_v2_JKSV.zip",
+  "url": "https://github.com/purple442/seedsow-lua-editor-pro/releases/download/v0.4.0/Seedsow_Pro_v2_JKSV.zip",
+  "sha256": "97c90c057cb4978cf2c0d33fc718a14105a82491a28176e7d85e2f62cfe38415",
+  "installableFiles": 301
+}

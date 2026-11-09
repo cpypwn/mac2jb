@@ -53,9 +53,12 @@ async function probe(address, options = {}) {
 }
 
 async function main(args = process.argv.slice(2)) {
-  if (args.length !== 1) throw Error('usage: node probe.cjs SWITCH_IPV4');
+  if (args.length < 1 || args.length > 2 || (args.length === 2 && args[1] !== '--once'))
+    throw Error('usage: node probe.cjs SWITCH_IPV4 [--once]');
   const emit = (type, fields) => process.stdout.write('MAC2JB_CIVSWITCH ' + JSON.stringify({type, ...fields}) + '\n');
-  await probe(args[0], {emit});
+  await probe(args[0], args[1] === '--once'
+    ? {emit, waitMs: 3000, attemptMs: 2500, intervalMs: 250}
+    : {emit});
 }
 
 if (require.main === module) main().catch(error => {

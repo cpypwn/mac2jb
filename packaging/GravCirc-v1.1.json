@@ -1,0 +1,18 @@
+{
+  "repository": "https://github.com/figurophobia/GravCirc-Switch-rce",
+  "revision": "3bc0851863f2d2b586e73bec822ce1fa31d23b43",
+  "release": "v1.1",
+  "title": "Gravity Circuit",
+  "titleId": "01008d9019128000",
+  "supportedGameVersions": ["1.0.0", "1.2.1"],
+  "sourceDirectory": "integrations/gravcirc-rce/upstream-v1.1",
+  "sourceManifest": "packaging/GravCirc-v1.1-SHA256SUMS",
+  "sourceManifestSha256": "b0fa4f71298e45ed274943df83e843462fc35c70e913f7c3042c26ffb43fd15e",
+  "sourceFileCount": 21,
+  "archive": {
+    "path": "integrations/gravcirc-rce/GC-v1.1.zip",
+    "url": "https://github.com/figurophobia/GravCirc-Switch-rce/releases/download/v1.1/GC-v1.1.zip",
+    "sha256": "ab018f3e9947dba3750f18b64100fb76366559fce94bd45db3799fcf9028709e",
+    "installableFiles": 18
+  }
+}

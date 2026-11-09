@@ -11,6 +11,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
     let base: URL
     let root: URL
     let source: URL
+    let timingSuiteName = "mac2jb-test-timing-" + UUID().uuidString
     let model: SessionModel
     init(host: HostProfile = .bermTheSequel, edition: SmileBASICEdition = .full, addressProvider: @escaping () -> [NetworkAddress] = { [] }) throws {
         let temporary = FileManager.default.temporaryDirectory.appendingPathComponent("mac2jb-attachment-fixture-" + UUID().uuidString)
@@ -90,7 +91,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         let executable = root.appendingPathComponent("node")
         try Data(worker.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-        model = SessionModel(addressProvider: addressProvider, runtime: BundledRuntime(root: root), edition: edition)
+        model = SessionModel(addressProvider: addressProvider, runtime: BundledRuntime(root: root), edition: edition, timingDefaults: UserDefaults(suiteName: timingSuiteName)!, networkDefaults: UserDefaults(suiteName: timingSuiteName)!)
         model.phase = .ready; model.driverLoaded = false
         model.existingRPCRunPath = source.path
         try eventFile("attached-event", type: "rpc-attached")
@@ -112,6 +113,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         ((try? String(contentsOf: root.appendingPathComponent("invocations"), encoding: .utf8)) ?? "").split(separator: "\n").map(String.init)
     }
     func dispose() {
+        UserDefaults(suiteName: timingSuiteName)?.removePersistentDomain(forName: timingSuiteName)
         if model.hasLiveWorkers, let text = try? String(contentsOf: root.appendingPathComponent("fixture-pid"), encoding: .utf8),
            let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 { _ = kill(pid, SIGKILL) }
         if let log = model.diagnosticLogURL, log.deletingLastPathComponent().lastPathComponent.hasPrefix("mac2jb-gui-error-") {

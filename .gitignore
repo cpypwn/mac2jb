@@ -45,6 +45,7 @@ mac2jb-active-connect.txt
 /vendor/GPUBrewLauncher/runs/
 /vendor/GPUBrewLauncher/tools/
 /vendor/GPUBrewLauncher/dist/
+/vendor/CivSwitch/installer-creator/node_modules/
 *.kate-swp
 
 /runs/

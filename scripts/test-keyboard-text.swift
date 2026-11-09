@@ -7,6 +7,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
 
 @MainActor private final class KeyboardTextFixture {
     let root: URL
+    let timingSuiteName = "mac2jb-test-timing-" + UUID().uuidString
     let model: SessionModel
     init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("mac2jb-keyboard-text-" + UUID().uuidString)
@@ -51,7 +52,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
         let executable = root.appendingPathComponent("node")
         try Data(script.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
-        model = SessionModel(addressProvider: { [] }, runtime: BundledRuntime(root: root))
+        model = SessionModel(addressProvider: { [] }, runtime: BundledRuntime(root: root), timingDefaults: UserDefaults(suiteName: timingSuiteName)!, networkDefaults: UserDefaults(suiteName: timingSuiteName)!)
         model.phase = .ready; model.driverLoaded = true
     }
     func put(_ name: String, _ value: String = "") throws { try Data(value.utf8).write(to: root.appendingPathComponent(name)) }
@@ -65,6 +66,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
             .split(separator: "\n").compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
     }
     func dispose() {
+        UserDefaults(suiteName: timingSuiteName)?.removePersistentDomain(forName: timingSuiteName)
         if model.hasLiveWorkers, let value = try? String(contentsOf: root.appendingPathComponent("fixture-pid"), encoding: .utf8),
            let pid = Int32(value.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 { _ = kill(pid, SIGKILL) }
         if let log = model.diagnosticLogURL, log.deletingLastPathComponent().lastPathComponent.hasPrefix("mac2jb-gui-error-") {
@@ -85,6 +87,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
     static func run() async throws {
         let fixture = try KeyboardTextFixture(); defer { fixture.dispose() }
         let model = fixture.model
+        check(model.keyboardTextAutoIndent, "SmileBASIC editor indentation adjustment is enabled by default")
         model.keyboardText = "before connection"
         model.sendKeyboardText()
         check(!model.canSendKeyboardText && fixture.controls.isEmpty, "disconnected input never reaches a helper")
@@ -129,8 +132,10 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
         try await until("validated progress") { model.keyboardTextSent == 2 }
         check(model.keyboardText == secret && model.keyboardTextTotal == total && model.keyboardTextSending, "invalid/out-of-order events cannot clear the draft or corrupt progress")
         check(fixture.controls.count == 1, "no queued replay or physical interleaving")
-        check(fixture.controls[0]["text"] as? String == normalized && fixture.controls[0]["delayMs"] as? Int == 10, "request normalizes CRLF, preserves tabs, uses default delay, and appends no Enter")
-        check(Set(fixture.controls[0].keys) == Set(["text", "delayMs"]), "text uses only the documented control fields")
+        check(fixture.controls[0]["text"] as? String == normalized && fixture.controls[0]["delayMs"] as? Int == 10 &&
+              fixture.controls[0]["editorAutoIndent"] as? Bool == true,
+              "request normalizes CRLF, preserves tabs, selects editor indentation, and appends no Enter")
+        check(Set(fixture.controls[0].keys) == Set(["text", "delayMs", "editorAutoIndent"]), "text uses only the documented control fields")
         try fixture.put("release-1")
         try await until("confirmed completion") { !model.keyboardTextSending }
         check(model.keyboardText.isEmpty && model.keyboardAcceptsPhysicalInput && model.keyboardTextStatus.contains("No extra Enter"), "only confirmed completion clears original text and restores physical capture")
@@ -138,12 +143,14 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-keyboard-fixture" }
 
         try fixture.events("pre-2", [["type": "keyboard-text-started", "total": 3]])
         try fixture.events("post-2", [["type": "keyboard-text-completed", "sent": 3, "total": 3]])
-        model.keyboardText = "old"; model.keyDelayMs = 27; model.sendKeyboardText()
+        model.keyboardText = "old"; model.keyDelayMs = 27; model.keyboardTextAutoIndent = false; model.sendKeyboardText()
         try await until("second request") { fixture.exists("received-2") && model.keyboardTextStatus == "Sending text…" }
         model.keyboardText = "new draft"
         try fixture.put("release-2")
         try await until("second completion") { !model.keyboardTextSending }
-        check(model.keyboardText == "new draft" && fixture.controls[1]["delayMs"] as? Int == 27, "completion preserves edits made after submission and configured delay")
+        check(model.keyboardText == "new draft" && fixture.controls[1]["delayMs"] as? Int == 27 &&
+              fixture.controls[1]["editorAutoIndent"] as? Bool == false,
+              "completion preserves edits and allows literal input")
 
         try fixture.events("pre-3", [["type": "keyboard-text-rejected", "message": "Fixture text rejected."]])
         try fixture.put("release-3")

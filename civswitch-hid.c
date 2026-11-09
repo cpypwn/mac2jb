@@ -17,6 +17,19 @@
 #define MAX_PAYLOAD_LINES 256
 #define MAX_LINE_BYTES 254
 
+enum {
+    KEY_HOLD_MS = 40,
+    KEY_GAP_MS = 40,
+    ENTER_HOLD_MS = 40,
+    ENTER_GAP_MS = 200,
+    PRE_A_WAIT_MS = 800,
+    POST_A_WAIT_MS = 1200,
+    A_PRESS_MS = 50,
+    PREAMBLE_A_COUNT = 5,
+    PREAMBLE_GAP_MS = 800,
+    ESC_TO_A_WAIT_MS = 800
+};
+
 static volatile sig_atomic_t interrupted;
 
 static const uint8_t gamepad_report_descriptor[] = {
@@ -159,18 +172,20 @@ static bool load_payload(const char *path, Payload *payload) {
         start = index + 1;
     }
     if (!payload->count) return false;
-    payload->estimated_ms = 5 * (50 + 550);
+    payload->estimated_ms = PREAMBLE_A_COUNT * (A_PRESS_MS + PREAMBLE_GAP_MS);
     for (size_t line = 0; line < payload->count; line++) {
         const Line *row = &payload->lines[line];
-        payload->estimated_ms += 32 + 750 + 50 + 550 + row->length * 32 + 32 + 200 + 32;
+        payload->estimated_ms += KEY_HOLD_MS + ESC_TO_A_WAIT_MS + A_PRESS_MS + POST_A_WAIT_MS +
+                                 row->length * KEY_HOLD_MS + 2 * ENTER_HOLD_MS + ENTER_GAP_MS;
         uint8_t previous = 0;
         for (size_t j = 0; j < row->length; j++) {
             uint8_t modifier, key;
             key_for_ascii((unsigned char)row->text[j], &modifier, &key);
-            if (j && key == previous) payload->estimated_ms += 32;
+            if (j && key == previous) payload->estimated_ms += KEY_GAP_MS;
             previous = key;
         }
-        if (line + 1 < payload->count) payload->estimated_ms += 750 + 50 + 550;
+        if (line + 1 < payload->count)
+            payload->estimated_ms += PRE_A_WAIT_MS + A_PRESS_MS + POST_A_WAIT_MS;
     }
     return true;
 }
@@ -214,7 +229,7 @@ static bool a_press(HID *hid) {
     uint8_t pad[8];
     memcpy(pad, neutral_pad, 8);
     pad[0] = 4;
-    return step(hid, pad, neutral_keyboard, 50);
+    return step(hid, pad, neutral_keyboard, A_PRESS_MS);
 }
 
 static bool key_press(HID *hid, uint8_t modifier, uint8_t key, unsigned duration) {
@@ -331,30 +346,31 @@ static bool open_hid(HID *hid, int enumeration_seconds) {
 }
 
 static bool type_line(HID *hid, const Line *line) {
-    if (!key_press(hid, 0, 41, 32) || !wait_neutral(hid, 750) ||
-        !a_press(hid) || !wait_neutral(hid, 550)) return false;
+    if (!key_press(hid, 0, 41, KEY_HOLD_MS) || !wait_neutral(hid, ESC_TO_A_WAIT_MS) ||
+        !a_press(hid) || !wait_neutral(hid, POST_A_WAIT_MS)) return false;
     uint8_t previous = 0;
     for (size_t j = 0; j < line->length; j++) {
         uint8_t modifier, key;
         if (!key_for_ascii((unsigned char)line->text[j], &modifier, &key)) return false;
-        if (j && key == previous && !wait_neutral(hid, 32)) return false;
-        if (!key_press(hid, modifier, key, 32)) return false;
+        if (j && key == previous && !wait_neutral(hid, KEY_GAP_MS)) return false;
+        if (!key_press(hid, modifier, key, KEY_HOLD_MS)) return false;
         previous = key;
     }
-    if (!key_press(hid, 0, 40, 32) || !wait_neutral(hid, 200) ||
-        !key_press(hid, 0, 40, 32)) return false;
+    if (!key_press(hid, 0, 40, ENTER_HOLD_MS) || !wait_neutral(hid, ENTER_GAP_MS) ||
+        !key_press(hid, 0, 40, ENTER_HOLD_MS)) return false;
     return true;
 }
 
 static bool type_payload(HID *hid, const Payload *payload) {
-    for (int i = 0; i < 5; i++)
-        if (!a_press(hid) || !wait_neutral(hid, 550)) return false;
+    for (int i = 0; i < PREAMBLE_A_COUNT; i++)
+        if (!a_press(hid) || !wait_neutral(hid, PREAMBLE_GAP_MS)) return false;
     for (size_t i = 0; i < payload->count; i++) {
         emit_progress("line-start", i + 1, payload->count, i);
         if (!type_line(hid, &payload->lines[i])) return false;
         emit_progress("line-complete", i + 1, payload->count, i + 1);
         if (i + 1 < payload->count &&
-            (!wait_neutral(hid, 750) || !a_press(hid) || !wait_neutral(hid, 550))) return false;
+            (!wait_neutral(hid, PRE_A_WAIT_MS) || !a_press(hid) ||
+             !wait_neutral(hid, POST_A_WAIT_MS))) return false;
     }
     return neutral(hid);
 }

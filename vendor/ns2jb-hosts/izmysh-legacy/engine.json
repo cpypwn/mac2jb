@@ -1,0 +1,42 @@
+{
+  "format": "izlauncher.engine",
+  "apiVersion": 1,
+  "id": "izmysh",
+  "name": "ns2jb by IZMYSH",
+  "version": "0.16.0-rc.1",
+  "entry": "adapter.cjs",
+  "transport": "transport.cjs",
+  "platforms": [
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "modes": [
+    "original",
+    "izlauncher"
+  ],
+  "capabilities": {
+    "izMode": true,
+    "receiptRecovery": false
+  },
+  "requirements": {
+    "console": "Switch 2",
+    "systemVersion": "23.0.1",
+    "smileBasic": "4.4.9"
+  },
+  "consolePort": 39395,
+  "settingsSchema": [],
+  "defaultSettings": {},
+  "bootstrap": {
+    "file": "bootstrap.bas",
+    "sha256": "2261f65fb9ec0ed708ce0f0b6da5057168f706e541d956f658a3c2655e9e8c36",
+    "installSlot": 0,
+    "saveName": "NS2I",
+    "arity": 9
+  },
+  "upstream": {
+    "repository": "IZMYSH server source",
+    "revision": "IZlauncher standalone server extraction",
+    "license": "See platform THIRD_PARTY.json"
+  },
+  "order": 0
+}

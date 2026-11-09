@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/alula/switch-artemis-launcher",
+  "fullGamePatchSource": "https://github.com/soniciso1/switch-artemis-launcher/blob/d85feedc78cc06f86a648f7451fc52891be3d876/tools/build_fullgame.py",
+  "revision": "d85feedc78cc06f86a648f7451fc52891be3d876",
+  "license": "not specified upstream",
+  "title": "Seedsow Lullaby full game",
+  "titleId": "0100ee5021c9e000",
+  "saveVersion": 1003,
+  "launcherBundle": "integrations/artemis/seedsowhax-v2-mac2jb.zip",
+  "upstreamLauncherBundle": "integrations/artemis/upstream-v2/seedsow_save.zip"
+}

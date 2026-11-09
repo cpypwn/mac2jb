@@ -27,6 +27,12 @@ NODE_LICENSE="$ROOT/packaging/licenses/node-v24.22.1-LICENSE.txt"
 [[ "$("$NODE_BINARY" --version)" == v24.22.1 ]] || {
   echo 'Node version must match the bundled v24.22.1 LICENSE and provenance.' >&2; exit 1;
 }
+if ! "$NODE_BINARY" -e 'require.resolve("terser", {paths: [process.argv[1]]})' \
+  "$ROOT/vendor/CivSwitch/installer-creator" >/dev/null 2>&1; then
+  npm ci --prefix vendor/CivSwitch/installer-creator --ignore-scripts --no-audit --no-fund
+fi
+"$NODE_BINARY" -e 'require(require.resolve("terser", {paths: [process.argv[1]]}))' \
+  "$ROOT/vendor/CivSwitch/installer-creator"
 mkdir -p "$BUILD"
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
   gui/SessionDataCleanup.swift scripts/test-session-data-cleanup.swift \
@@ -74,9 +80,12 @@ done < <(otool -L integrations/blitbun/doom-engine/doom-headless | tail -n +2 | 
 "$NODE_BINARY" scripts/check-webkit-research.cjs
 "$NODE_BINARY" --test scripts/test-check-webkit-research.cjs
 bash scripts/test-webkit-staging.sh
+bash scripts/test-usb-typing-timing.sh
+bash scripts/test-typing-preferences.sh
+bash scripts/test-network-selection.sh
 osacompile -o "$BUILD/dnswitch.scpt" scripts/dnswitch-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
-"$NODE_BINARY" --test integrations/civswitch/probe.test.cjs integrations/civswitch/send-hello.test.cjs scripts/test-civswitch-hid.cjs
+"$NODE_BINARY" --test integrations/civswitch/probe.test.cjs integrations/civswitch/send-hello.test.cjs integrations/civswitch/send-payload.test.cjs integrations/civswitch/install-persistent.test.cjs scripts/test-civswitch-hid.cjs
 "$BUILD/homebrew/python/bin/python3" integrations/civswitch-control-center/verify-source.py
 PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" integrations/civswitch-control-center/test_mac_host.py
 "$NODE_BINARY" --test scripts/test-cli-usb-fallback.cjs
@@ -89,14 +98,15 @@ bash scripts/test-artemis-http.sh
 "$NODE_BINARY" scripts/gui-savekit-tools.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-savekit-tools.cjs
 "$NODE_BINARY" --test scripts/test-savekit-file-hash.cjs
+"$NODE_BINARY" --test vendor/ns2-savekit/tests/test_save_write_directories.cjs
 "$NODE_BINARY" vendor/ns2-savekit/tests/test_delete_result.cjs
 "$NODE_BINARY" --test vendor/ns2-savekit/tests/test_kit_delete.cjs
 "$NODE_BINARY" vendor/ns2-savekit/tests/test_artemis_http.cjs
 "$NODE_BINARY" --test vendor/ns2-savekit/tests/test_diagnose_ns2jb.cjs
-"$NODE_BINARY" --test scripts/test-convert-elden-ring-save.cjs
 "$NODE_BINARY" --test scripts/test-savekit-title-names.cjs
 "$NODE_BINARY" --test scripts/test-seedsow-held-session.cjs
 "$NODE_BINARY" --test scripts/test-custom-rpc-package.cjs scripts/test-gui-homebrew.cjs
+"$NODE_BINARY" --test scripts/test-gui-modloader.cjs integrations/ns2jb-modloader/tests/native-license.test.cjs
 "$NODE_BINARY" scripts/check-savekit-research.cjs
 "$NODE_BINARY" integrations/super-file-bros/read-only-export.cjs --self-test
 "$NODE_BINARY" --test scripts/test-super-file-bros.cjs integrations/mintbrew-native/contract.test.cjs
@@ -109,7 +119,8 @@ PATH="$BUILD/homebrew/python/bin:$BUILD/homebrew/bin:$PATH" \
 "$NODE_BINARY" scripts/prepare-izlauncher.cjs --check-source
 "$NODE_BINARY" scripts/gui-ouncecake.cjs --self-test
 PATH="$BUILD/homebrew/python/bin:$BUILD/homebrew/bin:$PATH" "$NODE_BINARY" --test \
-  scripts/test-gui-ouncecake.cjs scripts/test-mintbrew-ouncecake.cjs scripts/test-ouncecake-server.cjs
+  scripts/test-gui-ouncecake.cjs scripts/test-mintbrew-ouncecake.cjs scripts/test-ouncecake-server.cjs \
+  integrations/mintbrew-ouncecake/ftp-bridge.test.cjs
 shasum -a 256 -c assets/bootstrap.bas.sha256
 bash scripts/install-driver.sh --verify
 (cd vendor/ns2jb && shasum -a 256 -c SHA256SUMS >/dev/null)
@@ -165,11 +176,21 @@ python3 scripts/package-gui-payload.py stage "$ROOT" "$PAYLOAD" "$NODE_BINARY"
 "$NODE_BINARY" "$PAYLOAD/scripts/check-webkit-research.cjs"
 "$NODE_BINARY" "$PAYLOAD/integrations/civswitch/verify.cjs" --runtime
 PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" "$PAYLOAD/integrations/civswitch-control-center/verify-source.py"
-"$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-hello.cjs"
-"$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/hello.js"
+if [ -f "$PAYLOAD/integrations/civswitch/send-hello.cjs" ]; then
+    "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-hello.cjs"
+fi
+"$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-payload.cjs"
+"$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/install-persistent.cjs"
+"$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/backup-single.js"
+if [ -f "$PAYLOAD/integrations/civswitch/hello.js" ]; then
+    "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/hello.js"
+fi
 "$PAYLOAD/mac2jb-civswitch-hid" --payload "$PAYLOAD/integrations/civswitch/payload.txt" --dry-run
 "$NODE_BINARY" "$PAYLOAD/scripts/check-savekit-research.cjs" --root "$PAYLOAD" --compare "$ROOT"
-"$NODE_BINARY" --check "$PAYLOAD/scripts/convert-elden-ring-save.cjs"
+"$NODE_BINARY" --check "$PAYLOAD/scripts/gui-modloader.cjs"
+"$NODE_BINARY" --check "$PAYLOAD/integrations/ns2jb-modloader/install.cjs"
+"$NODE_BINARY" -e 'require(process.argv[1]).artifacts()' \
+  "$PAYLOAD/integrations/ns2jb-modloader/lib/native/artifacts.cjs"
 
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/HBLauncher/apps"
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/GPUBrewLauncher/apps"

@@ -1,0 +1,13 @@
+{
+  "title": "ns2jb by IZMYSH",
+  "subtitle": "Original IZMYSH bootstrap. Install into the selected empty slot.",
+  "defaultAction": "launch",
+  "launchLabel": "Launch",
+  "stopLabel": "Disconnect safely",
+  "sourceSetup": true,
+  "notes": [
+    "First setup enters the standard bootstrap.bas (229 lines) into the selected empty slot.",
+    "LIST N:1 and SAVE \"TXT:NS2I\",N use the selected slot 0\u20133; existing NS2/NS2R files are preserved.",
+    "The new copy becomes the Launch source only after you confirm saving."
+  ]
+}

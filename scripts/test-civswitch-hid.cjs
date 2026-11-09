@@ -39,7 +39,7 @@ test('CivSwitch composite HID helper validates the pinned macro without opening 
   const actual = dryRun(path.join(root, 'integrations/civswitch/payload.txt'));
   assert.equal(actual.status, 0, actual.stderr);
   assert.deepEqual(JSON.parse(actual.stdout.slice('MAC2JB_CIVSWITCH '.length)),
-    {type: 'dry-run', total: 87, characters: 21675, estimatedMs: 992190});
+    {type: 'dry-run', total: 87, characters: 21675, estimatedMs: 1299100});
 
   const invalid = path.join(folder, 'invalid.txt');
   for (const sample of ['a\n\n', 'a'.repeat(255) + '\n', 'caf\u00e9\n']) {

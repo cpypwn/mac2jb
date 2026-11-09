@@ -1,0 +1,18 @@
+{
+  "titleId": "0100cd801ce5e000",
+  "source": "https://github.com/Luminger/balatro-switch-rce/releases/tag/v1.1.0",
+  "sourceCommit": "0be2c4c1e7932c21cb053d77126b50a69476f9c8",
+  "license": "GPL-3.0",
+  "variants": {
+    "upstream": {
+      "path": "integrations/balatro-rce/balatro-switch-rce-1.1.0.zip",
+      "sha256": "2c8055ec080f3c7bd7b5392f4484dbe8247efaa712563b662dfabab1b616b704",
+      "installableFiles": 20
+    },
+    "showcase": {
+      "path": "integrations/balatro-rce/balatro-cpypwn-showcase.zip",
+      "sha256": "4911763bb90c9f4c174df31a29a04a2268ca8068f55feed7fab18230131e03c8",
+      "installableFiles": 21
+    }
+  }
+}

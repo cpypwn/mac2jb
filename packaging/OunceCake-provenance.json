@@ -35,6 +35,16 @@
       "date": "2026-11-01",
       "file": "engine/server.cjs",
       "description": "Pass the Mac archive endpoint port to the native WebDAV listing without changing the fixed configuration size."
+    },
+    {
+      "date": "2026-11-03",
+      "file": "engine/program.cjs",
+      "description": "Skip installed account license preparation for game-card content."
+    },
+    {
+      "date": "2026-11-03",
+      "file": "engine/mounts.cjs",
+      "description": "Report game-card content whose direct mount still requires unavailable rights."
     }
   ]
 }

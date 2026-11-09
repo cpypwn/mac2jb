@@ -162,15 +162,52 @@ static void release_all_keys(libusbd_ctx_t *ctx, uint8_t iface, uint64_t endpoin
     }
     fprintf(stderr, "Warning: could not confirm key release; reconnect cable if a key repeats.\\n");
 }
+// usb interrupt bInterval is exponential at high speed: 10 = 64 ms,
+// 6 = 4 ms. keep upstream defaults unless the user selects a profile.
+static int key_hold_ms = 0, enter_settle_ms = 0, poll_interval = 10;
+static int timing_env(const char *name, int minimum, int maximum, int fallback, int *value) {
+    const char *raw = getenv(name);
+    *value = fallback;
+    if (!raw) return 0;
+    if (!*raw) goto invalid;
+    for (const char *p = raw; *p; p++) if (*p < '0' || *p > '9') goto invalid;
+    errno = 0;
+    char *end = NULL;
+    long parsed = strtol(raw, &end, 10);
+    if (errno || !end || *end || parsed < minimum || parsed > maximum) goto invalid;
+    *value = (int)parsed;
+    return 0;
+invalid:
+    fprintf(stderr, "%s must be an integer from %d through %d\n", name, minimum, maximum);
+    return -1;
+}
+static int read_usb_timing(void) {
+    return timing_env("MAC2JB_KEY_HOLD_MS", 0, 2000, 0, &key_hold_ms) < 0 ||
+           timing_env("MAC2JB_ENTER_SETTLE_MS", 0, 2000, 0, &enter_settle_ms) < 0 ||
+           timing_env("MAC2JB_POLL_INTERVAL", 1, 16, 10, &poll_interval) < 0 ? -1 : 0;
+}
+static void pause_timing_ms(int milliseconds) {
+    if (milliseconds <= 0) return;
+    struct timespec pause = {milliseconds / 1000, (long)(milliseconds % 1000) * 1000000L};
+    double started = seconds_now();
+    while (nanosleep(&pause, &pause) < 0 && errno == EINTR && !interrupted) {}
+    pacing_seconds += seconds_now() - started;
+}
+static int add_keyboard_endpoint(libusbd_ctx_t *ctx, uint8_t iface, uint64_t *ep) {
+    return libusbd_iface_add_endpoint(ctx, iface, USB_EPATTR_TTYPE_INTR, USB_EP_DIR_IN,
+                                     8, (uint8_t)poll_interval, 0, ep);
+}
 static int send_stroke(libusbd_ctx_t *ctx, uint8_t iface, uint64_t ep,
                        uint8_t mods, uint8_t key, int delay_ms) {
-    if (write_report(ctx,iface,ep,mods,key)<0 ||
-        write_report(ctx,iface,ep,0,0)<0) return -1;
+    if (write_report(ctx,iface,ep,mods,key)<0) return -1;
+    pause_timing_ms(key_hold_ms);
+    if (write_report(ctx,iface,ep,0,0)<0) return -1;
     strokes_sent++;
     struct timespec pause_time = {delay_ms/1000, (long)(delay_ms%1000)*1000000L};
     double pause_start=seconds_now();
     nanosleep(&pause_time, NULL);
     pacing_seconds += seconds_now()-pause_start;
+    if (key == 40) pause_timing_ms(enter_settle_ms);
     return 0;
 }
 
@@ -233,6 +270,9 @@ int main(int argc, char **argv) {
             delay_ms=(int)v;
         } else {usage(argv[0]);return 2;}
     }
+    if (read_usb_timing() < 0) return 2;
+    printf("USB timing: bInterval=%d; hold=%d ms; release gap=%d ms; Enter settle=%d ms\n",
+           poll_interval, key_hold_ms, delay_ms, enter_settle_ms);
     size_t bytes=0; unsigned char *data=read_text(argv[1],&bytes); if(!data)return 1;
     size_t characters=0, lines=0;
     for(size_t i=0;i<bytes;i++) {
@@ -285,7 +325,7 @@ int main(int argc, char **argv) {
     hid_desc[8] = (uint8_t)((sizeof(hid_report_desc) >> 8) & 0xff);
     libusbd_iface_standard_desc(ctx,iface,0x21,0xF,hid_desc,sizeof(hid_desc));
     libusbd_iface_nonstandard_desc(ctx,iface,0x22,0xF,hid_report_desc,sizeof(hid_report_desc));
-    if(libusbd_iface_add_endpoint(ctx,iface,USB_EPATTR_TTYPE_INTR,USB_EP_DIR_IN,8,10,0,&ep)<0 || libusbd_iface_finalize(ctx,iface)<0){fprintf(stderr,"USB interface setup failed\n");goto done;}
+    if(add_keyboard_endpoint(ctx,iface,&ep)<0 || libusbd_iface_finalize(ctx,iface)<0){fprintf(stderr,"USB interface setup failed\n");goto done;}
     endpoint_ready=true;
     puts("Waiting for USB host enumeration...");
     uint8_t empty[8]={0};int ready=0;

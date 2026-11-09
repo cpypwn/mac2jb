@@ -5,30 +5,29 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {profiles, profileById, sourceDirectory, sourceDigest} = require('./host-profiles.cjs');
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-function verifyIZ2SManifest(root, profile) {
+function verifyLegacyIZMYSHManifest(root, profile) {
   const bytes = fs.readFileSync(path.join(root, profile.distributionManifest));
-  const provenance = JSON.parse(fs.readFileSync(path.join(root, 'packaging/IZ2S-Platform-provenance.json'), 'utf8'));
-  if (provenance.commit !== profile.revision || provenance.version !== '0.16.0-rc.5' ||
-      hash(bytes) !== 'bafbf27e48dc9879263977d910fc58fffdb275a95f81f752547f603a3ab0cca0')
-    throw Error('IZ2S Platform provenance mismatch.');
-  const platform = path.join(root, 'vendor/IZ2S-Platform');
+  if (profile.revision !== 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b' ||
+      hash(bytes) !== '345f6d1f906f8a7e87678ba6b99d1b2e5abb892bf0bf8c274e4b9b860807d0a7')
+    throw Error('Legacy IZMYSH provenance mismatch.');
+  const platform = path.join(root, profile.sourceDirectory);
   const recorded = new Map();
   for (const line of bytes.toString('utf8').trim().split('\n')) {
     const match = /^([a-f0-9]{64})  ([^\r\n]+)$/.exec(line);
-    if (!match || path.isAbsolute(match[2]) || match[2].split('/').some(part => part === '..' || part === '.') ||
+    if (!match || path.isAbsolute(match[2]) || match[2].split('/').some(part => !part || part === '..' || part === '.') ||
         match[2].includes('\\') || recorded.has(match[2])) throw Error('Invalid IZ2S integrity manifest.');
     recorded.set(match[2], match[1]);
   }
   for (const [relative, digest] of recorded) {
     const file = path.join(platform, relative);
     if (!fs.lstatSync(file).isFile() || hash(fs.readFileSync(file)) !== digest)
-      throw Error('IZ2S source integrity mismatch: ' + relative);
+      throw Error('Legacy IZMYSH source integrity mismatch: ' + relative);
   }
 }
 function verifyProfile(root, profile) {
   const folder = sourceDirectory(root, profile);
   if (sourceDigest(folder, profile) !== profile.sourceSha256) throw Error(profile.label + ' source digest mismatch.');
-  if (profile.engine === 'izmysh') verifyIZ2SManifest(root, profile);
+  if (profile.engine === 'izmysh') verifyLegacyIZMYSHManifest(root, profile);
   else {
   const manifest = fs.readFileSync(path.join(folder, 'SHA256SUMS'), 'utf8').trim().split('\n');
   const recorded = new Set();

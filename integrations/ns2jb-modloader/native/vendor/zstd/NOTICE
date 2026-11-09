@@ -1,0 +1,4 @@
+Zstandard with ZBIC support, from Atmosphere-NX/Atmosphere.
+Source: https://github.com/Atmosphere-NX/Atmosphere/blob/6b0c077b4c608a3a2ee712b8dc35fee87ceb62e8/libraries/libstratosphere/source/util/zstd.inc
+Original Zstandard: Copyright Meta Platforms, Inc. and affiliates (BSD-3-Clause or GPL-2.0).
+Atmosphere modifications and this bundled distribution use GPL-2.0; see COPYING.

@@ -50,8 +50,10 @@ async function validateAttachment(run){
  return {current,root,proof,layout};
 }
 function validateConfiguration(value){
- check(value&&typeof value==='object'&&!Array.isArray(value)&&net.isIPv4(value.consoleAddress)&&value.port===2121,'Enter the console’s IPv4 address and HTTP/WebDAV port 2121.');
- return {consoleAddress:value.consoleAddress,port:2121};
+ check(value&&typeof value==='object'&&!Array.isArray(value)&&net.isIPv4(value.consoleAddress)&&value.port===2121&&
+  (value.mode===undefined||['webdav','ftp'].includes(value.mode)),
+  'Enter the console’s IPv4 address, port 2121 and a supported file service.');
+ return {consoleAddress:value.consoleAddress,port:2121,...(value.mode==='ftp'?{mode:'ftp'}:{})};
 }
 function catalogEntries(games){
  check(Array.isArray(games)&&games.length<=1000,'OunceCake requires a bounded game catalog.');
@@ -78,7 +80,7 @@ async function main(args=process.argv.slice(2),options={}){
  }
  check(args.length===1,'Usage: gui-ouncecake.cjs RUN_DIRECTORY (configuration and game selection on stdin)');
  const input=options.input||process.stdin,output=options.emit||((type,fields)=>process.stdout.write('MAC2JB_HOMEBREW '+JSON.stringify({type,...fields})+'\n'));
- let stopping=false,cleanupBlocked=false,failure,attachment,server,zipServer,directory,report,waiting=false,selected=false,outputClosed=false;
+ let stopping=false,cleanupBlocked=false,failure,attachment,server,zipServer,ftpBridge,directory,report,waiting=false,selected=false,outputClosed=false;
  let configurationResolve,configurationReject,selectionResolve,stopResolve,monitor;
  const configured=new Promise((resolve,reject)=>{configurationResolve=resolve;configurationReject=reject;});
  const selection=new Promise(resolve=>{selectionResolve=resolve;}),stopped=new Promise(resolve=>{stopResolve=resolve;});
@@ -135,15 +137,32 @@ async function main(args=process.argv.slice(2),options={}){
     if(!stopping){
      const zipModule=path.join(snapshot.vendor,'engine/zip-download.cjs');
      if(sync.existsSync(zipModule)){
-      zipServer=await require(zipModule).startZipServer({index:prepared.index,sourcePort:2121,
-       title:games.find(game=>game.titleId===title)?.name||'OunceCake game files'});
-      zipServer.setSourceAddress(config.consoleAddress);
+      try{
+       zipServer=await require(zipModule).startZipServer({index:prepared.index,sourcePort:2121,
+        title:games.find(game=>game.titleId===title)?.name||'OunceCake game files'});
+       zipServer.setSourceAddress(config.consoleAddress);
+      }catch(error){
+       if(!['Game has too many downloadable files','Game has too many files for ZIP metadata'].includes(error.message))throw error;
+       emit('progress',{message:'Download all ZIP is unavailable for this game; individual files remain available.'});
+      }
      }
      server=await modules.server.deployServer({attachment,image:snapshot.image,...prepared,port:2121,
       zipPort:zipServer?.port||0});
      check(!server.address||server.address===config.consoleAddress,'OunceCake reported a different console address.');
      check(!stopping&&isLive(),'The original held session ended during HTTP/WebDAV startup.');
-     report.httpURL='http://'+config.consoleAddress+':2121/';report.status='running';await save();emit('running',{host:config.consoleAddress,port:2121,httpURL:report.httpURL,message:'OunceCake read-only HTTP/WebDAV is running.'});
+     report.httpURL='http://'+config.consoleAddress+':2121/';
+     if(config.mode==='ftp'){
+      ftpBridge=await (options.createFtpBridge||require('../integrations/mintbrew-ouncecake/ftp-bridge.cjs').start)({
+       index:prepared.index,sourceAddress:config.consoleAddress,sourcePort:2121});
+      check(ftpBridge.address==='127.0.0.1'&&Number.isInteger(ftpBridge.port)&&
+       ftpBridge.port>0&&ftpBridge.port<65536&&typeof ftpBridge.close==='function',
+       'OunceCake did not start a valid Mac-local FTP bridge.');
+      report.ftpURL='ftp://'+ftpBridge.address+':'+ftpBridge.port+'/';
+     }
+     report.status='running';await save();emit('running',{host:config.consoleAddress,port:2121,
+      httpURL:report.httpURL,...(report.ftpURL?{ftpURL:report.ftpURL}:{}),
+      message:config.mode==='ftp'?'OunceCake read-only FTP is running on this Mac at '+report.ftpURL:
+       'OunceCake read-only HTTP/WebDAV is running at '+report.httpURL});
      await stopped;
     }
    }
@@ -151,6 +170,7 @@ async function main(args=process.argv.slice(2),options={}){
  }catch(error){failure=error;cleanupBlocked=blocked(error);}
  finally{
   clearTimeout(configurationTimer);clearInterval(monitor);waiting=false;
+  if(ftpBridge){try{await ftpBridge.close();}catch(error){failure ||= error;}}
   if(server&&!cleanupBlocked){try{check(isLive(),'The held native session ended before HTTP/WebDAV cleanup.');report.shutdown=await server.close();check(report.shutdown?.nativeStopped===true&&report.shutdown?.joined===true&&report.shutdown?.mappingsCleared===true,'OunceCake did not prove native cleanup.');}
    catch(error){failure ||= error;cleanupBlocked=true;}}
   if(zipServer){try{await zipServer.close();}catch(error){failure ||= error;}}

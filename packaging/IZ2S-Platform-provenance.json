@@ -1,35 +1,18 @@
 {
   "project": "IZ2S Platform",
   "repository": "https://github.com/byizmysh/IZ2S-Platform",
-  "version": "0.16.0-rc.5",
-  "commit": "d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
-  "sourceUrl": "https://github.com/byizmysh/IZ2S-Platform/tree/d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
+  "version": "0.21.0",
+  "commit": "73f1b6d98b3fd7c3a44c2b4f6e3b94704ce9435f",
+  "sourceUrl": "https://github.com/byizmysh/IZ2S-Platform/tree/73f1b6d98b3fd7c3a44c2b4f6e3b94704ce9435f",
   "snapshotPath": "vendor/IZ2S-Platform",
-  "distributionType": "Complete pinned upstream tracked source snapshot with the listed mac2jb changes; Git metadata omitted.",
-  "fileCount": 598,
-  "totalBytes": 5207747,
+  "distributionType": "Complete pinned upstream tracked source snapshot, including post-0.21.0 fixes; Git metadata omitted.",
+  "fileCount": 1072,
+  "totalBytes": 17981059,
   "integrityManifest": "IZ2S-Platform-SHA256SUMS",
-  "integrityManifestSha256": "bafbf27e48dc9879263977d910fc58fffdb275a95f81f752547f603a3ab0cca0",
-  "modifications": [
-    {
-      "path": "core/module-paths.cjs",
-      "reason": "Cache module archive descriptors so repeated discovery does not block the control panel and frame loop."
-    },
-    {
-      "path": "distribution/tests/module-paths-cache.test.cjs",
-      "reason": "Verify cache reuse and invalidation when module archives change."
-    },
-    {
-      "path": "shells/izlauncher/app/shaders/app-menu.glsl",
-      "reason": "Render the narrow I glyph and close application menus with X."
-    },
-    {
-      "path": "shells/izlauncher/app/shaders/pc-screen-input.glsl",
-      "reason": "Close the PC stream menu and overlay with X."
-    }
-  ],
-  "runtimeOverlay": "scripts/prepare-izlauncher.cjs creates a separate Mac IZlauncher runtime with File Exchange, pinned BlitBun and VacooTube adaptations, an offline shader compiler and a precompiled shell from this pinned snapshot; the IZMYSH host profile launches its bundled server source for native-session verification.",
-  "scope": "IZlauncher, File Exchange 1.1.1, BlitBun and VacooTube on an existing verified held RPC session, including kurumuz and BermTheSequel demo sessions; compatible custom IZlauncher modules may be added to the private runtime. The optional IZMYSH host profile uses NS2I and port 39395 for native-session verification, then closes RPC. IZPSlauncher source is bundled but not started by mac2jb; no platform bootstrap, desktop panel or HID agent is included.",
+  "integrityManifestSha256": "9ac9995abc40c721362c9117a04a00ee4f0bdc585b93999d8bb28a8ee48d0326",
+  "modifications": [],
+  "runtimeOverlay": "scripts/prepare-izlauncher.cjs creates a separate Mac IZlauncher runtime with File Exchange, File Exchange FS, Book Reader, pinned BlitBun and VacooTube adaptations, an offline shader compiler and precompiled shell variants from this pinned snapshot. The legacy IZMYSH host profile launches separately preserved source for its NS2I bootstrap.",
+  "scope": "IZlauncher on an existing verified held RPC session. The pinned v0.16 IZMYSH host and NS2I bootstrap remain separate under vendor/ns2jb-hosts/izmysh-legacy; IZ2S 0.21's NS2IZM bootstrap is included as source but is not selected by mac2jb. IZPSlauncher source is bundled but not started by mac2jb.",
   "licenseNotice": "Independently authored IZMYSH code declares GPL-2.0-or-later. Inherited component licenses and prior grants remain applicable. Upstream THIRD_PARTY.json explicitly requires inherited-source review and says license review is not fully verified; no blanket redistribution permission is asserted.",
   "retainedNotices": [
     {
@@ -46,7 +29,7 @@
     },
     {
       "path": "THIRD_PARTY.json",
-      "sha256": "42bba5317a282222861e52c1a28745cacf68de2d4dd86ea7d7dd865701674b91"
+      "sha256": "8733493e90ccdebfe68b4a50968bcad784a518317386a28cbb75119c0197a744"
     },
     {
       "path": "modules/iz-exchange/COPYRIGHT",

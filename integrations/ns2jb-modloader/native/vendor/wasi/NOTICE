@@ -1,0 +1,4 @@
+Runtime support for the portable ZBIC WebAssembly decoder, built with Zig 0.15.2.
+WASI libc changes are distributed under their MIT license option.
+Source: https://github.com/ziglang/zig/tree/0.15.2/lib/libc/wasi
+See the accompanying license and third-party copyright files.

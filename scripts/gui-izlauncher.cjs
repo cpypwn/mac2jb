@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const {validateRun, serveProxy} = require('./gui-homebrew.cjs');
 const modules = require('./izlauncher-modules.cjs');
 const {readPanel} = require('./izlauncher-panel.cjs');
-const REVISION = 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b';
+const REVISION = '73f1b6d98b3fd7c3a44c2b4f6e3b94704ce9435f';
 const stages = [
   ['core/services/inspect-display.cjs'],
   ['core/services/inspect-compatibility.cjs'],
@@ -112,7 +112,7 @@ async function main(args=process.argv.slice(2), options={}) {
   const parent=path.join(root,'runs');await fs.mkdir(parent,{recursive:true,mode:0o700});await privatePath(parent,true);
   const directory=await fs.mkdtemp(path.join(await fs.realpath(parent),'izlauncher-'));
   const report={session:path.basename(directory),sourceSession:run.proof.session,sourceDirectory:run.directory,
-    application:'izlauncher',version:'0.16.0-rc.5',source:{commit:REVISION},identity,
+    application:'izlauncher',version:'0.21.0',source:{commit:REVISION},identity,
     started:new Date().toISOString(),status:'preparing',stages:[],children:[],resourcesRetained:true};
   const save=()=>writeJSON(path.join(directory,'mac2jb-homebrew.json'),report);
   const emit=options.emit||((type,fields)=>process.stdout.write('MAC2JB_HOMEBREW '+JSON.stringify({type,...fields})+'\n'));

@@ -1,0 +1,24 @@
+{
+  "repository": "https://github.com/alula/switch-artemis-launcher",
+  "release": "v2",
+  "revision": "b36c8ec983caf0f062f646d6a11d8739a945bff6",
+  "archives": {
+    "seedsow": {
+      "path": "integrations/artemis/upstream-v2/seedsow_save.zip",
+      "sha256": "dfd58a4e1151d29e9152b3a528568f95a990aa427914bafc21711e9b7fca691e"
+    },
+    "nora": {
+      "path": "integrations/artemis/upstream-v2/nora2_save.zip",
+      "sha256": "dfdc4101c4ae16d4277e778b1e1d3c88eb1f7250e993de914850a23c669be7ba"
+    },
+    "hamidashi": {
+      "path": "integrations/artemis/upstream-v2/hamidashi_save.zip",
+      "sha256": "25cde9b3e29a512342564e35557a9b61c628657d9d1442e6f09f80a242e384df"
+    },
+    "nora1": {
+      "path": "integrations/artemis/upstream-nora1-save.zip",
+      "sha256": "7ddc187f2de7b40bf2cff64008646be20bb5512f32589c2a688b51f4d9fb9b8d",
+      "revision": "ae0249547c1e05df46a63a5c05818914b3ae0706"
+    }
+  }
+}

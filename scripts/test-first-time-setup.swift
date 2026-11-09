@@ -10,6 +10,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
 
 @MainActor final class SetupFixture {
     let root: URL
+    let timingSuiteName = "mac2jb-test-timing-" + UUID().uuidString
     let model: SessionModel
 
     init(edition: SmileBASICEdition, host: HostProfile = .kurumuz,
@@ -123,6 +124,8 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                 case "$control" in
                   *'"game":"seedsow"'*) game=seedsow ;;
                   *'"game":"nora"'*) game=nora ;;
+                  *'"game":"nora1"'*) game=nora1 ;;
+                  *'"game":"hamidashi"'*) game=hamidashi ;;
                   *) emit '{"type":"action-rejected","action":"install-artemis-save"}'; continue ;;
                 esac
                 : > artemis-install-received
@@ -145,6 +148,13 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                   gate release-artemis-ready
                 fi
                 printf '{"type":"savekit-ready","game":"%s","message":"RPC remains held"}\n' "$game" ;;
+              *'"action":"install-gravcirc-save"'*)
+                : > gravcirc-install-received
+                gate release-gravcirc-save-complete
+                mkdir -p held-fixture/gravcirc-backups/gravcirc-fixture
+                backup="$PWD/held-fixture/gravcirc-backups/gravcirc-fixture"
+                printf '{"type":"savekit-complete","game":"gravcirc","files":18,"backupPath":"%s"}\n' "$backup"
+                emit '{"type":"savekit-ready","game":"gravcirc","message":"RPC remains held"}' ;;
               *'"action":"savekit-tool"'*)
                 case "$control" in
                   *'"action":"titles"'*)
@@ -288,7 +298,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try Data(worker.utf8).write(to: executable)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
         try Data("{\"id\":\"\(host.rawValue)\"}".utf8).write(to: root.appendingPathComponent("selected-host.json"))
-        model = SessionModel(addressProvider: addressProvider, runtime: BundledRuntime(root: root), edition: edition)
+        model = SessionModel(addressProvider: addressProvider, runtime: BundledRuntime(root: root), edition: edition, timingDefaults: UserDefaults(suiteName: timingSuiteName)!, networkDefaults: UserDefaults(suiteName: timingSuiteName)!)
         model.phase = .ready; model.driverLoaded = true
     }
 
@@ -299,6 +309,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             .split(separator: "\n").compactMap { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String:Any] }
     }
     func dispose() {
+        UserDefaults(suiteName: timingSuiteName)?.removePersistentDomain(forName: timingSuiteName)
         if let log = model.diagnosticLogURL, log.deletingLastPathComponent() != root,
            log.deletingLastPathComponent().lastPathComponent.hasPrefix("mac2jb-gui-error-") {
             try? FileManager.default.removeItem(at: log.deletingLastPathComponent())
@@ -1120,8 +1131,10 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             }
         }
 
-        for game in [ArtemisSaveGame.seedsow, .nora] {
-            check(game.launcher == (game == .seedsow ? "seedsowhax" : "norahax"),
+        for game in [ArtemisSaveGame.seedsow, .nora, .nora1, .hamidashi] {
+            check(game.launcher == (game == .seedsow ? "seedsowhax" :
+                                     game == .nora ? "nora2hax" :
+                                     game == .nora1 ? "norahax" : "hamihax"),
                   "Artemis save names use their lowercase display form")
             let artemis = try SetupFixture(edition: .demo, addressProvider: { [address] })
             defer { artemis.dispose() }
@@ -1184,6 +1197,38 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
             try await until("Artemis session cleanup") {
                 artemis.model.phase == .verified && !artemis.model.hasLiveWorkers
             }
+        }
+
+        let gravcirc = try SetupFixture(edition: .demo, addressProvider: { [address] })
+        defer { gravcirc.dispose() }
+        gravcirc.model.addresses = [address]
+        gravcirc.model.selectedAddress = address.address
+        gravcirc.model.selectRunMode(.seedsowSave)
+        gravcirc.model.start()
+        try await until("Gravity Circuit post-run choice") {
+            FileManager.default.fileExists(atPath: gravcirc.root.appendingPathComponent("held-choice-received").path)
+        }
+        try gravcirc.put("release-rpc-held")
+        try await until("Gravity Circuit held RPC") {
+            gravcirc.model.phase == .rpcHeld && gravcirc.model.canInstallGravCircSave
+        }
+        gravcirc.model.installGravCircSave()
+        try await until("Gravity Circuit install accepted") {
+            FileManager.default.fileExists(atPath: gravcirc.root.appendingPathComponent("gravcirc-install-received").path)
+        }
+        check(gravcirc.model.activeSaveGame == .gravcirc && gravcirc.model.phase == .installingSave &&
+              !gravcirc.model.canLaunchHomebrew,
+              "Gravity Circuit write reserves the held session")
+        try gravcirc.put("release-gravcirc-save-complete")
+        try await until("Gravity Circuit save returns to choices") {
+            gravcirc.model.phase == .rpcHeld && gravcirc.model.seedsowInstallCompleted &&
+            gravcirc.model.canLaunchHomebrew
+        }
+        check(gravcirc.model.seedsowBackupFolder?.path.contains("/gravcirc-backups/gravcirc-") == true,
+              "Gravity Circuit keeps its verified backup")
+        gravcirc.model.finishPostRun()
+        try await until("Gravity Circuit session cleanup") {
+            gravcirc.model.phase == .verified && !gravcirc.model.hasLiveWorkers
         }
 
         let artemisDisconnect = try SetupFixture(edition: .demo, addressProvider: { [address] })

@@ -6,11 +6,12 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {spawn} = require('node:child_process');
 const {PassThrough} = require('node:stream');
-const {stageEditor, stageCustomEditor, backupProof, chooseUser,
+const {stageEditor, stageProEditor, stageCustomEditor, backupProof, chooseUser,
   existingEditorState, editorInstallPlan, customEditorPlan,
-  artemisProfile, stageArtemis, artemisInstallPlan, cachedArtemisArchive,
+  artemisProfile, fullSeedsowProfile, stageArtemis, artemisInstallPlan, cachedArtemisArchive,
   stageBundledArtemis, artemisHttpShowcase, artemisInjectShowcase,
-  missingSaveArchive} = require('./gui-savekit.cjs');
+  missingSaveArchive, balatroProfile, stageBalatro, gravcircProfile, stageGravcirc,
+  sameSaveEntries} = require('./gui-savekit.cjs');
 const {prepare} = require('./prepare-seedsow-host.cjs');
 const {profileById} = require('./host-profiles.cjs');
 const sourceRoot = path.resolve(__dirname, '..');
@@ -20,6 +21,67 @@ const showcaseFiles = ['cpypwn.lua', 'ssslot006.ref',
 const artemisFiles = ['core.lua', 'exploita.lua', 'http.lua', 'inject.iet',
   'inject.lua', 'proggy.ttf', 'save9999.dat', 'saveg.dat', 'system.dat'];
 const bundledFiles = [...artemisFiles, 'exploitb.lua', 'inject2.lua', 'http2.lua'].sort();
+const {indexedSave, patchAutosave, injectAsb, stageFullSeedsow} = require('./seedsow-full-save.cjs');
+
+function fullSeedsowFixture() {
+  const u32 = value => {const bytes = Buffer.alloc(4); bytes.writeUInt32LE(value); return bytes;};
+  const string = value => Buffer.concat([u32(Buffer.byteLength(value)), Buffer.from(value)]);
+  const fields = [Buffer.alloc(4)];
+  let length = 4;
+  const add = bytes => {const at = length; fields.push(bytes); length += bytes.length; return at;};
+  const handler = add(string('vsync'));
+  const caretBase = add(u32(4));
+  const script = add(string('system/script.asb'));
+  const caret4 = add(u32(0));
+  const bodyFields = Buffer.concat(fields);
+  const index = Buffer.concat([u32(2), u32(0), u32(2),
+    u32(3), u32(caretBase), u32(34), u32(handler),
+    u32(caretBase), u32(3), u32(1), u32(caretBase),
+    u32(3), u32(script), u32(4), u32(caret4)]);
+  const body = Buffer.concat([bodyFields, index, u32(bodyFields.length)]);
+  const zlib = require('node:zlib');
+  return Buffer.concat([Buffer.from('BOWS'), u32(1003), u32(body.length), zlib.deflateSync(body)]);
+}
+
+test('full Seedsow install patches only a verified v1003 autosave', async t => {
+  assert.equal(fullSeedsowProfile().titleId, '0100ee5021c9e000');
+  const input = fullSeedsowFixture();
+  const patched = patchAutosave(input);
+  const save = indexedSave(patched);
+  const root = save.groups.get(0), caret = save.groups.get(root.get(3));
+  assert.equal(save.fieldString(caret.get(3)).toString(), 'save:/inject.asb');
+  assert.equal(save.fieldU32(caret.get(1)), 0);
+  assert.equal(save.fieldU32(caret.get(4)), 1);
+  assert.equal(save.fieldString(root.get(34)).toString(), '');
+  assert.deepEqual(patchAutosave(patched), patched);
+  const wrongVersion = Buffer.from(input); wrongVersion.writeUInt32LE(1002, 4);
+  assert.throws(() => patchAutosave(wrongVersion), /v1003/);
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-seedsow-full-'));
+  t.after(() => fs.rm(temp, {recursive: true, force: true}));
+  const backup = path.join(temp, 'backup'), stage = path.join(temp, 'stage');
+  await fs.mkdir(backup); await fs.mkdir(stage);
+  for (const name of ['autosave.dat', 'saveg.dat', 'system.dat', 'save0001.dat',
+    'save0001.png', 'save0001_s.png'])
+    await fs.writeFile(path.join(backup, name), name === 'autosave.dat' ? input : Buffer.from(name));
+  for (const name of ['save9999.dat', 'saveg.dat', 'system.dat', 'core.lua'])
+    await fs.writeFile(path.join(stage, name), name);
+  const files = await stageFullSeedsow(stage, backup);
+  assert.deepEqual(files, ['autosave.dat', 'core.lua', 'inject.asb', 'save0001.dat']);
+  assert.deepEqual(await fs.readFile(path.join(stage, 'save0001.dat')), patched);
+  assert.equal(injectAsb().subarray(0, 5).toString('hex'), '4153420000');
+  await assert.rejects(fs.stat(path.join(stage, 'saveg.dat')), {code: 'ENOENT'});
+});
+
+test('Seedsow Lua Editor Pro stages its pinned demo save without replacing slot 6', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-seedsow-pro-'));
+  t.after(() => fs.rm(temp, {recursive: true, force: true}));
+  const files = await stageProEditor(path.join(temp, 'editor'));
+  assert.equal(files.length, 301);
+  assert.ok(files.includes('sscode006.lua'));
+  assert.ok(files.includes('ssedit1.lua'));
+  assert.ok(!files.includes('.nx_save_meta.bin'));
+  assert.ok(!files.includes('cpypwn.lua'));
+});
 
 async function artemisFixture(t) {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-artemis-'));
@@ -46,11 +108,86 @@ async function artemisFixture(t) {
   return {temp, files, archive, profile: {sha256}};
 }
 
-test('Artemis profiles pin separate Seedsow and Nora demo saves', () => {
+test('Artemis profiles pin four separate demo saves', () => {
   assert.equal(artemisProfile('seedsow').titleId, '010042d022aea000');
   assert.equal(artemisProfile('nora').titleId, '010012900d38a000');
+  assert.equal(artemisProfile('hamidashi').titleId, '0100848014154000');
+  assert.equal(artemisProfile('nora1').titleId, '01002eb00ce48000');
+  assert.equal(artemisProfile('nora1').sourceDirectory,
+    'integrations/artemis/upstream-nora1');
   assert.notEqual(artemisProfile('seedsow').sha256, artemisProfile('nora').sha256);
-  assert.throws(() => artemisProfile('full'), /Seedsow or Nora/);
+  assert.notEqual(artemisProfile('nora').sha256, artemisProfile('hamidashi').sha256);
+  assert.notEqual(artemisProfile('hamidashi').sha256, artemisProfile('nora1').sha256);
+  assert.throws(() => artemisProfile('full'), /Seedsow, Nora 2, Hamidashi or Nora 1/);
+});
+
+test('both pinned Balatro saves stage nested hidden files without JKSV metadata', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-balatro-stage-'));
+  t.after(() => fs.rm(temp, {recursive: true, force: true}));
+  assert.throws(() => balatroProfile('unknown'), /original Balatro save/);
+  assert.equal(balatroProfile('upstream').path,
+    'integrations/balatro-rce/balatro-switch-rce-1.1.0.zip');
+  const upstream = await stageBalatro(path.join(temp, 'upstream'), 'upstream');
+  const showcase = await stageBalatro(path.join(temp, 'showcase'), 'showcase');
+  assert.equal(upstream.length, 20);
+  assert.equal(showcase.length, 21);
+  assert.ok(upstream.includes('.lovegame/main.lua'));
+  assert.ok(upstream.includes('.lovegame/conf.lua'));
+  assert.ok(showcase.includes('.lovegame/bl/showcase.lua'));
+  assert.equal(upstream.includes('.nx_save_meta.bin'), false);
+  assert.deepEqual(showcase.filter(name => name !== '.lovegame/bl/showcase.lua'), upstream);
+  const overlay = await fs.readFile(path.join(temp, 'showcase', '.lovegame', 'bl', 'showcase.lua'), 'utf8');
+  assert.match(overlay, /package\.loaded\["bl\.app"\]/);
+  assert.match(overlay, /return ip, "RPC 9026  ·  FTP 5000  ·  PASV 5001"/);
+  assert.doesNotMatch(overlay, /FTP ftp:\/\//);
+});
+
+test('the pinned Gravity Circuit save stages its nested release files without JKSV metadata', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-gravcirc-stage-'));
+  t.after(() => fs.rm(temp, {recursive: true, force: true}));
+  const profile = gravcircProfile();
+  assert.equal(profile.sha256,
+    'ab018f3e9947dba3750f18b64100fb76366559fce94bd45db3799fcf9028709e');
+  const files = await stageGravcirc(path.join(temp, 'save'));
+  assert.equal(files.length, 18);
+  assert.ok(files.includes('.Gravity Circuit/main.lua'));
+  assert.ok(files.includes('.Gravity Circuit/gc/offsets.lua'));
+  assert.ok(files.includes('.Gravity Circuit/gc/rpc.lua'));
+  assert.ok(files.includes('.Gravity Circuit/gc/ftp_server.lua'));
+  assert.equal(files.includes('.nx_save_meta.bin'), false);
+  const offsets = await fs.readFile(path.join(temp, 'save', '.Gravity Circuit', 'gc', 'offsets.lua'), 'utf8');
+  assert.match(offsets, /gravity-circuit-v1\.0/);
+  assert.match(offsets, /gravity-circuit-v1\.2\.1/);
+});
+
+test('the bundled Gravity Circuit source matches its pinned file manifest', async () => {
+  const pinned = require('../packaging/GravCirc-v1.1.json');
+  const manifest = await fs.readFile(path.join(sourceRoot, pinned.sourceManifest));
+  assert.equal(crypto.createHash('sha256').update(manifest).digest('hex'),
+    pinned.sourceManifestSha256);
+  const entries = manifest.toString('utf8').trimEnd().split('\n');
+  assert.equal(entries.length, pinned.sourceFileCount);
+  for (const line of entries) {
+    const match = /^([a-f0-9]{64})  ([A-Za-z0-9_.\/-]+)$/.exec(line);
+    assert.ok(match, `invalid source manifest entry: ${line}`);
+    assert.ok(match[2].split('/').every(part => part && part !== '.' && part !== '..'));
+    const bytes = await fs.readFile(path.join(sourceRoot, pinned.sourceDirectory, match[2]));
+    assert.equal(crypto.createHash('sha256').update(bytes).digest('hex'), match[1], match[2]);
+  }
+});
+
+test('an unchanged-save proof rejects added, missing or altered files', () => {
+  const before = {entries: [
+    {path: '/.lovegame/1/profile.jkr', size: 630, sha256: 'a'.repeat(64)},
+    {path: '/.lovegame/settings.jkr', size: 703, sha256: 'b'.repeat(64)}
+  ]};
+  assert.equal(sameSaveEntries(before, {entries: [...before.entries].reverse()}), true);
+  assert.equal(sameSaveEntries(before, {entries: before.entries.slice(0, 1)}), false);
+  assert.equal(sameSaveEntries(before, {entries: [...before.entries,
+    {path: '/.lovegame/bl/app.lua', size: 100, sha256: 'c'.repeat(64)}]}), false);
+  assert.equal(sameSaveEntries(before, {entries: [before.entries[0],
+    {...before.entries[1], sha256: 'c'.repeat(64)}]}), false);
+  assert.equal(sameSaveEntries(before, {entries: [before.entries[0], before.entries[0]]}), false);
 });
 
 test('a missing save archive is recognized only when every probe returned 0x7d402', () => {
@@ -66,15 +203,27 @@ test('a missing save archive is recognized only when every probe returned 0x7d40
     stderr: absent.stderr.replace('uid=0000 -> 0x7d402', 'uid=0000 -> 0xe02')}, title), false);
 });
 
-test('both modified Artemis saves stage offline and upgrade pinned saves without replacing custom B', async t => {
+test('four modified Artemis saves stage offline and preserve custom B scripts', async t => {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-artemis-bundled-'));
   t.after(() => fs.rm(temp, {recursive: true, force: true}));
-  for (const game of ['seedsow', 'nora']) {
+  for (const game of ['seedsow', 'nora', 'hamidashi', 'nora1']) {
     const staged = path.join(temp, game);
     assert.deepEqual(await stageBundledArtemis(staged, game), bundledFiles);
     const http = await fs.readFile(path.join(staged, 'http2.lua'), 'utf8');
-    assert.match(http, /http listening/);
+    assert.match(http, /draw\("cpypwn_http_status", 636, 52, 26, "0xD7FFE8", "http listening on 8080"\)/);
     assert.match(http, /n2h_http_frame\(\)/);
+    assert.match(http, /local REQ_CAP = 0x40000/);
+    assert.match(http, /fs_commit_save_data/);
+    const showcase = await fs.readFile(path.join(staged, 'exploitb.lua'), 'utf8');
+    assert.match(showcase, /"cpypwn"/);
+    if (game === 'hamidashi') assert.match(showcase, /kaleido_name_/);
+    if (game === 'nora1') {
+      assert.match(await fs.readFile(path.join(staged, 'core.lua'), 'utf8'),
+        /game_id = "nora"/);
+      assert.equal(crypto.createHash('sha256').update(
+        await fs.readFile(path.join(staged, 'saveg.dat'))).digest('hex'),
+      '163219cc8c4651b8c5a34c342aeb90998cad07be68861cf05c972375036569a0');
+    }
     const inject = await fs.readFile(path.join(staged, 'inject2.lua'), 'utf8');
     assert.match(inject, /init_console\(\)\nprint = _G\.n2h_orig_print\nlaunch\("http"\)\n$/);
     assert.doesNotMatch(inject, /Press a button on the controller|A : slot 1|B : slot 2/);
@@ -104,6 +253,30 @@ test('both modified Artemis saves stage offline and upgrade pinned saves without
   }
 });
 
+test('installed v1 Artemis files are recognized for a verified v2 upgrade', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-artemis-v1-upgrade-'));
+  t.after(() => fs.rm(temp, {recursive: true, force: true}));
+  const {execFileSync} = require('node:child_process');
+  for (const [game, file] of [
+    ['seedsow', 'seedsowhax-v1-mac2jb.zip'],
+    ['nora', 'norahax-v1-mac2jb.zip']
+  ]) {
+    const current = path.join(temp, game + '-v2');
+    const installed = path.join(temp, game + '-v1');
+    await stageBundledArtemis(current, game);
+    await fs.mkdir(installed);
+    const archive = path.join(sourceRoot, 'integrations/artemis', file);
+    for (const name of bundledFiles)
+      await fs.writeFile(path.join(installed, name),
+        execFileSync('/usr/bin/unzip', ['-p', archive, name]));
+    const plan = await artemisInstallPlan(current, installed, bundledFiles, game);
+    assert.equal(plan.kind, 'upgrade');
+    assert.deepEqual(plan.files, [
+      'core.lua', 'exploitb.lua', 'http.lua', 'http2.lua', 'inject.lua'
+    ]);
+  }
+});
+
 test('a pinned flat Artemis release stages from a verified archive and reuses verified cache', async t => {
   const fixture = await artemisFixture(t);
   const staged = path.join(fixture.temp, 'staged');
@@ -120,7 +293,7 @@ test('a pinned flat Artemis release stages from a verified archive and reuses ve
   assert.match(http, /n2h_http_frame\(\)/);
   assert.match(http, /cpypwn_artemis_frame\(\)/);
   assert.match(http, /onEnterFrame = "cpypwn_artemis_http_frame"/);
-  assert.match(http, /draw\("cpypwn_http_status", 534, 70, 36, "0xFFFFFF", "http listening"\)/);
+  assert.match(http, /draw\("cpypwn_http_status", 636, 52, 26, "0xD7FFE8", "http listening on 8080"\)/);
   assert.match(http, /local ready = st\.phase ~= "init" and st\.phase ~= "dead"/);
   const cache = path.join(fixture.temp, 'cache');
   await fs.mkdir(cache);

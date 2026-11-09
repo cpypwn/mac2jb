@@ -19,16 +19,29 @@ function fixture(t) {
 }
 test('preparation preserves every frozen source file and exposes Mac base modules',async t=>{
   const root=fixture(t),before=runtime.sourceFiles(root),info=await runtime.prepare(root);
-  assert.equal(info.revision,runtime.REVISION);assert.equal(before.size,598);
+  assert.equal(info.revision,runtime.REVISION);assert.equal(before.size,1072);
   assert.deepEqual(runtime.sourceFiles(root),before);
   const env=runtime.runtimeEnvironment(root,{PATH:'/usr/bin'});
   assert.equal(env.IZ2S_ROOT,info.directory);assert.equal(env.HB_APPS_DIR,path.join(info.directory,'data/app-links'));
-  assert.deepEqual(Object.keys(JSON.parse(env.IZ2S_MODULE_PINS).modules),['iz-exchange','blitbun','vacootube']);
+  assert.deepEqual(Object.keys(JSON.parse(env.IZ2S_MODULE_PINS).modules),
+    ['iz-exchange','iz-exchange-fs','book-reader','blitbun','vacootube']);
   const descriptor=JSON.parse(fs.readFileSync(path.join(info.directory,'modules/iz-exchange/module.json')));
   assert.deepEqual(descriptor.platforms,['darwin-arm64']);assert.deepEqual(descriptor.dependencies,[]);
+  for(const id of ['iz-exchange-fs','book-reader']){
+    assert.equal(typeof info.builtIns[id].sha256,'string');
+    assert.equal(fs.existsSync(path.join(info.directory,'data/app-links',id,'app.json')),true);
+  }
+  const metadata=JSON.parse(fs.readFileSync(path.join(info.directory,'mac2jb-runtime.json')));
+  assert.deepEqual(fs.readdirSync(path.join(info.directory,'data/app-links')).sort(),
+    [...new Set([...metadata.modules,...Object.keys(metadata.builtIns)])].filter(id=>id!=='vacootube').sort());
   assert.equal(fs.existsSync(path.join(info.directory,'modules/izdoom')),false);
   assert.equal(fs.existsSync(path.join(info.directory,'data/app-links/izdoom')),false);
-  assert.match(fs.readFileSync(path.join(info.directory,'shells/izlauncher/server/hero-text.py'),'utf8'),/font=os.environ\['HB_FONT'\]/);
+  assert.match(fs.readFileSync(path.join(info.directory,'shells/izlauncher/server/hero-text.py'),'utf8'),/language\/fonts\/DejaVuSans-Bold\.ttf/);
+  const catalog=require(path.join(info.directory,'core/services/app-catalog.cjs'));
+  for(const id of JSON.parse(fs.readFileSync(path.join(info.directory,'mac2jb-runtime.json'))).prebuiltShells){
+    const shell=await catalog.readApp(path.join(info.directory,'shells/izlauncher/prebuilt',id),{validate:false});
+    assert.equal(shell.id,id);
+  }
   await assert.rejects(runtime.prepare(root),/fresh destination/);
 });
 test('changed source code and changed inventory fail before creating a prepared runtime',async t=>{
@@ -41,12 +54,12 @@ test('changed source code and changed inventory fail before creating a prepared 
 test('runtime code, pinned version and catalog drift are rejected before a helper may use them',async t=>{
   const root=fixture(t),info=await runtime.prepare(root);
   for(const relative of ['core/module-adapter.cjs','modules/iz-exchange/module.json',
-    'modules/iz-exchange/.versions/'+info.moduleSha256+'/server/runtime.cjs',
+    'modules/iz-exchange/.versions/'+info.builtIns['iz-exchange'].sha256+'/server/runtime.cjs',
     'data/app-links/iz-exchange/app.json']) {
     const file=path.join(info.directory,relative),saved=fs.readFileSync(file);fs.appendFileSync(file,'\nchanged');
     assert.throws(()=>runtime.verify(root),/Changed/);fs.writeFileSync(file,saved);
   }
-  assert.equal(runtime.verify(root).moduleSha256,info.moduleSha256);
+  assert.deepEqual(runtime.verify(root).builtIns,info.builtIns);
 });
 test('unexpected modules, escaped links and forged package contents cannot extend the base runtime',async t=>{
   const root=fixture(t),info=await runtime.prepare(root);

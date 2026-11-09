@@ -136,7 +136,6 @@ async function main(directory,attempt='',instance=''){
     check(!failures.length,'Continuous graphics call failed: '+JSON.stringify(failures));
     const interval=lastHeartbeat?Number(heartbeat-lastHeartbeat)/frequency:null;
     report.batches.push({status:'continuous',counter:String(heartbeat),interval,frames:frameCount,failures:[],at:new Date().toISOString()});if(report.batches.length>300)report.batches.shift();lastHeartbeat=heartbeat;await save();
-    if(interval)console.log('MintBrew continuous: '+frameCount+' frames / '+interval.toFixed(3)+'s');
    }
    const refresh=state.readFloatLE(104),connected=!!(state.readUInt32LE(32)&1);
    let returnRequested=false;

@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "zig": "0.15.2",
+  "sources": {
+    "native/romfs.S": "841a22d7c76deddfbbcc805c5f09b003699425726e333221b3435abfcfa16de7",
+    "native/namespace.S": "46078c71d3ceb8754a29b53c709867038738690a7500e54c05f5a7f89ddf0a2c",
+    "native/namespace.c": "a3ba6730d0d6e4491ecd8f46657eb9d33c714cdecdf44987567689a62fd8bb90",
+    "native/namespace.h": "49ddbd4f9f2e07796f0fac89bafff27a90402f510e3d48ae7d05250047e4194d",
+    "lib/native/call-source.cjs": "f859e7de093b29558a88912cb67cae43b75837a65843c49809bb155a1232c494",
+    "native/vendor/zstd/zstd.inc": "4cd9bf41ead4f59b0380a5668b9b018010f5a7a893a2948e0ab84e1653a08b38"
+  },
+  "files": {
+    "templates.json": "f985fd4511f56a6b64ddac3d17d529cc1eaad447dcea0c18730c53dc96e63060",
+    "zbic.wasm": "332a0d964cdad308777f3c5d8732e2fa452a81858a008ec323a745ab7e4e763d"
+  }
+}

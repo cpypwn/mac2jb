@@ -22,7 +22,9 @@ required = {
     'mac2jb/vendor/ns2jb-hosts/pepsipu/run.cjs',
     'mac2jb/vendor/ns2jb-hosts/kurumuz/run.cjs',
     'mac2jb/vendor/ns2jb-hosts/cellenseres/run.cjs',
-    'mac2jb/vendor/IZ2S-Platform/engines/izmysh/server/host.cjs',
+    'mac2jb/vendor/ns2jb-hosts/izmysh-legacy/server/host.cjs',
+    'mac2jb/packaging/IZMYSH-legacy-SHA256SUMS',
+    'mac2jb/packaging/IZMYSH-legacy-provenance.json',
     'mac2jb/gui/HostProfile.swift',
     'mac2jb/scripts/host-profiles.cjs',
     'mac2jb/scripts/prepare-host-profiles.cjs',
@@ -106,6 +108,7 @@ required = {
     'mac2jb/scripts/gui-homebrew.cjs',
     'mac2jb/scripts/gui-native-hblauncher.cjs',
     'mac2jb/scripts/gui-savekit-tools.cjs',
+    'mac2jb/scripts/seedsow-full-save.cjs',
     'mac2jb/scripts/gui-dnswitch.cjs',
     'mac2jb/scripts/gui-webkit-research.cjs',
     'mac2jb/scripts/gui-bundled-browser-probes.cjs',
@@ -119,9 +122,22 @@ required = {
     'mac2jb/gui/NSPBoxToolsView.swift',
     'mac2jb/gui/ArtemisHTTPView.swift',
     'mac2jb/integrations/artemis/cpypwn-showcase.lua',
-    'mac2jb/integrations/artemis/seedsowhax-v1-mac2jb.zip',
-    'mac2jb/integrations/artemis/norahax-v1-mac2jb.zip',
+    'mac2jb/integrations/artemis/cpypwn-kaleidoscope.lua',
+    'mac2jb/integrations/artemis/seedsowhax-v2-mac2jb.zip',
+    'mac2jb/integrations/seedsow-editor-pro/Seedsow_Pro_v2_JKSV.zip',
+    'mac2jb/integrations/artemis/norahax-v2-mac2jb.zip',
+    'mac2jb/integrations/artemis/norahax-nora1-mac2jb.zip',
+    'mac2jb/integrations/artemis/hamihax-v2-mac2jb.zip',
+    'mac2jb/packaging/ArtemisLauncher-v2.json',
+    'mac2jb/packaging/ArtemisLauncher-seedsow-full.json',
+    'mac2jb/packaging/ArtemisLauncher-upstream-saves.json',
+    'mac2jb/packaging/SeedsowEditorPro-v0.4.0.json',
+    'mac2jb/packaging/ArtemisLauncher-nora1.json',
     'mac2jb/packaging/ArtemisLauncher-bundles.json',
+    'mac2jb/integrations/gravcirc-rce/GC-v1.1.zip',
+    'mac2jb/integrations/gravcirc-rce/LICENSE',
+    'mac2jb/packaging/GravCirc-v1.1.json',
+    'mac2jb/packaging/GravCirc-v1.1-SHA256SUMS',
     'mac2jb/scripts/check-webkit-research.cjs',
     'mac2jb/packaging/switch2-browser-research-provenance.json',
     'mac2jb/vendor/switch2-captive-portal-research/LICENSE-NOTICE.md',
@@ -213,6 +229,35 @@ block_suffixes = ('.o', '.dylib', '.log', '.xcuserstate', '.pyc', '.bak', '.kate
 violations = []
 with zipfile.ZipFile(archive) as z:
     names = set(z.namelist())
+    try:
+        test_build = json.loads(z.read('mac2jb/packaging/test-build.json')).get('testBuild') is True
+    except (KeyError, ValueError, TypeError):
+        test_build = False
+    personal_required = {
+        'mac2jb/integrations/civswitch/hello.js',
+        'mac2jb/integrations/civswitch/send-hello.cjs',
+        'mac2jb/integrations/artemis/cpypwn-showcase.lua',
+        'mac2jb/integrations/artemis/cpypwn-kaleidoscope.lua',
+        'mac2jb/integrations/artemis/seedsowhax-v2-mac2jb.zip',
+        'mac2jb/integrations/artemis/norahax-v2-mac2jb.zip',
+        'mac2jb/integrations/artemis/norahax-nora1-mac2jb.zip',
+        'mac2jb/integrations/artemis/hamihax-v2-mac2jb.zip',
+    }
+    if not test_build:
+        required.difference_update(personal_required)
+        required.update({
+            'mac2jb/integrations/artemis/upstream-v2/seedsow_save.zip',
+            'mac2jb/integrations/artemis/upstream-v2/nora2_save.zip',
+            'mac2jb/integrations/artemis/upstream-v2/hamidashi_save.zip',
+            'mac2jb/integrations/artemis/upstream-nora1-save.zip',
+        })
+        for name in names:
+            if ('cpypwn' in name.lower() or 'showcase' in name.lower()) and name.startswith('mac2jb/integrations/'):
+                violations.append('personal showcase in public source: ' + name)
+            if name in personal_required:
+                violations.append('personal demo in public source: ' + name)
+            if name == 'mac2jb/scripts/build-seedsow-full-showcase.cjs':
+                violations.append('personal showcase builder in public source')
     def audit_inventory(label, manifest, prefix, manifest_sha256, count, exact=True):
         try:
             data = z.read(manifest)
@@ -311,7 +356,7 @@ with zipfile.ZipFile(archive) as z:
                 raise ValueError('invalid host profile registry')
             for row in profiles:
                 host = row['id']
-                folder = ('vendor/IZ2S-Platform/engines/izmysh' if host == 'izmysh' else
+                folder = ('vendor/ns2jb-hosts/izmysh-legacy' if host == 'izmysh' else
                           'vendor/ns2jb' if host == 'BermTheSequel' else 'vendor/ns2jb-hosts/' + host)
                 label = 'IZMYSH' if host == 'izmysh' else 'Cellenseres' if host == 'cellenseres' else host
                 held = host not in ('pepsipu', 'izmysh')
@@ -328,11 +373,28 @@ with zipfile.ZipFile(archive) as z:
                 if host == 'izmysh':
                     entries = [name[len(prefix):] for name in names if name.startswith(prefix) and not name.endswith('/')]
                     entries.sort()
+                    legacy_manifest = z.read('mac2jb/packaging/IZMYSH-legacy-SHA256SUMS')
+                    if hashlib.sha256(legacy_manifest).hexdigest() != '345f6d1f906f8a7e87678ba6b99d1b2e5abb892bf0bf8c274e4b9b860807d0a7':
+                        violations.append('changed IZMYSH legacy manifest')
+                    expected_legacy = {}
+                    for line in legacy_manifest.decode().splitlines():
+                        digest, relative = line.split('  ', 1)
+                        if (len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)
+                                or relative.startswith('/') or '..' in PurePosixPath(relative).parts
+                                or '\\' in relative or relative in expected_legacy):
+                            raise ValueError('invalid IZMYSH legacy manifest')
+                        expected_legacy[relative] = digest
+                    if len(expected_legacy) != 19 or entries != sorted(expected_legacy):
+                        violations.append('incomplete or unexpected IZMYSH legacy source')
+                    for relative, digest in expected_legacy.items():
+                        name = prefix + relative
+                        if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
+                            violations.append('missing or changed IZMYSH legacy source: ' + name)
                     source_entries = [[name, hashlib.sha256(z.read(prefix + name)).hexdigest()] for name in entries]
                     source_digest = hashlib.sha256(json.dumps(source_entries, separators=(',', ':')).encode()).hexdigest()
                     bootstrap = z.read('mac2jb/' + row['bootstrap'])
                     if (source_digest != row['sourceSha256'] or hashlib.sha256(bootstrap).hexdigest() != row['bootstrapSha256']
-                            or bootstrap != z.read(prefix + 'bootstrap.bas') or row.get('distributionManifest') != 'packaging/IZ2S-Platform-SHA256SUMS'):
+                            or bootstrap != z.read(prefix + 'bootstrap.bas') or row.get('distributionManifest') != 'packaging/IZMYSH-legacy-SHA256SUMS'):
                         violations.append('changed IZMYSH host source or bootstrap digest')
                     continue
                 expected = {}
@@ -420,7 +482,7 @@ with zipfile.ZipFile(archive) as z:
     iz_prefix = 'mac2jb/vendor/IZ2S-Platform/'
     try:
         manifest_bytes = z.read(iz_manifest)
-        if hashlib.sha256(manifest_bytes).hexdigest() != 'bafbf27e48dc9879263977d910fc58fffdb275a95f81f752547f603a3ab0cca0':
+        if hashlib.sha256(manifest_bytes).hexdigest() != '9ac9995abc40c721362c9117a04a00ee4f0bdc585b93999d8bb28a8ee48d0326':
             raise ValueError('changed IZ2S manifest')
         expected = {}
         for line in manifest_bytes.decode().splitlines():
@@ -431,22 +493,17 @@ with zipfile.ZipFile(archive) as z:
                 raise ValueError('invalid IZ2S manifest')
             expected[iz_prefix + relative] = digest
         actual = {name for name in names if name.startswith(iz_prefix) and not name.endswith('/')}
-        if len(expected) != 598 or actual != set(expected):
+        if len(expected) != 1072 or actual != set(expected):
             violations.append('incomplete or unexpected IZ2S source distribution')
         for name, digest in expected.items():
             if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
                 violations.append('missing or changed IZ2S source: ' + name)
         provenance = json.loads(z.read('mac2jb/packaging/IZ2S-Platform-provenance.json'))
         modifications = provenance.get('modifications')
-        changed_paths = {
-            'core/module-paths.cjs',
-            'distribution/tests/module-paths-cache.test.cjs',
-            'shells/izlauncher/app/shaders/app-menu.glsl',
-            'shells/izlauncher/app/shaders/pc-screen-input.glsl',
-        }
-        if (provenance.get('commit') != 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b' or
-                provenance.get('version') != '0.16.0-rc.5' or
-                provenance.get('fileCount') != 598 or
+        changed_paths = set()
+        if (provenance.get('commit') != '73f1b6d98b3fd7c3a44c2b4f6e3b94704ce9435f' or
+                provenance.get('version') != '0.21.0' or
+                provenance.get('fileCount') != 1072 or
                 provenance.get('totalBytes') != sum(z.getinfo(name).file_size for name in expected) or
                 provenance.get('integrityManifestSha256') != hashlib.sha256(manifest_bytes).hexdigest() or
                 not isinstance(modifications, list) or len(modifications) != len(changed_paths) or
@@ -456,6 +513,30 @@ with zipfile.ZipFile(archive) as z:
             violations.append('changed IZ2S upstream provenance')
     except (KeyError, ValueError, UnicodeError):
         violations.append('missing or malformed IZ2S source/provenance')
+    audit_inventory('Gravity Circuit RCE',
+                    'mac2jb/packaging/GravCirc-v1.1-SHA256SUMS',
+                    'mac2jb/integrations/gravcirc-rce/upstream-v1.1/',
+                    'b0fa4f71298e45ed274943df83e843462fc35c70e913f7c3042c26ffb43fd15e', 21)
+    try:
+        gravcirc = json.loads(z.read('mac2jb/packaging/GravCirc-v1.1.json'))
+        packaged_save = z.read('mac2jb/integrations/gravcirc-rce/GC-v1.1.zip')
+        if (gravcirc.get('repository') != 'https://github.com/figurophobia/GravCirc-Switch-rce' or
+                gravcirc.get('revision') != '3bc0851863f2d2b586e73bec822ce1fa31d23b43' or
+                gravcirc.get('release') != 'v1.1' or
+                gravcirc.get('titleId') != '01008d9019128000' or
+                gravcirc.get('sourceManifest') != 'packaging/GravCirc-v1.1-SHA256SUMS' or
+                gravcirc.get('sourceManifestSha256') != 'b0fa4f71298e45ed274943df83e843462fc35c70e913f7c3042c26ffb43fd15e' or
+                gravcirc.get('sourceFileCount') != 21 or
+                gravcirc.get('archive', {}).get('path') != 'integrations/gravcirc-rce/GC-v1.1.zip' or
+                gravcirc.get('archive', {}).get('installableFiles') != 18 or
+                hashlib.sha256(packaged_save).hexdigest() !=
+                'ab018f3e9947dba3750f18b64100fb76366559fce94bd45db3799fcf9028709e'):
+            violations.append('changed Gravity Circuit save or provenance')
+        if (z.read('mac2jb/integrations/gravcirc-rce/LICENSE') !=
+                z.read('mac2jb/integrations/gravcirc-rce/upstream-v1.1/LICENSE')):
+            violations.append('changed Gravity Circuit license notice')
+    except (KeyError, ValueError, TypeError, AttributeError, UnicodeError):
+        violations.append('missing or malformed Gravity Circuit save/provenance')
     audit_inventory('BlitBun',
                     'mac2jb/integrations/blitbun/upstream-SHA256SUMS',
                     'mac2jb/vendor/BlitBun/',
@@ -539,7 +620,7 @@ with zipfile.ZipFile(archive) as z:
     audit_inventory('IZlauncher prebuilt shell',
                     'mac2jb/integrations/izlauncher-shell/prebuilt-SHA256SUMS',
                     'mac2jb/integrations/izlauncher-shell/prebuilt/',
-                    'e640d308eff16f195d2cd72a18b914c481b6f28857f0f723d1970ecb3faa1281', 95)
+                    '7a5ad86fe21b111a925c350511b817363cce0c6d83fb5d4f52292d911e4f335f', 107)
     shell_prefix = 'mac2jb/integrations/izlauncher-shell/'
     shell_files = {name[len(shell_prefix):] for name in names
                    if name.startswith(shell_prefix) and not name.endswith('/')}
@@ -556,13 +637,13 @@ with zipfile.ZipFile(archive) as z:
                 vacoo.get('electron', {}).get('sha256') != '1d75703019bb16461ae65f3081d7e6f5c0b11e901d0ccb5c343bcf7bcdd6435c'):
             violations.append('changed VacooTube upstream provenance')
         shell = json.loads(z.read('mac2jb/integrations/izlauncher-shell/provenance.json'))
-        if (shell.get('platformCommit') != 'd7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b' or
+        if (shell.get('platformCommit') != '73f1b6d98b3fd7c3a44c2b4f6e3b94704ce9435f' or
                 shell.get('moduleCommits') != {
                     'blitbun': '7d4098df26909016ace0fb4760ef9269cd2b4743',
                     'vacootube': 'f28e762a085c4a4adcd655f12b40f4a68d646a4f'} or
                 shell.get('variants') != {
-                    'iz-shell-926e77aeaca833b4': ['blitbun', 'iz-exchange'],
-                    'iz-shell-d37f5c9d3aeab4c6': ['blitbun', 'iz-exchange', 'vacootube']}):
+                    'iz-shell-59e16342c8dad82a': ['blitbun', 'iz-exchange'],
+                    'iz-shell-a41ea85fd4b626aa': ['blitbun', 'iz-exchange', 'vacootube']}):
             violations.append('changed IZlauncher shell provenance')
     except (KeyError, ValueError, TypeError, UnicodeError):
         violations.append('missing or malformed homebrew integration provenance')

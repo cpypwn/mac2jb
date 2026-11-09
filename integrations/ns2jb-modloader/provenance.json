@@ -1,0 +1,10 @@
+{
+  "upstream": "https://github.com/SebaaMG/ns2jb-modloader",
+  "commit": "b3e1736848ea2ed0157148c3049ab139b55c7ac0",
+  "license": "GPL-2.0",
+  "localChanges": [
+    "installed ELicense game-key-card content access adapted from Cellenseres/OunceCake",
+    "offline tests for the installed ELicense path"
+  ],
+  "runtime": "mac2jb copies the bundled loader into a private held-session folder and stages selected local mods there before invoking install.cjs with --run-dir"
+}

@@ -1,0 +1,20 @@
+{
+  "repository": "https://github.com/alula/switch-artemis-launcher",
+  "revision": "ae0249547c1e05df46a63a5c05818914b3ae0706",
+  "sourceUrl": "https://github.com/alula/switch-artemis-launcher/tree/ae0249547c1e05df46a63a5c05818914b3ae0706",
+  "sourceDirectory": "integrations/artemis/upstream-nora1",
+  "sourceArchiveSha256": "75d86417a32f392917e37a71d8cccdfd591f5898b98e9c186208b2e86de49e6c",
+  "title": "Nora, Princess and Stray Cat HD demo",
+  "titleId": "01002eb00ce48000",
+  "files": {
+    "core.lua": "073e603112bc80c5835baecff4130f850984a39ad3d3a99adac6ad7a21e462df",
+    "exploita.lua": "a84bb1230b2edd73f469afd5aba69b3ca191e6c25b444cf93d23342b64d6af18",
+    "http.lua": "2bf16c8f7822a23926e04c637e34d653bf9a4a06d48c3fc6e66ccdca560a5c9b",
+    "inject.iet": "bf79a739584de93d1569523a8a87e7ef8ce65edcf073b5d2ba37453c4085ada4",
+    "inject.lua": "57b50ec448475eab82ac3aa950e8a76308885f4b71b71b42f84876ea2f84dcc2",
+    "proggy.ttf": "527d2a443ce051f93f7e77b855609722b8cb220a9f104b4aa037be5c90b71324",
+    "save9999.dat": "c6e7f275d20dba5156d871b7648542ffce2b1fd91f3c68532f80277557a09acd",
+    "saveg.dat": "163219cc8c4651b8c5a34c342aeb90998cad07be68861cf05c972375036569a0",
+    "system.dat": "41b636bee141926298e77abdc9e9377fdf13325a4bc98faa6d0f443f2ac94c9e"
+  }
+}

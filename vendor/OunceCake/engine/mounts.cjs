@@ -480,14 +480,25 @@ async function prepareGame({ attachment: a, title, baseOnly = false, shouldStop 
         throw error;
 
       prepared.add(error.source.contentPath);
+      let licensed;
       try {
-        await prepareInstalledLicense({ ...a, title: error.source.applicationTitle || title, source: error.source });
+        licensed = await prepareInstalledLicense({ ...a, title: error.source.applicationTitle || title, source: error.source });
       } catch (failure) {
         failure.source ||= error.source;
         throw failure;
       }
       cancelled();
-      return files.open({ title, ...options });
+      try {
+        return await files.open({ title, ...options });
+      } catch (retryError) {
+        if (!licensed && error.source.storage === 2 && retryError.nativeResult?.canonical === 0x7d802) {
+          const unavailable = new Error('Game card content requires rights unavailable in this held RPC session', { cause: retryError });
+          unavailable.code = 'GAME_CARD_RIGHTS_UNAVAILABLE';
+          unavailable.source = retryError.source || error.source;
+          throw unavailable;
+        }
+        throw retryError;
+      }
     }
   }
 

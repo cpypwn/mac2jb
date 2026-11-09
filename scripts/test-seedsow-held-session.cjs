@@ -112,13 +112,21 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
     const fs = require('node:fs');
     const path = require('node:path');
     const root = path.resolve(__dirname, '..');
-    const game = process.argv[3] === '--artemis' ? process.argv[4] : undefined;
-    const backup = game ? path.join(root, 'artemis-backups', game + '-fixture') :
+    const game = process.argv[3] === '--artemis' ? process.argv[4] :
+      process.argv[3] === '--balatro' ? 'balatro' : undefined;
+    const variant = process.argv[3] === '--balatro' ? process.argv[4] : undefined;
+    const backup = game ? path.join(root,
+      game === 'balatro' ? 'balatro-backups' : 'artemis-backups', game + '-fixture') :
       path.join(root, 'seedsow-backups/demo-fixture');
     fs.mkdirSync(backup, {recursive: true});
     fs.appendFileSync(path.join(root, 'install-invocations'), 'install\\n');
     if (process.argv[3] && !game) fs.writeFileSync(path.join(root, 'custom-editor-source'), process.argv[3]);
     if (game) fs.writeFileSync(path.join(root, 'artemis-game'), game);
+    if (game === 'seedsow' && process.argv[5])
+      fs.writeFileSync(path.join(root, 'artemis-variant'), process.argv[5]);
+    if (process.argv[3] === '--editor-pro')
+      fs.writeFileSync(path.join(root, 'editor-pro-selected'), 'yes');
+    if (variant) fs.writeFileSync(path.join(root, 'balatro-variant'), variant);
     const installCount = fs.readFileSync(path.join(root, 'install-invocations'), 'utf8').trim().split('\\n').length;
     const emit = (type, fields) => console.log('MAC2JB_SAVEKIT ' + JSON.stringify({type, ...fields,
       ...(game ? {game} : {})}));
@@ -130,7 +138,9 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
         emit('skipped', {backupPath: backup, files: 273, message: 'Seedsow editor already present; no files were changed'});
       } else {
         emit('progress', {stage: 'writing', message: 'Writing the fixture save'});
-        emit('complete', {backupPath: backup, files: ${Number(options.writtenFiles || 273)}, message: 'Save installed'});
+        emit('complete', {backupPath: backup, files: variant ?
+          (variant === 'showcase' ? 21 : 20) : ${Number(options.writtenFiles || 273)},
+          message: 'Save installed'});
       }
     };
     if (${Boolean(options.absentSave)}) {
@@ -147,6 +157,25 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
       emit('backup', {backupPath: backup, message: 'Original save backed up'});
       emit('failed', {backupPath: backup, message: 'The second save writer stopped'});
       process.exitCode = 1;
+    } else if (${Boolean(options.fullGamePreflightFailure)} && game === 'seedsow' &&
+        process.argv[5] === 'full') {
+      emit('progress', {stage: 'backup', message: 'Checking full-game save'});
+      emit('backup', {backupPath: backup, message: 'Original save backed up'});
+      emit('failed', {backupPath: backup, reason: 'save-preflight',
+        message: 'The full-game autosave is incompatible; no write started'});
+      process.exitCode = 1;
+    } else if (${Boolean(options.balatroUnchangedWriteFailure)} && game === 'balatro') {
+      emit('backup', {backupPath: backup, message: 'Original save backed up'});
+      emit('progress', {stage: 'writing', message: 'Writing Balatro save'});
+      emit('failed', {backupPath: backup, reason: 'save-unchanged',
+        message: 'Balatro save write failed; original files verified unchanged'});
+      process.exitCode = 1;
+    } else if (${Boolean(options.balatroUnverifiedWriteFailure)} && game === 'balatro') {
+      emit('backup', {backupPath: backup, message: 'Original save backed up'});
+      emit('progress', {stage: 'writing', message: 'Writing Balatro save'});
+      emit('failed', {backupPath: backup, reason: 'save-unchanged',
+        message: 'The writer claimed an unchanged save without a verified comparison'});
+      process.exitCode = 2;
     } else if (${Boolean(options.multipleUsers)}) {
       emit('choose-user', {users: ${JSON.stringify([account, 'b'.repeat(32)])}, message: 'Choose account'});
       process.stdin.setEncoding('utf8');
@@ -344,8 +373,135 @@ for (const mode of ['--seedsow-save', '--savekit-tools']) for (const game of ['s
   const result = await session.done;
   assert.equal(result.code, 0, result.output + result.error);
   assert.match(session.events().find(event => event.type === 'verified').message,
-    /Artemis launcher installed and verified/);
+    new RegExp((game === 'seedsow' ? 'Seedsow Lullaby' : 'Nora Princess 2') +
+      ' launcher installed and verified'));
 });
+
+test('held RPC routes Seedsow full-game install to the full-game worker',
+  {timeout: 15000}, async t => {
+  const session = fixture(t, '--savekit-tools');
+  await session.wait('post-run-ready');
+  session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+  await session.wait('rpc-held');
+  session.send({action: 'install-artemis-save', game: 'nora', variant: 'full'});
+  await session.wait('action-rejected');
+  session.send({action: 'install-artemis-save', game: 'seedsow', variant: 'full'});
+  await session.wait('savekit-ready');
+  assert.equal(fs.readFileSync(path.join(session.root, 'artemis-variant'), 'utf8'), 'full');
+  session.send({action: 'finish'});
+  const result = await session.done;
+  assert.equal(result.code, 0, result.output + result.error);
+  assert.match(session.events().find(event => event.type === 'verified').message, /full game/);
+});
+
+test('a full-game save mismatch after backup keeps verified held RPC available',
+  {timeout: 15000}, async t => {
+  const session = fixture(t, '--savekit-tools', {fullGamePreflightFailure: true});
+  await session.wait('post-run-ready');
+  session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+  await session.wait('rpc-held');
+  session.send({action: 'install-artemis-save', game: 'seedsow', variant: 'full'});
+  await session.wait('savekit-recoverable');
+  session.send({action: 'launch-mintbrew'});
+  await session.wait('homebrew-running');
+  session.send({action: 'finish'});
+  const result = await session.done;
+  assert.equal(result.code, 0, result.output + result.error);
+});
+
+test('held RPC routes the bundled Pro editor without a local source',
+  {timeout: 15000}, async t => {
+  const session = fixture(t, '--savekit-tools');
+  await session.wait('post-run-ready');
+  session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+  await session.wait('rpc-held');
+  session.send({action: 'install-seedsow-save', variant: 'pro', sourcePath: '/tmp/other.zip'});
+  await session.wait('action-rejected');
+  session.send({action: 'install-seedsow-save', variant: 'pro'});
+  await session.wait('savekit-ready');
+  assert.equal(fs.readFileSync(path.join(session.root, 'editor-pro-selected'), 'utf8'), 'yes');
+  session.send({action: 'finish'});
+  const result = await session.done;
+  assert.equal(result.code, 0, result.output + result.error);
+  assert.match(session.events().find(event => event.type === 'verified').message, /Editor Pro/);
+});
+
+for (const variant of ['upstream', 'showcase']) test(
+  `Balatro ${variant} save keeps its verified backup and held RPC available`,
+  {timeout: 15000}, async t => {
+    const session = fixture(t, '--seedsow-save');
+    await session.wait('post-run-ready');
+    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+    await session.wait('rpc-held');
+    session.send({action: 'install-balatro-save', variant: 'wrong'});
+    await session.wait('action-rejected');
+    assert.equal(fs.existsSync(path.join(session.root, 'install-invocations')), false);
+    session.send({action: 'install-balatro-save', variant});
+    const backup = await session.wait('savekit-backup');
+    assert.equal(backup.game, 'balatro');
+    assert.match(backup.backupPath, /\/balatro-backups\/balatro-/);
+    const complete = await session.wait('savekit-complete');
+    assert.equal(complete.game, 'balatro');
+    assert.equal(complete.files, variant === 'showcase' ? 21 : 20);
+    assert.equal((await session.wait('savekit-ready')).game, 'balatro');
+    assert.equal(fs.readFileSync(path.join(session.root, 'balatro-variant'), 'utf8'), variant);
+    session.send({action: 'launch-mintbrew'});
+    await session.wait('homebrew-running');
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+    session.send({action: 'finish'});
+    const result = await session.done;
+    assert.equal(result.code, 0, result.output + result.error);
+  });
+
+test('Balatro without an existing save remains a recoverable held RPC action',
+  {timeout: 15000}, async t => {
+    const session = fixture(t, '--seedsow-save', {absentSave: true});
+    await session.wait('post-run-ready');
+    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+    await session.wait('rpc-held');
+    session.send({action: 'install-balatro-save', variant: 'showcase'});
+    const recoverable = await session.wait('savekit-recoverable');
+    assert.equal(recoverable.game, 'balatro');
+    assert.match(recoverable.message, /create a save/);
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+    session.send({action: 'launch-mintbrew'});
+    await session.wait('homebrew-running');
+    session.send({action: 'finish'});
+    const result = await session.done;
+    assert.equal(result.code, 0, result.output + result.error);
+  });
+
+test('Balatro write failure with a verified unchanged save keeps held RPC usable',
+  {timeout: 15000}, async t => {
+    const session = fixture(t, '--seedsow-save', {balatroUnchangedWriteFailure: true});
+    await session.wait('post-run-ready');
+    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+    await session.wait('rpc-held');
+    session.send({action: 'install-balatro-save', variant: 'showcase'});
+    await session.wait('savekit-backup');
+    const recoverable = await session.wait('savekit-recoverable');
+    assert.equal(recoverable.game, 'balatro');
+    assert.match(recoverable.message, /verified unchanged/);
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+    session.send({action: 'launch-mintbrew'});
+    await session.wait('homebrew-running');
+    session.send({action: 'finish'});
+    const result = await session.done;
+    assert.equal(result.code, 0, result.output + result.error);
+  });
+
+test('Balatro write failure without an unchanged-save proof closes held RPC',
+  {timeout: 15000}, async t => {
+    const session = fixture(t, '--seedsow-save', {balatroUnverifiedWriteFailure: true});
+    await session.wait('post-run-ready');
+    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+    await session.wait('rpc-held');
+    session.send({action: 'install-balatro-save', variant: 'showcase'});
+    await session.wait('savekit-failed');
+    await session.wait('rpc-finishing');
+    const result = await session.done;
+    assert.notEqual(result.code, 0);
+  });
 
 test('Artemis download failure before save access keeps verified RPC available',
   {timeout: 15000}, async t => {

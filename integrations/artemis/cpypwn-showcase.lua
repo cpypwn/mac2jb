@@ -1,4 +1,4 @@
-local shades = {"0x8FFFD2", "0x62E9B5", "0xC4FFE8", "0x71D6B2"}
+local shades = {"0x83F5C5", "0x62DDAF", "0xB5FFE1", "0x75E6C1"}
 local patterns = {
     "< >     /\\     < >     \\/     < >",
     "  < >   /  \\   < >   /  \\   < >",
@@ -42,10 +42,12 @@ end
 e:tag{"lyc", color = "0xFF020B08", width = "1280", height = "720", id = "0"}
 e:tag{"fontinit"}
 for i = 1, #shades do
-    draw("cpypwn_shape_" .. i, 206, 88, 34, shades[i], patterns[i])
-    draw("cpypwn_name_" .. i, 292, 180, 112, shades[i], "cpypwn")
+    draw("cpypwn_shape_" .. i, 190, 88, 34, shades[i], patterns[i])
+    draw("cpypwn_glow_" .. i, 290, 180, 118, shades[i], "cpypwn")
+    draw("cpypwn_name_" .. i, 300, 160, 108, "0xF2FFF8", "cpypwn")
     if i ~= 1 then
         e:tag{"lyprop", id = "~cpypwn_shape_" .. i, visible = "0"}
+        e:tag{"lyprop", id = "~cpypwn_glow_" .. i, visible = "0"}
         e:tag{"lyprop", id = "~cpypwn_name_" .. i, visible = "0"}
     end
 end
@@ -56,9 +58,11 @@ function cpypwn_artemis_frame()
         return
     end
     e:tag{"lyprop", id = "~cpypwn_shape_" .. active, visible = "0"}
+    e:tag{"lyprop", id = "~cpypwn_glow_" .. active, visible = "0"}
     e:tag{"lyprop", id = "~cpypwn_name_" .. active, visible = "0"}
     active = active % #shades + 1
     e:tag{"lyprop", id = "~cpypwn_shape_" .. active, visible = "1"}
+    e:tag{"lyprop", id = "~cpypwn_glow_" .. active, visible = "1"}
     e:tag{"lyprop", id = "~cpypwn_name_" .. active, visible = "1"}
 end
 

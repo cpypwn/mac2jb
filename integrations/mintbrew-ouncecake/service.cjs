@@ -9,8 +9,8 @@ const runFile=promisify(execFile);
 const check=(value,message)=>{if(!value)throw Error(message);};
 const blocked=error=>Boolean(error?.cleanupBlocked||error?.errors?.some(blocked));
 const recoverableContentError=error=>!blocked(error)&&!(error instanceof AggregateError)&&
- error?.code!=='FTP_CANCELLED'&&Boolean(error?.nativeResult||
-  /^(Invalid RomFS:|Invalid server index:|Could not prepare |No installed base Program content was found|Content requires an original-content mount)/.test(error?.message||''));
+ error?.code!=='FTP_CANCELLED'&&Boolean(error?.code==='GAME_CARD_RIGHTS_UNAVAILABLE'||error?.nativeResult||
+  /^(Invalid RomFS:|Invalid server index:|Could not prepare |No installed base Program content was found|No installed account ELicense for [0-9a-f]{16}$|Content requires an original-content mount)/.test(error?.message||''));
 
 function ipv4(data){
  check(Buffer.isBuffer(data)&&data.length>=layout.FIELD.network+24,
@@ -28,7 +28,7 @@ function ipv4(data){
 }
 
 function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
- onProgress=()=>{},onFatal=()=>{},onGameList=async()=>{},modules,verifyHeld,rasterGames,liveCheck}={}){
+ onProgress=()=>{},onFatal=()=>{},onGameList=async()=>{},modules,verifyHeld,rasterGames,liveCheck,createZipServer,createFtpBridge}={}){
  check(rpc&&menu&&gpu&&app&&typeof directory==='string'&&typeof root==='string'&&
   typeof runDirectory==='string'&&typeof sourceSession==='string',
   'OunceCake requires the held MintBrew session');
@@ -45,14 +45,14 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
   server:require(path.join(vendor,'engine/server.cjs')),
  };
  let started=false,stopping=false,selected=false,status=protocol.STATES.reading;
- let task,attachment,server,zipServer,run,games=[],failure,closing,nativeImage,baselineHandles;
+ let task,attachment,server,zipServer,ftpBridge,run,games=[],failure,closing,nativeImage,baselineHandles;
  const report={session:rpc.a.session,sourceSession,started:new Date().toISOString(),status:'reading',
   resourcesRetained:true};
  const save=()=>fs.writeFile(path.join(directory,'mintbrew-ouncecake.json'),
   JSON.stringify(report,null,2)+'\n',{mode:0o600});
- const publish=async(state,message='',count=games.length)=>{
+ const publish=async(state,message='',count=games.length,detail='')=>{
   status=state;report.status=Object.keys(protocol.STATES).find(key=>protocol.STATES[key]===state);
-  await rpc.write(mapped,protocol.header(state,count,message));await save();
+  await rpc.write(mapped,protocol.header(state,count,message,detail));await save();
  };
  const live=liveCheck||(async()=>{
   try{
@@ -86,6 +86,10 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
   try{await onGameList();}catch(error){onProgress('MintFTP: '+error.message);}
  }
  async function stopServer(){
+  if(ftpBridge){
+   try{await ftpBridge.close();ftpBridge=null;report.ftpURL=null;}
+   catch(error){error.cleanupBlocked=true;report.cleanupBlocked=true;failure=error;await save();throw error;}
+  }
   if(server){
    try{
     check(await live(),'OunceCake lost its held session before HTTP/WebDAV shutdown');
@@ -159,12 +163,15 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
   let image;
   if(rasterGames)image=await rasterGames(games);
   else{
-   const input=path.join(directory,'ouncecake-games.json');
-   const output=path.join(directory,'ouncecake-games.bin');
-   await fs.writeFile(input,JSON.stringify(games),{flag:'wx',mode:0o600});
-   await runFile('python3',[path.join(__dirname,'raster.py'),input,output],
-    {timeout:60000,maxBuffer:65536});
-   image=await fs.readFile(output);
+   const stage=await fs.mkdtemp(path.join(directory,'ouncecake-catalog-'));
+   try{
+    const input=path.join(stage,'games.json');
+    const output=path.join(stage,'games.bin');
+    await fs.writeFile(input,JSON.stringify(games),{flag:'wx',mode:0o600});
+    await runFile('python3',[path.join(__dirname,'raster.py'),input,output],
+     {timeout:60000,maxBuffer:65536});
+    image=await fs.readFile(output);
+   }finally{await fs.rm(stage,{recursive:true});}
   }
   check(image.length===games.length*protocol.TILE_BYTES&&
    protocol.HEADER_BYTES+image.length<=protocol.STORAGE_BYTES,
@@ -185,7 +192,8 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
   check(started&&!stopping&&!selected&&status===protocol.STATES.catalog&&
    Number.isInteger(index)&&index>=0&&index<games.length,
    'OunceCake game selection is unavailable');
-  selected=true;report.titleId=games[index].titleId;delete report.error;
+  selected=true;report.titleId=games[index].titleId;delete report.error;delete report.zipUnavailable;
+  delete report.ftpUnavailable;report.ftpURL=null;
   await publish(protocol.STATES.preparing,'Preparing '+games[index].name);
   const previous=task;
   track((async()=>{
@@ -222,17 +230,29 @@ function create({rpc,menu,gpu,app,directory,root,runDirectory,sourceSession,
    }
    if(stopping)return;
    check(await live(),'The held RPC session ended before HTTP/WebDAV deployment');
-   zipServer=await require(path.join(vendor,'engine/zip-download.cjs')).startZipServer({
-    index:prepared.index,sourcePort:2121,title:games[index].name});
-   zipServer.setSourceAddress(address);
+   try{
+    zipServer=await (createZipServer||require(path.join(vendor,'engine/zip-download.cjs')).startZipServer)({
+     index:prepared.index,sourcePort:2121,title:games[index].name});
+    zipServer.setSourceAddress(address);
+   }catch(error){
+    if(!['Game has too many downloadable files','Game has too many files for ZIP metadata'].includes(error.message))throw error;
+    report.zipUnavailable=error.message;
+    onProgress('OunceCake: Download all ZIP unavailable for this game; individual files remain available');
+   }
    server=await engine.server.deployServer({attachment,image:nativeImage,...prepared,port:2121,
-    zipPort:zipServer.port});
+    zipPort:zipServer?.port||0});
    if(stopping)return;
    check(!server.address||server.address===address,'OunceCake reported a different console address');
    check(await live(),'The held RPC session ended during HTTP/WebDAV startup');
    report.httpURL='http://'+address+':2121/';
-   await publish(protocol.STATES.running,report.httpURL);
-   onProgress('OunceCake: '+report.httpURL);
+   try{
+    ftpBridge=await (createFtpBridge||require('./ftp-bridge.cjs').start)({
+     index:prepared.index,sourceAddress:address,sourcePort:2121});
+    report.ftpURL='ftp://'+ftpBridge.address+':'+ftpBridge.port+'/';
+   }catch(error){report.ftpUnavailable=error.message;onProgress('OunceCake FTP: '+error.message);}
+   await publish(protocol.STATES.running,'WebDAV '+report.httpURL,games.length,
+    report.ftpURL?'FTP on this Mac '+report.ftpURL:'FTP on this Mac unavailable');
+   onProgress('OunceCake: '+report.httpURL+(report.ftpURL?' · FTP on this Mac '+report.ftpURL:''));
   })());
  }
  async function back(){

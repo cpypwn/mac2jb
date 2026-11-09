@@ -1,0 +1,20 @@
+{
+  "format": "izlauncher.loader",
+  "version": 1,
+  "id": "izmysh",
+  "name": "ns2jb by IZMYSH",
+  "entrypoint": "engines/izmysh/server/host.cjs",
+  "bootstrap": "bootstrap.bas",
+  "arity": 9,
+  "consolePort": 39395,
+  "defaultSettings": {},
+  "settingsSchema": [],
+  "availableIn": [
+    "izlauncher",
+    "original"
+  ],
+  "capabilities": {
+    "izMode": true,
+    "receiptRecovery": false
+  }
+}

@@ -354,10 +354,10 @@ async function serve(context) {
     retiring = true;
     if (!busy) {server.close(); finish();}
   };
+  const isFileSocket = require('../../lib/local-socket.cjs').isFileSocket(socketPath);
   context.bootstrap = {read, writeAt, select, getPlan: () => activePlan};
   try {
     await new Promise((resolve, reject) => {server.once('error', reject); server.listen(socketPath, resolve);});
-    const isFileSocket = require('../../lib/local-socket.cjs').isFileSocket(socketPath);
     if (isFileSocket) await fs.chmod(socketPath, 0o600);
     state.ready = true;
     await save();

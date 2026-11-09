@@ -15,8 +15,13 @@ enum NetworkSelection {
         let changed: Bool
     }
 
-    static func refresh(selected: String, previous: [NetworkAddress], available: [NetworkAddress]) -> Refresh {
+    static func refresh(selected: String, previous: [NetworkAddress], available: [NetworkAddress], lockedInterface: String? = nil) -> Refresh {
         let valid = available.filter { isIPv4($0.address) }
+        if let lockedInterface, !lockedInterface.isEmpty {
+            let eligible = valid.filter { $0.interface == lockedInterface }
+            let replacement = eligible.first { $0.address == selected }?.address ?? eligible.first?.address ?? ""
+            return Refresh(addresses: valid, selected: replacement, changed: replacement != selected)
+        }
         if valid.contains(where: { $0.address == selected }) {
             return Refresh(addresses: valid, selected: selected, changed: false)
         }

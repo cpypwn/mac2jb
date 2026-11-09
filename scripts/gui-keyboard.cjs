@@ -8,17 +8,35 @@ const {autoControllers}=require('./usb-controllers.cjs');
 const MAX_TEXT_BYTES=16*1024,MAX_RECORD_BYTES=MAX_TEXT_BYTES*6+256;
 const neutral=Buffer.alloc(8);
 function prepareText(value) {
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==2||
-    !Object.hasOwn(value,'text')||!Object.hasOwn(value,'delayMs')||typeof value.text!=='string')
+  const hasIndent=value&&typeof value==='object'&&Object.hasOwn(value,'editorAutoIndent');
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==(hasIndent?3:2)||
+    !Object.hasOwn(value,'text')||!Object.hasOwn(value,'delayMs')||typeof value.text!=='string'||
+    hasIndent&&typeof value.editorAutoIndent!=='boolean')
     throw Error('Send text needs a text value and a typing delay.');
   if(!Number.isInteger(value.delayMs)||value.delayMs<1||value.delayMs>2000)
     throw Error('Choose a typing delay from 1 to 2,000 ms.');
   if(!value.text.length)throw Error('Enter some text to send.');
   if(Buffer.byteLength(value.text,'utf8')>MAX_TEXT_BYTES)throw Error('Send at most 16 KiB of text at a time.');
-  const text=value.text.replace(/\r\n/g,'\n'),reports=[];
+  const text=value.text.replace(/\r\n/g,'\n'),reports=[],progress=[];
   // Match sender.c's US layout, including SmileBASIC's inverted letter case.
   const unshifted="-=[]\\;',./`",shifted='_+{}|:"<>?~',codes=[45,46,47,48,49,51,52,54,55,56,53];
-  for(const character of text) {
+  let at=0,inheritedIndent=0,lineStart=true;
+  function add(mods,key,position=at) {
+    reports.push(Buffer.from([mods,0,key,0,0,0,0,0]));
+    progress.push(position);
+  }
+  while(at<text.length) {
+    if(hasIndent&&value.editorAutoIndent&&lineStart) {
+      const lineAt=at;
+      let desired=0;
+      while(text[at+desired]===' ')desired++;
+      at+=desired;
+      while(inheritedIndent>desired){add(0,42,lineAt+desired);inheritedIndent--;}
+      while(inheritedIndent<desired){add(0,44,lineAt+inheritedIndent+1);inheritedIndent++;}
+      lineStart=false;
+      if(at===text.length)break;
+    }
+    const character=text[at++];
     const code=character.charCodeAt(0);let key,mods=0,index;
     if(code>=97&&code<=122){key=4+code-97;mods=2;}
     else if(code>=65&&code<=90)key=4+code-65;
@@ -31,9 +49,10 @@ function prepareText(value) {
     else if((index=shifted.indexOf(character))>=0){key=codes[index];mods=2;}
     else if((index='!@#$%^&*()'.indexOf(character))>=0){key=index===9?39:30+index;mods=2;}
     else throw Error('Use printable ASCII text, tabs and line breaks only. Nothing was typed.');
-    reports.push(Buffer.from([mods,0,key,0,0,0,0,0]));
+    add(mods,key);
+    if(character==='\n')lineStart=true;
   }
-  return {reports,total:reports.length,delayMs:value.delayMs};
+  return {reports,progress,total:text.length,delayMs:value.delayMs};
 }
 function validReport(report) {
   if(!Array.isArray(report)||report.length!==8||Array.from(report).some(n=>!Number.isInteger(n)||n<0||n>255)||report[1]!==0)return false;
@@ -97,7 +116,7 @@ async function main(args=process.argv.slice(2),options={}) {
     } catch {rejectInput('The keyboard input connection closed. Inspect the Switch before reconnecting.');return false;}
   }
   function startText(prepared) {
-    const job={cancelled:false},owned=child;let sent=0,lastProgress=performance.now();
+    const job={cancelled:false},owned=child;let sent=0,lastProgress=performance.now(),lastReported=0;
     textJob=job;
     const active=()=>!job.cancelled&&!stopping&&ready&&child===owned;
     const pause=()=>new Promise(resolve=>{
@@ -116,16 +135,20 @@ async function main(args=process.argv.slice(2),options={}) {
     textTask=(async()=>{
       emit('keyboard-text-started',{total:prepared.total});
       if(!active()||!writeReport(neutral)||!await delivered())return;
-      for(const report of prepared.reports) {
+      for(let index=0;index<prepared.reports.length;index++) {
+        const report=prepared.reports[index];
         if(!active()||!writeReport(report)||!writeReport(neutral)||!await delivered())return;
-        sent++;
+        sent=prepared.progress[index];
         const now=performance.now();
-        if(sent===prepared.total||now-lastProgress>=100) {
-          emit('keyboard-text-progress',{sent,total:prepared.total});lastProgress=now;
+        if(sent>lastReported&&(sent===prepared.total||now-lastProgress>=100)) {
+          emit('keyboard-text-progress',{sent,total:prepared.total});lastProgress=now;lastReported=sent;
         }
         if(!active()||!await pause())return;
       }
-      if(active()){textJob=undefined;emit('keyboard-text-completed',{sent,total:prepared.total});}
+      if(active()){
+        if(lastReported<prepared.total)emit('keyboard-text-progress',{sent:prepared.total,total:prepared.total});
+        textJob=undefined;emit('keyboard-text-completed',{sent:prepared.total,total:prepared.total});
+      }
     })().catch(()=>rejectInput('Text input stopped. Inspect the Switch before reconnecting.')).finally(()=>{
       clearTimeout(job.timer);clearTimeout(job.ackTimer);job.resume=undefined;job.ackResume=undefined;
       if(textJob===job)textJob=undefined;
@@ -233,7 +256,7 @@ async function main(args=process.argv.slice(2),options={}) {
     }
     if(stopping)return 130;
     emit('failed',{...(safeFailures===candidates.length?{retrySafe:true}:{}),message:initFailures===candidates.length
-      ? 'USB initialization failed on every controller. Check that the approved usbgadget driver is installed and loaded.'
+      ? 'USB initialization failed on every controller. Check that usbgadget is loaded and attached to a USB device controller.'
       : 'No USB controller connected. Check the cable and power direction.'});return 1;
   } catch {
     rejectInput('The keyboard helper could not continue. Inspect the Switch before reconnecting.');

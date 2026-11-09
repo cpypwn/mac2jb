@@ -11,9 +11,23 @@ const {Transform} = require('node:stream');
 const {pipeline} = require('node:stream/promises');
 const readline = require('node:readline');
 const provenance = require('../vendor/ns2-savekit/provenance.json');
-const artemis = require('../packaging/ArtemisLauncher-v1.json');
+const artemis = require('../packaging/ArtemisLauncher-v2.json');
+const artemisNora1 = require('../packaging/ArtemisLauncher-nora1.json');
 const artemisBundles = require('../packaging/ArtemisLauncher-bundles.json');
+const artemisUpstreamSaves = require('../packaging/ArtemisLauncher-upstream-saves.json');
+const artemisSeedsowFull = require('../packaging/ArtemisLauncher-seedsow-full.json');
+const editorPro = require('../packaging/SeedsowEditorPro-v0.4.0.json');
+const balatro = require('../integrations/balatro-rce/provenance.json');
+const gravcirc = require('../packaging/GravCirc-v1.1.json');
 const root = path.resolve(__dirname, '..');
+const personalBuild = (() => {
+  if (process.env.MAC2JB_PUBLIC_BUILD === '1') return false;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'packaging/test-build.json'), 'utf8')).testBuild === true;
+  } catch {
+    return true;
+  }
+})();
 const packageRoot = path.join(root, 'vendor/ns2-savekit');
 const programId = provenance.demoProgramId;
 const zip = path.join(packageRoot, provenance.editor.asset);
@@ -35,9 +49,31 @@ const artemisShowcase = 'exploitb.lua';
 const artemisUpdates = ['inject2.lua', 'http2.lua'];
 const artemisBundledFiles = [...artemisFiles, artemisShowcase, ...artemisUpdates].sort();
 const previousArtemisUpdateHashes = new Map([
-  ['inject2.lua', 'b1ba6df3ceb14c81c720e43ea06d821effd6ba648787524f5c3c54ea8f7c1bf2'],
-  ['http2.lua', '8977807d5675753a0334c1b3ae2c8095fdc49ae9bdfd2d2f04912cfecd5ac19e']
+  ['inject2.lua', new Set([
+    'b1ba6df3ceb14c81c720e43ea06d821effd6ba648787524f5c3c54ea8f7c1bf2',
+    '0494a099d0aefd68a146dbeeda4f2934113eb832e168a277b8d7867cc882d3fa'
+  ])],
+  ['http2.lua', new Set([
+    '8977807d5675753a0334c1b3ae2c8095fdc49ae9bdfd2d2f04912cfecd5ac19e',
+    '5f7b73dbb61a5ede3bfc37ad2a6c3f2817f8dad9a8849856aff1a0793ef0ada0'
+  ])]
 ]);
+const previousArtemisShowcaseHash =
+  '776c950260747bb2742c89b98089e44a9729a67a691d609d34e55267eb9e157a';
+const previousArtemisBaseHashes = {
+  seedsow: {
+    'core.lua': '54d25862dc0d796985ebe69f34a345df16671c97372d67062769d28c293d4ed6',
+    'http.lua': '2985b8f7040fc40c7e2c18e5cf857c3c5d14c0b9d081ef0a1a8742eab6f026a1',
+    'inject.lua': 'fcc6b5877084df15b45dfbd8c955ee4f802add7030f1c98f3006794f8949a08b'
+  },
+  nora: {
+    'core.lua': 'bf83da2fbf9753f5a7a98df852938eae0ee7d26dda240991aad08e5ebd810505',
+    'http.lua': '2985b8f7040fc40c7e2c18e5cf857c3c5d14c0b9d081ef0a1a8742eab6f026a1',
+    'inject.lua': 'fcc6b5877084df15b45dfbd8c955ee4f802add7030f1c98f3006794f8949a08b'
+  }
+};
+const balatroTitleId = '0100cd801ce5e000';
+const gravcircTitleId = '01008d9019128000';
 
 function emit(type, fields = {}) {
   process.stdout.write('MAC2JB_SAVEKIT ' + JSON.stringify({type, ...fields}) + '\n');
@@ -46,21 +82,54 @@ function sha(bytes) { return crypto.createHash('sha256').update(bytes).digest('h
 function check(ok, message) { if (!ok) throw Error(message); }
 
 function artemisProfile(game) {
-  check(game === 'seedsow' || game === 'nora', 'Choose Seedsow or Nora for the Artemis launcher.');
+  check(['seedsow', 'nora', 'hamidashi', 'nora1'].includes(game),
+    'Choose Seedsow, Nora 2, Hamidashi or Nora 1 for the Artemis launcher.');
+  if (game === 'nora1') {
+    check(artemisNora1.repository === 'https://github.com/alula/switch-artemis-launcher' &&
+      artemisNora1.revision === 'ae0249547c1e05df46a63a5c05818914b3ae0706' &&
+      artemisNora1.sourceDirectory === 'integrations/artemis/upstream-nora1' &&
+      artemisNora1.titleId === '01002eb00ce48000' &&
+      /^[a-f0-9]{64}$/.test(artemisNora1.sourceArchiveSha256),
+    'The Nora 1 Artemis launcher source is not pinned correctly.');
+    return {title: artemisNora1.title, titleId: artemisNora1.titleId,
+      sha256: artemisNora1.sourceArchiveSha256, game,
+      sourceDirectory: artemisNora1.sourceDirectory};
+  }
   const profile = artemis.assets[game];
   check(profile && /^[a-f0-9]{16}$/.test(profile.titleId) &&
     /^[a-f0-9]{64}$/.test(profile.sha256) &&
-    profile.url === `https://github.com/alula/switch-artemis-launcher/releases/download/v1/${game === 'nora' ? 'nora2' : 'seedsow'}_save.zip`,
+    profile.url === `https://github.com/alula/switch-artemis-launcher/releases/download/v2/${game === 'nora' ? 'nora2' : game}_save.zip`,
   'The Artemis launcher source is not pinned correctly.');
-  return profile;
+  return {...profile, game};
+}
+
+function fullSeedsowProfile() {
+  check(artemisSeedsowFull.titleId === '0100ee5021c9e000' &&
+    artemisSeedsowFull.saveVersion === 1003 &&
+    artemisSeedsowFull.launcherBundle === 'integrations/artemis/seedsowhax-v2-mac2jb.zip' &&
+    artemisSeedsowFull.upstreamLauncherBundle === 'integrations/artemis/upstream-v2/seedsow_save.zip' &&
+    artemisSeedsowFull.revision === 'd85feedc78cc06f86a648f7451fc52891be3d876',
+  'The Seedsow full-game patch source is not pinned correctly.');
+  return {...artemisSeedsowFull, game: 'seedsow'};
 }
 
 function artemisBundleProfile(game) {
   const upstream = artemisProfile(game);
   const bundled = artemisBundles.assets[game];
-  check(artemisBundles.source === 'packaging/ArtemisLauncher-v1.json' &&
+  if (game === 'nora1') {
+    check(bundled &&
+      bundled.path === 'integrations/artemis/norahax-nora1-mac2jb.zip' &&
+      bundled.source === 'packaging/ArtemisLauncher-nora1.json' &&
+      bundled.revision === artemisNora1.revision &&
+      bundled.sourceSha256 === upstream.sha256 &&
+      /^[a-f0-9]{64}$/.test(bundled.sha256),
+    'The bundled Nora 1 Artemis launcher provenance is incomplete.');
+    return bundled;
+  }
+  check(artemisBundles.source === 'packaging/ArtemisLauncher-v2.json' &&
     artemisBundles.revision === artemis.revision && bundled &&
-    bundled.path === `integrations/artemis/${game === 'nora' ? 'norahax' : 'seedsowhax'}-v1-mac2jb.zip` &&
+    bundled.path === `integrations/artemis/${game === 'nora' ? 'norahax' :
+      game === 'hamidashi' ? 'hamihax' : 'seedsowhax'}-v2-mac2jb.zip` &&
     bundled.sourceSha256 === upstream.sha256 && /^[a-f0-9]{64}$/.test(bundled.sha256),
   'The bundled Artemis launcher provenance is incomplete.');
   return bundled;
@@ -105,7 +174,8 @@ async function downloadArtemis(profile, destination) {
 }
 
 async function cachedArtemisArchive(game, profile, cache =
-  path.join(os.homedir(), 'Library/Application Support/mac2jb/Cache/ArtemisLauncher/v1')) {
+  path.join(os.homedir(), 'Library/Application Support/mac2jb/Cache/ArtemisLauncher/v2')) {
+  check(game !== 'nora1', 'The Nora 1 Artemis launcher uses a pinned local source snapshot.');
   await fsp.mkdir(cache, {recursive: true, mode: 0o700});
   const archive = path.join(cache, game + '.zip');
   try {
@@ -127,8 +197,9 @@ async function cachedArtemisArchive(game, profile, cache =
   }
 }
 
-async function artemisShowcaseBytes() {
-  const showcaseSource = path.join(root, 'integrations/artemis/cpypwn-showcase.lua');
+async function artemisShowcaseBytes(game) {
+  const name = game === 'hamidashi' ? 'cpypwn-kaleidoscope.lua' : 'cpypwn-showcase.lua';
+  const showcaseSource = path.join(root, 'integrations/artemis', name);
   const showcaseInfo = await fsp.lstat(showcaseSource);
   check(showcaseInfo.isFile() && !showcaseInfo.isSymbolicLink() &&
     showcaseInfo.size > 0 && showcaseInfo.size < 28 * 1024,
@@ -153,7 +224,7 @@ function cpypwn_artemis_http_frame()
     n2h_http_frame()
     local ready = st.phase ~= "init" and st.phase ~= "dead"
     if ready and not http_label_visible then
-        draw("cpypwn_http_status", 534, 70, 36, "0xFFFFFF", "http listening")
+        draw("cpypwn_http_status", 636, 52, 26, "0xD7FFE8", "http listening on 8080")
     elseif http_label_visible and not ready then
         e:tag{"lyprop", id = "~cpypwn_http_status", visible = "0"}
     end
@@ -180,7 +251,7 @@ function artemisInjectShowcase(inject) {
     'init_console()\nprint = _G.n2h_orig_print\nlaunch("http")\n';
 }
 
-async function stageArtemis(directory, archive, profile) {
+async function stageArtemis(directory, archive, profile, includeShowcase = true) {
   check(sha(await fsp.readFile(archive)) === profile.sha256,
     'The Artemis launcher archive failed its pinned integrity check.');
   const listed = await run('/usr/bin/unzip', ['-Z1', archive], root, 30000);
@@ -201,7 +272,8 @@ async function stageArtemis(directory, archive, profile) {
     total += info.size;
   }
   check(total <= 1024 * 1024, 'The Artemis launcher save is too large.');
-  const showcase = await artemisShowcaseBytes();
+  if (!includeShowcase) return files;
+  const showcase = await artemisShowcaseBytes(profile.game);
   await fsp.writeFile(path.join(directory, artemisShowcase), showcase,
     {flag: 'wx', mode: 0o600});
   const http = await fsp.readFile(path.join(directory, 'http.lua'), 'utf8');
@@ -213,7 +285,22 @@ async function stageArtemis(directory, archive, profile) {
   return [...files, artemisShowcase, ...artemisUpdates].sort();
 }
 
+async function stageUpstreamArtemis(directory, game) {
+  const profile = artemisUpstreamSaves.archives[game];
+  const original = artemisProfile(game);
+  check(artemisUpstreamSaves.repository === artemis.repository &&
+    profile && /^[a-f0-9]{64}$/.test(profile.sha256) &&
+    (game === 'nora1'
+      ? profile.revision === artemisNora1.revision
+      : artemisUpstreamSaves.revision === artemis.revision &&
+        profile.sha256 === original.sha256),
+  'The original Artemis launcher is not pinned correctly.');
+  return stageArtemis(directory, path.join(root, profile.path),
+    {...original, sha256: profile.sha256}, false);
+}
+
 async function stageBundledArtemis(directory, game) {
+  if (!personalBuild) return stageUpstreamArtemis(directory, game);
   const bundled = artemisBundleProfile(game);
   const archive = path.join(root, bundled.path);
   const info = await fsp.lstat(archive);
@@ -240,7 +327,7 @@ async function stageBundledArtemis(directory, game) {
     total += fileInfo.size;
   }
   check(total <= 1024 * 1024, 'The bundled Artemis launcher is too large.');
-  const showcase = await artemisShowcaseBytes();
+  const showcase = await artemisShowcaseBytes(game);
   const http = await fsp.readFile(path.join(directory, 'http.lua'), 'utf8');
   const inject = await fsp.readFile(path.join(directory, 'inject.lua'), 'utf8');
   check(sha(await fsp.readFile(path.join(directory, artemisShowcase))) === sha(showcase) &&
@@ -252,7 +339,7 @@ async function stageBundledArtemis(directory, game) {
   return files;
 }
 
-async function run(executable, args, cwd = root, timeoutMs = 300000) {
+async function run(executable, args, cwd = root, timeoutMs = 300000, quiet = false) {
   return new Promise((resolve, reject) => {
     const child = spawn(executable, args, {cwd, stdio: ['ignore', 'pipe', 'pipe']});
     let stdout = '', stderr = '';
@@ -262,7 +349,7 @@ async function run(executable, args, cwd = root, timeoutMs = 300000) {
       stream.on('data', chunk => {
         if (name === 'stdout') stdout += chunk;
         else stderr += chunk;
-        process.stderr.write(chunk);
+        if (!quiet) process.stderr.write(chunk);
         if (stdout.length + stderr.length > limit) child.kill('SIGTERM');
       });
     }
@@ -293,7 +380,9 @@ function missingSaveArchive(result, titleId) {
 }
 
 function absentSaveError(title) {
-  const error = Error(`${title} has no save data yet. Launch the demo once, create a save, ` +
+  const error = Error(`${title} has no save data yet. Launch ${
+    ['Balatro', 'Gravity Circuit'].includes(title) ? title :
+      title.includes('full game') ? 'the full game' : 'the demo'} once, create a save, ` +
     'close the game fully, then start a fresh held RPC session and retry. No files were changed.');
   error.code = 'SAVE_ABSENT';
   return error;
@@ -338,6 +427,138 @@ async function stageEditor(directory) {
   return files.concat(showcaseFiles).sort();
 }
 
+async function stageProEditor(directory) {
+  check(editorPro.repository === 'https://github.com/purple442/seedsow-lua-editor-pro' &&
+    editorPro.release === 'v0.4.0' && editorPro.titleId === programId &&
+    editorPro.asset === 'integrations/seedsow-editor-pro/Seedsow_Pro_v2_JKSV.zip' &&
+    /^[a-f0-9]{64}$/.test(editorPro.sha256),
+  'The bundled Seedsow Lua Editor Pro is not pinned correctly.');
+  const asset = path.join(root, editorPro.asset);
+  const info = await fsp.lstat(asset);
+  check(info.isFile() && !info.isSymbolicLink() && info.size <= 8 * 1024 * 1024 &&
+    sha(await fsp.readFile(asset)) === editorPro.sha256,
+  'The bundled Seedsow Lua Editor Pro failed its integrity check.');
+  const files = await stageCustomEditor(directory, asset);
+  check(files.length === editorPro.installableFiles && files.includes('sscode006.lua'),
+    'The bundled Seedsow Lua Editor Pro save is incomplete.');
+  return files;
+}
+
+function balatroProfile(variant) {
+  check(variant === 'upstream' || variant === 'showcase',
+    'Choose the original Balatro save or the cpypwn showcase.');
+  check(personalBuild || variant === 'upstream',
+    'The cpypwn showcase is available only in personal test builds.');
+  const profile = balatro.variants?.[variant];
+  check(balatro.titleId === balatroTitleId &&
+    balatro.source === 'https://github.com/Luminger/balatro-switch-rce/releases/tag/v1.1.0' &&
+    profile?.path === `integrations/balatro-rce/${variant === 'upstream' ?
+      'balatro-switch-rce-1.1.0' : 'balatro-cpypwn-showcase'}.zip` &&
+    /^[a-f0-9]{64}$/.test(profile.sha256) &&
+    Number.isSafeInteger(profile.installableFiles) &&
+    profile.installableFiles >= 20 && profile.installableFiles <= 32,
+  'The bundled Balatro save provenance is incomplete.');
+  return profile;
+}
+
+function gravcircProfile() {
+  const profile = gravcirc.archive;
+  check(gravcirc.repository === 'https://github.com/figurophobia/GravCirc-Switch-rce' &&
+    gravcirc.revision === '3bc0851863f2d2b586e73bec822ce1fa31d23b43' &&
+    gravcirc.release === 'v1.1' && gravcirc.titleId === gravcircTitleId &&
+    gravcirc.sourceDirectory === 'integrations/gravcirc-rce/upstream-v1.1' &&
+    gravcirc.sourceManifest === 'packaging/GravCirc-v1.1-SHA256SUMS' &&
+    /^[a-f0-9]{64}$/.test(gravcirc.sourceManifestSha256) &&
+    gravcirc.sourceFileCount === 21 &&
+    profile?.path === 'integrations/gravcirc-rce/GC-v1.1.zip' &&
+    profile.url === 'https://github.com/figurophobia/GravCirc-Switch-rce/releases/download/v1.1/GC-v1.1.zip' &&
+    /^[a-f0-9]{64}$/.test(profile.sha256) && profile.installableFiles === 18,
+  'The bundled Gravity Circuit save provenance is incomplete.');
+  return profile;
+}
+
+function sameSaveEntries(before, after) {
+  if (!Array.isArray(before?.entries) || !Array.isArray(after?.entries) ||
+      before.entries.length !== after.entries.length) return false;
+  const prior = new Map(before.entries.map(entry =>
+    [entry.path, `${entry.size}:${entry.sha256}`]));
+  const paths = new Set(after.entries.map(entry => entry.path));
+  return prior.size === before.entries.length && paths.size === after.entries.length &&
+    after.entries.every(entry =>
+      prior.get(entry.path) === `${entry.size}:${entry.sha256}`);
+}
+
+async function stageNestedSave(directory, profile, title, titleId, rootName, requiredFiles) {
+  const archive = path.join(root, profile.path);
+  const info = await fsp.lstat(archive);
+  check(info.isFile() && !info.isSymbolicLink() && info.size > 0 &&
+    info.size <= 2 * 1024 * 1024 && sha(await fsp.readFile(archive)) === profile.sha256,
+  `The bundled ${title} save failed its pinned integrity check.`);
+  const listed = await run('/usr/bin/unzip', ['-Z1', archive], root, 30000);
+  check(listed.code === 0 && !listed.signal, `Could not inspect the bundled ${title} save.`);
+  const entries = listed.stdout.trimEnd().split('\n');
+  const names = new Set();
+  const expected = new Set();
+  for (const entry of entries) {
+    const relative = entry.startsWith(rootName + '/') ?
+      entry.slice(rootName.length + 1).replace(/\/$/, '') : '';
+    check(entry === '.nx_save_meta.bin' || relative &&
+      relative.split('/').every(part => filePattern.test(part) && part !== '.' && part !== '..'),
+    `The bundled ${title} save contains an unsafe path.`);
+    check(!names.has(entry.toLowerCase()), `The bundled ${title} save repeats a path.`);
+    names.add(entry.toLowerCase());
+    if (!entry.endsWith('/') && entry !== '.nx_save_meta.bin') expected.add(entry);
+  }
+  check(expected.size === profile.installableFiles &&
+    requiredFiles.every(name => expected.has(rootName + '/' + name)) &&
+    entries.includes('.nx_save_meta.bin'),
+  `The bundled ${title} save file list is incomplete.`);
+  await fsp.mkdir(directory, {mode: 0o700});
+  const extracted = await run('/usr/bin/ditto', ['-x', '-k', archive, directory]);
+  check(extracted.code === 0 && !extracted.signal, `Could not unpack the bundled ${title} save.`);
+  const metadata = await fsp.readFile(path.join(directory, '.nx_save_meta.bin'));
+  check(metadata.length >= 13 && metadata.subarray(0, 4).toString() === 'JKSV' &&
+    metadata.readBigUInt64LE(5).toString(16).padStart(16, '0') === titleId,
+  `The bundled ${title} save targets another game.`);
+  const files = [];
+  let total = 0;
+  async function walk(folder, prefix = '') {
+    for (const item of await fsp.readdir(folder, {withFileTypes: true})) {
+      const relative = prefix ? prefix + '/' + item.name : item.name;
+      check(item.isFile() || item.isDirectory(),
+        `The bundled ${title} save contains a link or special file.`);
+      if (item.isDirectory()) {
+        await walk(path.join(folder, item.name), relative);
+        continue;
+      }
+      if (relative === '.nx_save_meta.bin') continue;
+      check(expected.has(relative), `The bundled ${title} save contains an unexpected file.`);
+      const file = path.join(folder, item.name);
+      const fileInfo = await fsp.lstat(file);
+      check(fileInfo.isFile() && !fileInfo.isSymbolicLink() && fileInfo.size > 0 &&
+        fileInfo.size <= 1024 * 1024,
+      `The bundled ${title} save contains an invalid file: ${relative}`);
+      total += fileInfo.size;
+      check(total <= 2 * 1024 * 1024, `The bundled ${title} save is too large.`);
+      files.push(relative);
+    }
+  }
+  await walk(directory);
+  check(files.length === expected.size && files.every(name => expected.has(name)),
+    `The bundled ${title} save unpacked incompletely.`);
+  return files.sort();
+}
+
+async function stageBalatro(directory, variant) {
+  return stageNestedSave(directory, balatroProfile(variant), 'Balatro', balatroTitleId,
+    '.lovegame', ['main.lua', 'conf.lua']);
+}
+
+async function stageGravcirc(directory) {
+  return stageNestedSave(directory, gravcircProfile(), 'Gravity Circuit', gravcircTitleId,
+    '.Gravity Circuit', ['main.lua', 'gc/offsets.lua', 'gc/rpc.lua', 'gc/ftp_server.lua']);
+}
+
 async function stageCustomEditor(directory, sourcePath) {
   check(typeof sourcePath === 'string' && path.isAbsolute(sourcePath) &&
     sourcePath.length <= 4096 && !/[\x00\r\n]/.test(sourcePath),
@@ -367,7 +588,7 @@ async function stageCustomEditor(directory, sourcePath) {
     }
     const archive = directory + '-archive';
     await fsp.mkdir(archive, {recursive: true, mode: 0o700});
-    const extracted = await run('/usr/bin/ditto', ['-x', '-k', source, archive]);
+    const extracted = await run('/usr/bin/ditto', ['-x', '-k', source, archive], root, 300000, true);
     check(extracted.code === 0 && !extracted.signal, 'Could not unpack the selected editor ZIP.');
     const top = (await fsp.readdir(archive)).filter(name =>
       !['.DS_Store', '__MACOSX'].includes(name) && !name.startsWith('._'));
@@ -431,7 +652,7 @@ async function backupProof(directory, uid, titleId) {
   return {...manifest, titleId: id, selection: selected};
 }
 
-function chooseUser(candidates, source = process.stdin, game) {
+function chooseUser(candidates, source = process.stdin, game, title) {
   return new Promise((resolve, reject) => {
     const input = readline.createInterface({input: source});
     let settled = false;
@@ -452,7 +673,9 @@ function chooseUser(candidates, source = process.stdin, game) {
       if (!settled) reject(Error('The save user selection was cancelled.'));
     });
     emit('choose-user', {...(game ? {game} : {}), stage: 'choose-user', users: candidates,
-      message: `Choose the console account whose ${game ? artemisProfile(game).title : 'Seedsow Lullaby demo'} save should be updated.`});
+      message: `Choose the console account whose ${game === 'balatro' ? 'Balatro' :
+        game === 'gravcirc' ? 'Gravity Circuit' :
+          title || (game ? artemisProfile(game).title : 'Seedsow Lullaby demo')} save should be updated.`});
   });
 }
 
@@ -506,16 +729,21 @@ async function customEditorPlan(extracted, backup, files) {
   return {kind: updates.length ? 'custom' : 'current', files: updates, present};
 }
 
-async function artemisInstallPlan(extracted, backup, files) {
+async function artemisInstallPlan(extracted, backup, files, game) {
   const present = new Set(await fsp.readdir(backup));
   const markers = launcherFiles.filter(name => present.has(name));
+  const baseUpdates = new Set();
   if (markers.length) {
     if (markers.length !== launcherFiles.length)
       return {kind: 'partial', files: [], present};
     for (const name of launcherFiles) {
-      if (sha(await fsp.readFile(path.join(backup, name))) !==
-          sha(await fsp.readFile(path.join(extracted, name))))
-        return {kind: 'different', files: [], present};
+      const current = sha(await fsp.readFile(path.join(extracted, name)));
+      const installed = sha(await fsp.readFile(path.join(backup, name)));
+      if (installed !== current) {
+        if (installed !== previousArtemisBaseHashes[game]?.[name])
+          return {kind: 'different', files: [], present};
+        baseUpdates.add(name);
+      }
     }
     if (!['save9999.dat', 'saveg.dat', 'system.dat'].every(name => present.has(name)))
       return {kind: 'partial', files: [], present};
@@ -525,26 +753,37 @@ async function artemisInstallPlan(extracted, backup, files) {
   }
   for (const name of artemisUpdates) {
     if (present.has(name) &&
-        ![sha(await fsp.readFile(path.join(extracted, name))),
-          previousArtemisUpdateHashes.get(name)].includes(
-            sha(await fsp.readFile(path.join(backup, name)))))
+        sha(await fsp.readFile(path.join(extracted, name))) !==
+          sha(await fsp.readFile(path.join(backup, name))) &&
+        !previousArtemisUpdateHashes.get(name)?.has(
+          sha(await fsp.readFile(path.join(backup, name)))))
       return {kind: 'custom-http', files: [], present};
   }
   const updates = [];
   for (const name of files) {
-    if (markers.length && artemisFiles.includes(name)) continue;
-    if (name === artemisShowcase && present.has(name)) continue;
+    if (markers.length && artemisFiles.includes(name)) {
+      if (baseUpdates.has(name)) updates.push(name);
+      continue;
+    }
+    if (name === artemisShowcase && present.has(name) &&
+        sha(await fsp.readFile(path.join(backup, name))) !== previousArtemisShowcaseHash)
+      continue;
     if (!present.has(name) || sha(await fsp.readFile(path.join(backup, name))) !==
         sha(await fsp.readFile(path.join(extracted, name)))) updates.push(name);
   }
-  const customB = present.has(artemisShowcase) &&
-    sha(await fsp.readFile(path.join(backup, artemisShowcase))) !==
-    sha(await fsp.readFile(path.join(extracted, artemisShowcase)));
+  const customB = files.includes(artemisShowcase) && present.has(artemisShowcase) &&
+    ![previousArtemisShowcaseHash,
+      sha(await fsp.readFile(path.join(extracted, artemisShowcase)))].includes(
+      sha(await fsp.readFile(path.join(backup, artemisShowcase))));
   return {kind: updates.length ? markers.length ? 'upgrade' : 'fresh' :
     customB ? 'custom' : 'current', files: updates, present};
 }
 
-async function install(runDirectory, sourcePath) {
+async function install(runDirectory, sourcePath, variant) {
+  check(variant === undefined || variant === 'pro', 'Choose a supported Seedsow editor save.');
+  check(!(variant === 'pro' && sourcePath), 'Choose the bundled Pro editor or a local save.');
+  check(personalBuild || variant === 'pro' || sourcePath,
+    'Choose Lua Editor Pro or provide a local editor save.');
   const runs = fs.realpathSync(path.join(root, 'vendor')).replace(/\/$/, '');
   const runPath = fs.realpathSync(runDirectory);
   check(runPath.startsWith(runs + '/ns2-savekit-host-') &&
@@ -555,8 +794,11 @@ async function install(runDirectory, sourcePath) {
   let backup;
   try {
     emit('progress', {stage: 'checking', message: sourcePath
-      ? 'Checking the selected Seedsow Lua Editor save' : 'Checking the bundled Seedsow Lua Editor save'});
-    const files = sourcePath ? await stageCustomEditor(extracted, sourcePath) : await stageEditor(extracted);
+      ? 'Checking the selected Seedsow Lua Editor save' :
+        variant === 'pro' ? 'Checking Seedsow Lua Editor Pro v0.4.0' :
+          'Checking the bundled Seedsow Lua Editor save'});
+    const files = sourcePath ? await stageCustomEditor(extracted, sourcePath) :
+      variant === 'pro' ? await stageProEditor(extracted) : await stageEditor(extracted);
     emit('progress', {stage: 'finding', message: 'Finding the Seedsow Lullaby demo save'});
     const listed = await tool('save-pull-root.cjs',
       [runPath, '0000000000000000', '.', '--list-uids']);
@@ -580,14 +822,14 @@ async function install(runDirectory, sourcePath) {
     check(pulled.code === 0, 'The Seedsow demo backup failed. No save write was attempted.');
     const original = await backupProof(backup, uid);
     emit('backup', {backupPath: backup, message: 'Seedsow demo save backed up and verified'});
-    const plan = sourcePath ? await customEditorPlan(extracted, backup, files) :
+    const plan = sourcePath || variant === 'pro' ? await customEditorPlan(extracted, backup, files) :
       await editorInstallPlan(extracted, backup, files);
     if (!plan.files.length) {
       const messages = {
         'slot-conflict': 'Save slot 6 contains another game or script. The save was backed up; no files were changed.',
         partial: 'The existing Seedsow editor is incomplete. The save was backed up; no files were changed.',
         different: 'The existing Seedsow editor differs from the bundled version. The save was backed up; no files were changed.',
-        current: sourcePath
+        current: sourcePath || variant === 'pro'
           ? 'The selected Seedsow editor save already matches the console save. The backup was kept; no files were changed.'
           : 'The Seedsow editor and cpypwn showcase are already current. The backup was kept; no files were changed.'
       };
@@ -597,7 +839,8 @@ async function install(runDirectory, sourcePath) {
     }
     const manifest = {
       title: sourcePath ? 'Seedsow Lullaby demo — selected editor save' :
-        'Seedsow Lullaby demo — Seedsow Lua Editor v0.1.3 with cpypwn showcase',
+        variant === 'pro' ? 'Seedsow Lullaby demo — Seedsow Lua Editor Pro v0.4.0' :
+          'Seedsow Lullaby demo — Seedsow Lua Editor v0.1.3 with cpypwn showcase',
       source: extracted, backup,
       files: plan.files.map(name => ({path: '/' + name, local: path.join(extracted, name),
         ...(plan.present.has(name) ? {replace: true} : {})}))
@@ -606,6 +849,7 @@ async function install(runDirectory, sourcePath) {
     await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', {mode: 0o600});
     emit('progress', {stage: 'writing', message: sourcePath
       ? 'Writing selected editor files and verifying every file'
+      : variant === 'pro' ? 'Writing Seedsow Lua Editor Pro and verifying every file'
       : 'Writing the editor and cpypwn showcase, then verifying every file'});
     const written = await tool('save-write-stage.cjs', [runPath, programId, uid, backup, manifestPath]);
     check(written.code === 0 && written.stdout.includes('verified ' + plan.files.length + ' written files after commit'),
@@ -613,6 +857,8 @@ async function install(runDirectory, sourcePath) {
     emit('complete', {backupPath: backup, files: plan.files.length,
       message: sourcePath
         ? 'Selected Seedsow Lua Editor save installed. Keep SmileBASIC open while using this held RPC session.'
+        : variant === 'pro'
+          ? 'Seedsow Lua Editor Pro v0.4.0 installed. Keep SmileBASIC open while using this held RPC session.'
         : 'Seedsow Lua Editor v0.1.3 and cpypwn showcase installed. Keep SmileBASIC open while using this held RPC session.'});
   } catch (error) {
     emit('failed', {backupPath: backup,
@@ -623,8 +869,11 @@ async function install(runDirectory, sourcePath) {
   }
 }
 
-async function installArtemis(runDirectory, game) {
-  const profile = artemisProfile(game);
+async function installArtemis(runDirectory, game, variant = 'demo') {
+  check(variant === 'demo' || game === 'seedsow' && variant === 'full',
+    'Choose Seedsow full game or a supported demo.');
+  const fullGame = game === 'seedsow' && variant === 'full';
+  const profile = fullGame ? fullSeedsowProfile() : artemisProfile(game);
   const runs = fs.realpathSync(path.join(root, 'vendor')).replace(/\/$/, '');
   const runPath = fs.realpathSync(runDirectory);
   check(runPath.startsWith(runs + '/ns2-savekit-host-') &&
@@ -633,10 +882,10 @@ async function installArtemis(runDirectory, game) {
   const stageRoot = await fsp.mkdtemp(path.join(root, 'artemis-stage-'));
   const extracted = path.join(stageRoot, 'save');
   const report = (type, fields) => emit(type, {game, ...fields});
-  let backup;
+  let backup, writeStarted = false;
   try {
     report('progress', {stage: 'checking', message: `Checking the bundled ${profile.title} Artemis launcher`});
-    const files = await stageBundledArtemis(extracted, game);
+    let files = await stageBundledArtemis(extracted, game);
     report('progress', {stage: 'finding', message: `Finding the ${profile.title} save`});
     const listed = await tool('save-pull-root.cjs',
       [runPath, '0000000000000000', '.', '--list-uids']);
@@ -645,7 +894,7 @@ async function installArtemis(runDirectory, game) {
       .filter(line => uidPattern.test(line)))];
     check(uids.length > 0 && uids.length <= 8,
       `No console account IDs were available for the ${profile.title} save.`);
-    const uid = uids.length === 1 ? uids[0] : await chooseUser(uids, process.stdin, game);
+    const uid = uids.length === 1 ? uids[0] : await chooseUser(uids, process.stdin, game, profile.title);
     report('progress', {stage: 'backup', message: `Backing up the selected ${profile.title} save`});
     const backups = path.join(root, 'artemis-backups');
     await fsp.mkdir(backups, {recursive: true, mode: 0o700});
@@ -660,7 +909,9 @@ async function installArtemis(runDirectory, game) {
     check(pulled.code === 0, `The ${profile.title} backup failed. No save write was attempted.`);
     const original = await backupProof(backup, uid, profile.titleId);
     report('backup', {backupPath: backup, message: `${profile.title} save backed up and verified`});
-    const plan = await artemisInstallPlan(extracted, backup, files);
+    if (fullGame) files = await require('./seedsow-full-save.cjs').stageFullSeedsow(extracted, backup);
+    const plan = fullGame ? await customEditorPlan(extracted, backup, files) :
+      await artemisInstallPlan(extracted, backup, files, game);
     if (!plan.files.length) {
       const messages = {
         partial: 'A partial Artemis launcher is already in this save. The backup was kept; no files were changed.',
@@ -673,13 +924,14 @@ async function installArtemis(runDirectory, game) {
       return;
     }
     const manifest = {
-      title: `${profile.title} — Artemis launcher v1`, source: extracted, backup,
+      title: `${profile.title} — Artemis launcher v2`, source: extracted, backup,
       files: plan.files.map(name => ({path: '/' + name, local: path.join(extracted, name),
         ...(plan.present.has(name) ? {replace: true} : {})}))
     };
     const manifestPath = path.join(stageRoot, 'manifest.json');
     await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', {mode: 0o600});
     report('progress', {stage: 'writing', message: `Writing and verifying the ${profile.title} Artemis launcher`});
+    writeStarted = true;
     const written = await tool('save-write-stage.cjs',
       [runPath, profile.titleId, uid, backup, manifestPath]);
     check(written.code === 0 &&
@@ -689,6 +941,7 @@ async function installArtemis(runDirectory, game) {
       message: `${profile.title} Artemis launcher installed and verified with the cpypwn HTTP showcase${plan.present.has(artemisShowcase) && !plan.files.includes(artemisShowcase) ? '; the existing B payload was preserved' : ''}. Keep SmileBASIC open while using this held RPC session.`});
   } catch (error) {
     report('failed', {backupPath: backup,
+      ...(fullGame && backup && !writeStarted ? {reason: 'save-preflight'} : {}),
       ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} : {}), message: error.message});
     process.exitCode = 1;
   } finally {
@@ -696,36 +949,175 @@ async function installArtemis(runDirectory, game) {
   }
 }
 
+async function installNestedSave(runDirectory, config) {
+  const {game, title, titleId, stage, manifestTitle, completionTitle} = config;
+  const runPath = await require('./gui-savekit-tools.cjs').validRun(runDirectory);
+  const stageRoot = await fsp.mkdtemp(path.join(root, `${game}-stage-`));
+  const extracted = path.join(stageRoot, 'save');
+  const report = (type, fields) => emit(type, {game, ...fields});
+  let backup;
+  try {
+    report('progress', {stage: 'checking', message: `Checking the bundled ${title} save`});
+    const files = await stage(extracted);
+    report('progress', {stage: 'finding', message: `Finding the ${title} save account`});
+    const listed = await tool('save-pull-root.cjs',
+      [runPath, '0000000000000000', '.', '--list-uids']);
+    check(listed.code === 0, 'Could not list console accounts. Restart the console before retrying.');
+    const uids = [...new Set(listed.stdout.split('\n').map(line => line.trim().toLowerCase())
+      .filter(line => uidPattern.test(line)))];
+    check(uids.length > 0 && uids.length <= 8,
+      `No console account IDs were available for the ${title} save.`);
+    const uid = uids.length === 1 ? uids[0] : await chooseUser(uids, process.stdin, game);
+    report('progress', {stage: 'backup', message: `Backing up the current ${title} save`});
+    const backups = path.join(root, `${game}-backups`);
+    await fsp.mkdir(backups, {recursive: true, mode: 0o700});
+    backup = await fsp.mkdtemp(path.join(backups, `${game}-${uid.slice(0, 8)}-`));
+    const pulled = await tool('save-pull-root.cjs',
+      [runPath, titleId, backup, uid, '--space', '1', '--type', '1', '--rank', '0']);
+    if (missingSaveArchive(pulled, titleId)) {
+      await fsp.rm(backup, {recursive: true, force: true});
+      backup = undefined;
+      throw absentSaveError(title);
+    }
+    check(pulled.code === 0, `The ${title} backup failed. No save write was attempted.`);
+    const original = await require('./gui-savekit-tools.cjs').verifyPull(backup,
+      {titleId, uid,
+        selection: {space: 1, type: 1, rank: 0, index: 0, staticId: 0}});
+    check(original.selection.uid === uid,
+      `The ${title} save belongs to a different account. No save write was attempted.`);
+    report('backup', {backupPath: backup, message: `${title} save backed up and verified`});
+    const present = new Map(original.entries.map(entry => [entry.path, entry.sha256]));
+    const updates = [];
+    for (const name of files) {
+      if (present.get('/' + name) !== sha(await fsp.readFile(path.join(extracted, name))))
+        updates.push(name);
+    }
+    if (!updates.length) {
+      report('skipped', {backupPath: backup, files: files.length,
+        message: `The selected ${title} save is already installed. The backup was kept.`});
+      return;
+    }
+    const manifest = {title: manifestTitle, source: extracted, backup,
+      files: updates.map(name => ({path: '/' + name, local: path.join(extracted, name),
+        ...(present.has('/' + name) ? {replace: true} : {})}))};
+    const manifestPath = path.join(stageRoot, 'manifest.json');
+    await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', {mode: 0o600});
+    report('progress', {stage: 'writing', message: `Writing and verifying the ${title} save`});
+    const written = await tool('save-write-stage.cjs',
+      [runPath, titleId, uid, backup, manifestPath]);
+    if (written.code !== 0 ||
+        !written.stdout.includes('verified ' + updates.length + ' written files after commit')) {
+      const afterFolder = path.join(stageRoot, 'after-failure');
+      let unchanged = false;
+      try {
+        await fsp.mkdir(afterFolder, {mode: 0o700});
+        const afterPull = await tool('save-pull-root.cjs',
+          [runPath, titleId, afterFolder, uid, '--space', '1', '--type', '1', '--rank', '0']);
+        if (afterPull.code === 0) {
+          const after = await require('./gui-savekit-tools.cjs').verifyPull(afterFolder,
+            {titleId, uid,
+              selection: {space: 1, type: 1, rank: 0, index: 0, staticId: 0}});
+          unchanged = sameSaveEntries(original, after);
+        }
+      } catch {}
+      const errorLine = (written.stderr.match(/^FAILED: ([^\r\n]{1,160})/m) || [])[1];
+      if (unchanged) {
+        const error = Error(`${title} save write stopped${errorLine ? `: ${errorLine}` : ''}. ` +
+          'A fresh read-only export confirms the save files are unchanged. Held RPC remains open.');
+        error.code = 'SAVE_UNCHANGED';
+        throw error;
+      }
+      throw Error(`The ${title} save write was not fully verified. Keep the backup and restart the console.`);
+    }
+    report('complete', {backupPath: backup, files: updates.length,
+      message: `${completionTitle} save installed and verified. Keep SmileBASIC open while using this held RPC session.`});
+  } catch (error) {
+    report('failed', {backupPath: backup,
+      ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} :
+        error.code === 'SAVE_UNCHANGED' ? {reason: 'save-unchanged'} : {}),
+      message: error.message});
+    process.exitCode = 1;
+  } finally {
+    await fsp.rm(stageRoot, {recursive: true, force: true});
+  }
+}
+
+async function installBalatro(runDirectory, variant) {
+  return installNestedSave(runDirectory, {game: 'balatro', title: 'Balatro',
+    titleId: balatroTitleId, stage: directory => stageBalatro(directory, variant),
+    manifestTitle: `Balatro RCE — ${variant}`,
+    completionTitle: variant === 'showcase' ? 'cpypwn showcase' : 'Original Balatro RCE'});
+}
+
+async function installGravcirc(runDirectory) {
+  try {
+    await installNestedSave(runDirectory, {game: 'gravcirc', title: 'Gravity Circuit',
+      titleId: gravcircTitleId, stage: stageGravcirc,
+      manifestTitle: 'Gravity Circuit RCE v1.1', completionTitle: 'Gravity Circuit RCE'});
+  } catch (error) {
+    emit('failed', {game: 'gravcirc', message: error.message});
+    process.exitCode = 1;
+  }
+}
+
 async function main(args = process.argv.slice(2)) {
   if (args.length === 1 && args[0] === '--self-test') {
-    artemisProfile('seedsow');
-    artemisProfile('nora');
-    const artemisDemo = await artemisShowcaseBytes();
+    for (const game of ['seedsow', 'nora', 'hamidashi', 'nora1']) artemisProfile(game);
+    fullSeedsowProfile();
+    const artemisDemo = personalBuild ? await artemisShowcaseBytes() : null;
     const stage = await fsp.mkdtemp(path.join(root, 'seedsow-check-'));
     try {
-      const files = await stageEditor(path.join(stage, 'editor'));
-      for (const game of ['seedsow', 'nora'])
+      const files = personalBuild ? await stageEditor(path.join(stage, 'editor')) : [];
+      check((await stageProEditor(path.join(stage, 'editor-pro'))).length ===
+        editorPro.installableFiles, 'The bundled Seedsow Lua Editor Pro is incomplete.');
+      for (const game of ['seedsow', 'nora', 'hamidashi', 'nora1'])
         check((await stageBundledArtemis(path.join(stage, game), game)).length ===
-          artemisBundledFiles.length, 'The bundled Artemis launcher is incomplete.');
-      console.log('Seedsow editor and Artemis cpypwn showcases verified without RPC: ' +
-        files.length + ' editor files, ' + artemisDemo.length + ' Artemis demo bytes.');
+          (personalBuild ? artemisBundledFiles.length : artemisFiles.length),
+        'The bundled Artemis launcher is incomplete.');
+      check((await stageBalatro(path.join(stage, 'balatro-upstream'), 'upstream')).length ===
+        balatro.variants.upstream.installableFiles,
+      'The bundled Balatro save is incomplete.');
+      if (personalBuild && balatro.variants.showcase.sha256)
+        check((await stageBalatro(path.join(stage, 'balatro-showcase'), 'showcase')).length ===
+          balatro.variants.showcase.installableFiles,
+        'The bundled Balatro showcase is incomplete.');
+      check((await stageGravcirc(path.join(stage, 'gravcirc'))).length ===
+        gravcircProfile().installableFiles,
+      'The bundled Gravity Circuit save is incomplete.');
+      console.log(personalBuild
+        ? 'Seedsow editor and Artemis cpypwn showcases verified without RPC: ' +
+          files.length + ' editor files, ' + artemisDemo.length + ' Artemis demo bytes.'
+        : 'Original Artemis, Balatro, Gravity Circuit and Seedsow Pro saves verified without RPC.');
     } finally { await fsp.rm(stage, {recursive: true, force: true}); }
     return;
   }
-  if (args.length === 3 && args[1] === '--artemis') {
-    await installArtemis(args[0], args[2]);
+  if ((args.length === 3 || args.length === 4) && args[1] === '--artemis') {
+    await installArtemis(args[0], args[2], args[3]);
+    return;
+  }
+  if (args.length === 2 && args[1] === '--editor-pro') {
+    await install(args[0], undefined, 'pro');
+    return;
+  }
+  if (args.length === 3 && args[1] === '--balatro') {
+    await installBalatro(args[0], args[2]);
+    return;
+  }
+  if (args.length === 2 && args[1] === '--gravcirc') {
+    await installGravcirc(args[0]);
     return;
   }
   if (args.length < 1 || args.length > 2)
-    throw Error('Usage: gui-savekit.cjs <patched-run-directory> [editor-save-zip-or-folder] | <patched-run-directory> --artemis seedsow|nora');
+    throw Error('Usage: gui-savekit.cjs <patched-run-directory> [editor-save-zip-or-folder] | <patched-run-directory> --editor-pro | <patched-run-directory> --artemis seedsow|nora|nora1|hamidashi [demo|full] | <patched-run-directory> --balatro upstream|showcase | <patched-run-directory> --gravcirc');
   await install(args[0], args[1]);
 }
 
-module.exports = {stageEditor, stageCustomEditor, backupProof, chooseUser,
+module.exports = {stageEditor, stageProEditor, stageCustomEditor, backupProof, chooseUser,
   existingEditorState, editorInstallPlan,
-  customEditorPlan, artemisProfile,
+  customEditorPlan, artemisProfile, fullSeedsowProfile,
   stageArtemis, stageBundledArtemis, artemisInstallPlan, cachedArtemisArchive,
-  artemisHttpShowcase, artemisInjectShowcase, missingSaveArchive};
+  artemisHttpShowcase, artemisInjectShowcase, missingSaveArchive,
+  balatroProfile, stageBalatro, gravcircProfile, stageGravcirc, sameSaveEntries};
 if (require.main === module) {
   main().catch(error => {emit('failed', {message: error.message}); process.exitCode = 1;});
 }

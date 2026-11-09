@@ -19,12 +19,13 @@ SOURCE_FILES = (
 )
 SOURCE_FOLDERS = (
     'gui', 'scripts', 'packaging', 'drivers', 'assets', 'vendor', 'stremio',
-    'integrations', '.github',
+    'integrations', 'docs', 'tools/bootstrap-kit', 'tools/mcp', '.github',
 )
 RUNTIME_FOLDERS = (
     'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit', 'vendor/HBLauncher',
     'vendor/GPUBrewLauncher', 'vendor/MintBrew', 'vendor/IZ2S-Platform', 'vendor/IZDOOM',
     'vendor/BlitBun', 'vendor/CivSwitch-ControlCenter',
+    'vendor/CivSwitch/installer-creator/node_modules',
     'vendor/OunceCake', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
     'integrations',
 )
@@ -36,6 +37,29 @@ OMITTED_RUNTIME_FOLDERS = (
     'integrations/mintbrew-file-explorer',
     'integrations/mintbrew-native/upstream/apps/mintnes/tests/build',
 )
+PERSONAL_SHOWCASE_PATHS = (
+    'scripts/build-seedsow-full-showcase.cjs',
+    'integrations/civswitch/hello.js',
+    'integrations/civswitch/send-hello.cjs',
+    'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
+    'integrations/balatro-rce/showcase.lua',
+    'integrations/balatro-rce/build-showcase.py',
+    'integrations/seedsow-lua',
+    'integrations/artemis/cpypwn-showcase.lua',
+    'integrations/artemis/cpypwn-kaleidoscope.lua',
+    'integrations/artemis/cpypwn-full-showcase.lua',
+    'integrations/artemis/README-seedsow-full-showcase.txt',
+    'integrations/artemis/seedsowhax-v1-mac2jb.zip',
+    'integrations/artemis/norahax-v1-mac2jb.zip',
+    'integrations/artemis/seedsowhax-v2-mac2jb.zip',
+    'integrations/artemis/norahax-v2-mac2jb.zip',
+    'integrations/artemis/hamihax-v2-mac2jb.zip',
+    'integrations/artemis/norahax-nora1-mac2jb.zip',
+    'integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
+    'integrations/gravcirc-rce/cpypwn-circuit-showcase.lua',
+    'integrations/gravcirc-rce/build-cpypwn-save.py',
+    'integrations/gravcirc-rce/send-showcase.py',
+)
 RUNTIME_FILES = (
     'scripts/gui-host.cjs', 'scripts/usb-controllers.cjs', 'scripts/gui-dnswitch.cjs',
     'scripts/gui-webkit-research.cjs', 'scripts/gui-bundled-browser-probes.cjs',
@@ -44,9 +68,15 @@ RUNTIME_FILES = (
     'packaging/switch2-browser-research-provenance.json',
     'scripts/dnswitch-launch.applescript', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
     'scripts/gui-savekit.cjs', 'scripts/gui-savekit-tools.cjs',
-    'scripts/convert-elden-ring-save.cjs',
-    'scripts/savekit-title-names.cjs', 'packaging/ArtemisLauncher-v1.json',
+    'scripts/seedsow-full-save.cjs',
+    'scripts/savekit-title-names.cjs', 'packaging/ArtemisLauncher-v2.json',
+    'packaging/ArtemisLauncher-seedsow-full.json',
+    'packaging/ArtemisLauncher-upstream-saves.json',
+    'packaging/SeedsowEditorPro-v0.4.0.json',
+    'packaging/ArtemisLauncher-nora1.json',
     'packaging/ArtemisLauncher-bundles.json',
+    'packaging/GravCirc-v1.1.json',
+    'packaging/GravCirc-v1.1-SHA256SUMS',
     'scripts/check-savekit-research.cjs',
     'scripts/prepare-seedsow-host.cjs',
     'scripts/gui-attach.cjs', 'scripts/gui-discover-rpc.cjs', 'scripts/rpc-attachment.cjs',
@@ -56,6 +86,7 @@ RUNTIME_FILES = (
     'scripts/gui-stremio.cjs', 'scripts/check-homebrew-runtime.cjs',
     'scripts/gui-hblauncher.cjs', 'scripts/gui-mintbrew.cjs', 'scripts/prepare-mintbrew.cjs',
     'scripts/gui-native-hblauncher.cjs',
+    'scripts/gui-modloader.cjs',
     'scripts/gui-izlauncher.cjs', 'scripts/prepare-izlauncher.cjs',
     'scripts/gui-custom-homebrew.cjs', 'scripts/custom-rpc-package.cjs',
     'scripts/check-izlauncher-runtime.cjs', 'scripts/izlauncher-modules.cjs',
@@ -64,7 +95,9 @@ RUNTIME_FILES = (
     'scripts/gui-gpubrewlauncher.cjs', 'packaging/GPUBrewLauncher-provenance.json',
     'packaging/GPUBrewLauncher-SHA256SUMS',
     'packaging/IZ2S-Platform-provenance.json',
-    'packaging/IZ2S-Platform-SHA256SUMS', 'scripts/gui-keyboard.cjs',
+    'packaging/IZ2S-Platform-SHA256SUMS',
+    'packaging/IZMYSH-legacy-provenance.json',
+    'packaging/IZMYSH-legacy-SHA256SUMS', 'scripts/gui-keyboard.cjs',
     'scripts/prepare-homebrew-apps.cjs', 'scripts/check-stremio-runtime.cjs',
     'packaging/ftpd-sb-v0.1.0-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-release-SHA256SUMS',
@@ -73,6 +106,12 @@ RUNTIME_FILES = (
     'integrations/civswitch-control-center/mac-host.py',
     'integrations/civswitch-control-center/verify-source.py',
     'integrations/civswitch-control-center/provenance.json',
+    'vendor/CivSwitch/LICENSE', 'vendor/CivSwitch/core.js',
+    'vendor/CivSwitch/installer-creator/install.py',
+    'vendor/CivSwitch/installer-creator/compress_stage.js',
+    'vendor/CivSwitch/installer-creator/package.json',
+    'vendor/CivSwitch/installer-creator/package-lock.json',
+    'vendor/CivSwitch/installer-creator/save_template.bin',
     'packaging/OunceCake-SHA256SUMS', 'packaging/OunceCake-upstream-SHA256SUMS',
     'packaging/stremio-display-SHA256SUMS',
     'packaging/stremio-sample-provenance.json', 'scripts/install-driver.sh',
@@ -122,6 +161,16 @@ def verify_minimum(payload):
 
 def safe(relative, source):
     parts = relative.parts
+    if parts[:3] == ('tools', 'mcp', 'node_modules') or (
+        parts[:2] == ('tools', 'bootstrap-kit') and len(parts) > 2 and parts[2].startswith('generated')
+    ):
+        return False
+    if parts[:3] in (
+        ('integrations', 'ns2jb-modloader', 'state'),
+        ('integrations', 'ns2jb-modloader', 'contents'),
+        ('integrations', 'ns2jb-modloader', 'exefs_patches'),
+    ):
+        return False
     if parts[-2:] == ('packaging', 'test-build.json'):
         return False
     if parts[:4] == ('integrations', 'vacootube', 'upstream', 'runtime'):
@@ -184,6 +233,14 @@ def stage(root, payload, node):
     for name in RUNTIME_FILES:
         if not copy_file(root, root / name, payload / name):
             raise SystemExit('Missing GUI build input: ' + name)
+    if not test_build:
+        for name in PERSONAL_SHOWCASE_PATHS:
+            for base in (payload, source):
+                target = base / name
+                if target.is_dir():
+                    shutil.rmtree(target)
+                elif target.exists():
+                    target.unlink()
     provenance = {
         'version': 'v24.22.1',
         'platform': 'darwin-arm64',

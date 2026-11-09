@@ -1,16 +1,16 @@
 {
-  "scope": "offline shader shell for the pinned IZlauncher base and compatible module contributions",
-  "platformCommit": "d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
+  "scope": "offline shader shell for IZ2S Platform v0.21.0 and compatible Mac module contributions",
+  "platformCommit": "73f1b6d98b3fd7c3a44c2b4f6e3b94704ce9435f",
   "moduleCommits": {
     "blitbun": "7d4098df26909016ace0fb4760ef9269cd2b4743",
     "vacootube": "f28e762a085c4a4adcd655f12b40f4a68d646a4f"
   },
   "variants": {
-    "iz-shell-926e77aeaca833b4": [
+    "iz-shell-59e16342c8dad82a": [
       "blitbun",
       "iz-exchange"
     ],
-    "iz-shell-d37f5c9d3aeab4c6": [
+    "iz-shell-a41ea85fd4b626aa": [
       "blitbun",
       "iz-exchange",
       "vacootube"

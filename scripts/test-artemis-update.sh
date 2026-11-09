@@ -6,4 +6,4 @@ trap 'rm -rf "$TASK_ARTEMIS_TEST"' EXIT
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
   "$ROOT/gui/ArtemisUpdateChecker.swift" "$ROOT/scripts/test-artemis-update.swift" \
   -o "$TASK_ARTEMIS_TEST/tests"
-"$TASK_ARTEMIS_TEST/tests" "$ROOT/packaging/ArtemisLauncher-v1.json"
+"$TASK_ARTEMIS_TEST/tests" "$ROOT/packaging/ArtemisLauncher-v2.json"

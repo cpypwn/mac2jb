@@ -93,7 +93,8 @@ test('text preflight normalizes CRLF, enforces complete ASCII input and bounds w
   for(const value of [{text:'',delayMs:10},{text:'A'.repeat(MAX_TEXT_BYTES+1),delayMs:10},
     {text:'valid prefix\u00e9',delayMs:10},{text:'A\rB',delayMs:10},{text:'A\0',delayMs:10},{text:'A\x7f',delayMs:10},
     {text:'A',delayMs:0},{text:'A',delayMs:2001},{text:'A',delayMs:1.5},{text:'A',delayMs:'10'},
-    {text:'A'},{text:1,delayMs:10},{text:'A',delayMs:10,report:pressed}])assert.throws(()=>prepareText(value));
+    {text:'A'},{text:1,delayMs:10},{text:'A',delayMs:10,report:pressed},
+    {text:'A',delayMs:10,editorAutoIndent:'yes'}])assert.throws(()=>prepareText(value));
   const events=[];
   assert.equal(await main(['--self-test'],{emit:(type,fields)=>events.push({type,...fields}),spawn:()=>{throw Error('Unexpected USB');}}),0);
   assert.equal(events[0].type,'self-test');
@@ -132,6 +133,20 @@ test('literal pasted text preserves symbols, case, tab and line endings without 
   session.input.write(JSON.stringify({report:pressed})+'\n');
   await until(()=>session.writes.at(-1).report[2]===4);
   session.input.end();assert.equal(await session.result,130);
+});
+test('pasted BASIC lines adjust only inherited leading spaces after Enter',()=>{
+  const text='A\n  B\n    C\n D\nE',prepared=prepareText({text,delayMs:10,editorAutoIndent:true});
+  assert.equal(prepared.total,text.length);
+  assert.deepEqual(prepared.reports.map(report=>report[2]),
+    [4,40,44,44,5,40,44,44,6,40,42,42,42,7,40,42,8]);
+  assert.equal(prepared.progress.at(-1),text.length);
+  const trailing=prepareText({text:'  A\n  ',delayMs:10,editorAutoIndent:true});
+  assert.equal(trailing.total,6);
+  assert.equal(trailing.reports.at(-1)[2],40);
+  assert.deepEqual(prepareText({text:'  ',delayMs:10,editorAutoIndent:true}).progress,[1,2]);
+  const literal=prepareText({text:'A\n  B',delayMs:10,editorAutoIndent:false});
+  assert.deepEqual(literal.reports.map(report=>report[2]),[4,40,44,44,5]);
+  assert.deepEqual(prepareText({text:'A\n  B',delayMs:10}).reports,literal.reports);
 });
 test('slow native delivery gates progress and the per-character delay with at most two reports outstanding',async t=>{
   const session=textSession(t,{sinkDelayMs:35});

@@ -1,16 +1,28 @@
 {
-  "source": "packaging/ArtemisLauncher-v1.json",
-  "revision": "b9e6de82934dfda1f2c6219aaf305ed980a3d1ba",
+  "source": "packaging/ArtemisLauncher-v2.json",
+  "revision": "b36c8ec983caf0f062f646d6a11d8739a945bff6",
   "assets": {
     "seedsow": {
-      "path": "integrations/artemis/seedsowhax-v1-mac2jb.zip",
-      "sourceSha256": "d9f3d0204860aa9764106c54b18d2b226dd525d72fbfea6bd7a706e9cfeef76e",
-      "sha256": "a08dc2b6467ed73d2f7ffd4e5cbcbeae048e73760787a0abc5b3d60f26525cb4"
+      "path": "integrations/artemis/seedsowhax-v2-mac2jb.zip",
+      "sourceSha256": "dfd58a4e1151d29e9152b3a528568f95a990aa427914bafc21711e9b7fca691e",
+      "sha256": "77568b7afe824ae087e0c4064ea710c77b0889e77c262a603d2d2eb96e6f6f54"
     },
     "nora": {
-      "path": "integrations/artemis/norahax-v1-mac2jb.zip",
-      "sourceSha256": "8a66a5d67a196f9afbb72098fc233ffa354f5b201d8d230ad69673b2eab82b1f",
-      "sha256": "dc538e4d312af166d5fc117d11f3ca377ccbe5811e68dfafd63de6be14b6394b"
+      "path": "integrations/artemis/norahax-v2-mac2jb.zip",
+      "sourceSha256": "dfdc4101c4ae16d4277e778b1e1d3c88eb1f7250e993de914850a23c669be7ba",
+      "sha256": "395198ad09a2e8619be13e4a001fd4b77d97f83084fd688c016fde2e3bf5f4ac"
+    },
+    "hamidashi": {
+      "path": "integrations/artemis/hamihax-v2-mac2jb.zip",
+      "sourceSha256": "25cde9b3e29a512342564e35557a9b61c628657d9d1442e6f09f80a242e384df",
+      "sha256": "0e23e257c0f7124c17e400ac706ab095ff5c1ccf927d55a8fbaa4d777f83ecbe"
+    },
+    "nora1": {
+      "path": "integrations/artemis/norahax-nora1-mac2jb.zip",
+      "sourceSha256": "75d86417a32f392917e37a71d8cccdfd591f5898b98e9c186208b2e86de49e6c",
+      "sha256": "ba4cc4f3cc6b63fa5063c3b31a36dbb4c44e43fe1d5f3d20132bbedfc154e049",
+      "source": "packaging/ArtemisLauncher-nora1.json",
+      "revision": "ae0249547c1e05df46a63a5c05818914b3ae0706"
     }
   }
 }
