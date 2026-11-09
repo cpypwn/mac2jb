@@ -1158,13 +1158,13 @@ async function main({root, address, emit, lines, verifiedResult, input = process
               if (target === 'native-hblauncher') {
                 const report = privateJSON(path.join(directory, 'result.json'));
                 const {profileById} = require('./host-profiles.cjs');
-                const nativeProfiles = ['kurumuz', 'cellenseres'].map(profileById);
+                const nativeProfiles = ['kurumuz', 'cellenseres', 'astral'].map(profileById);
                 if (!nativeProfiles.some(profile => report.sourceSha256 === profile.sourceSha256)) {
                   const run = await require('./gui-homebrew.cjs').validateRun(root, directory,
                     require('./gui-dump.cjs').verifiedSession);
                   if (!nativeProfiles.some(profile => run.trustedSource?.profileId === profile.id &&
                       run.trustedSource.sourceSha256 === report.sourceSha256))
-                    throw Error('Native HBLauncher apps require a held Kurumuz or Cellenseres RPC session.');
+                    throw Error('Native HBLauncher apps require a supported held RPC session.');
                 }
               }
               const staged = prepared;
