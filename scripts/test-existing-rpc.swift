@@ -20,7 +20,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         base = URL(fileURLWithPath: String(cString: canonical), isDirectory: true)
         free(canonical)
         root = base.appendingPathComponent("runtime")
-        source = base.appendingPathComponent("original-host/runs/switch2-fixture")
+        source = base.appendingPathComponent("Sessions/" + UUID().uuidString + "/vendor/ns2jb/runs/switch2-Fixtur")
         for url in [root, source] { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
         try Data("{\"id\":\"\(host.rawValue)\"}".utf8).write(to: root.appendingPathComponent("selected-host.json"))
         let worker = #"""
@@ -212,6 +212,18 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         check(choices.model.phase == .ready && !choices.model.hasLiveWorkers &&
               choices.model.selectedDiscoveredRPCPath == choices.source.path,
               "multiple verified sessions wait for an explicit selection")
+
+        let sessionFolder = try AttachmentFixture(host: .kurumuz)
+        defer {sessionFolder.dispose()}
+        let selectedSession = sessionFolder.source.deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        sessionFolder.model.existingRPCRunPath = selectedSession.path
+        sessionFolder.model.attachExistingRPC()
+        try sessionFolder.put("release-attach")
+        try await until("session folder resolves to its verified run") {sessionFolder.model.phase == .rpcHeld}
+        check(sessionFolder.model.activeHost == .kurumuz && sessionFolder.model.canLaunchHomebrew &&
+              sessionFolder.model.existingRPCRunPath == selectedSession.path,
+              "a selected session folder accepts only its verified nested run")
 
         for (launcher, action, edition, host) in [("MintBrew", "launch-mintbrew", SmileBASICEdition.full, HostProfile.kurumuz), ("IZlauncher", "launch-izlauncher", .full, .bermTheSequel), ("IZlauncher", "launch-izlauncher", .demo, .bermTheSequel)] {
         var addressReads = 0

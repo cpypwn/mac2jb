@@ -1639,6 +1639,22 @@ private struct GUIEvent: Decodable {
         return url
     }
 
+    private func attachedSourceURL(_ path: String?) -> URL? {
+        guard let path, let selected = attachedRunDirectory else { return nil }
+        let run = Self.canonicalSessionURL(path)
+        if run == selected { return run }
+        guard selected.deletingLastPathComponent().lastPathComponent == "Sessions",
+              UUID(uuidString: selected.lastPathComponent) != nil,
+              run.lastPathComponent.range(of: "^switch2-[A-Za-z0-9]{6}$", options: .regularExpression) != nil else { return nil }
+        let runs = run.deletingLastPathComponent()
+        let host = runs.deletingLastPathComponent()
+        guard runs.lastPathComponent == "runs",
+              host.lastPathComponent == "ns2jb" ||
+                host.lastPathComponent.range(of: "^ns2-savekit-host-[A-Za-z0-9]{6}$", options: .regularExpression) != nil,
+              host.deletingLastPathComponent() == selected.appendingPathComponent("vendor") else { return nil }
+        return run
+    }
+
     private func matchesSaveInstall(_ event: GUIEvent) -> Bool {
         guard let game = activeSaveGame else { return false }
         return legacySeedsowInstall ? event.game == nil : event.game == game.rawValue
@@ -1850,11 +1866,12 @@ private struct GUIEvent: Decodable {
         switch event.type {
         case "rpc-attached":
             guard role == "host", isAttachedRPCSession, phase == .rpcAttaching,
-                  let directory = sessionURL(event.path), directory == attachedRunDirectory,
+                  let directory = attachedSourceURL(event.path),
                   event.sourceSession == directory.lastPathComponent,
                   let profileId = event.profileId, let sourceHost = HostProfile(rawValue: profileId),
                   sourceHost.supportsHeldRPC else { return }
             guard postRun.ready(), postRun.choose(keepRPC: true, dumpFirmware: false), postRun.receive("rpc-held") else { return }
+            attachedRunDirectory = directory
             activeHost = sourceHost
             runFolder = directory
             hostReadyReceived = true

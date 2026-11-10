@@ -106,7 +106,7 @@ function patchAutosave(bytes) {
   return Buffer.concat([Buffer.from('BOWS'), u32(1003), u32(body.length), zlib.deflateSync(body, {level: 9})]);
 }
 
-const injectScript = `function include_lua(engine)
+const showcaseInjectScript = `function include_lua(engine)
     e = engine
     local update_path = "save:/inject2.lua"
     local should_load_update = e:isFileExists(update_path)
@@ -123,9 +123,14 @@ const injectScript = `function include_lua(engine)
     end
 end`;
 
-function injectAsb() {
+const upstreamInjectScript = `function include_lua(engine)
+    e = engine
+    e:include("save:/inject.lua")
+end`;
+
+function injectAsb(preferUpdate = true) {
   const commands = [
-    ['lua', {script: injectScript}],
+    ['lua', {script: preferUpdate ? showcaseInjectScript : upstreamInjectScript}],
     ['calllua', {function: 'include_lua'}],
     ['return', {}]
   ];
@@ -138,7 +143,7 @@ function injectAsb() {
   return Buffer.concat(parts);
 }
 
-async function stageFullSeedsow(directory, backup) {
+async function stageFullSeedsow(directory, backup, {preferUpdate = true} = {}) {
   for (const name of ['autosave.dat', 'saveg.dat', 'system.dat', 'save0001.dat',
     'save0001.png', 'save0001_s.png']) {
     const info = await fs.lstat(path.join(backup, name));
@@ -150,7 +155,7 @@ async function stageFullSeedsow(directory, backup) {
     await fs.rm(path.join(directory, name));
   await fs.writeFile(path.join(directory, 'autosave.dat'), patched, {flag: 'wx', mode: 0o600});
   await fs.writeFile(path.join(directory, 'save0001.dat'), patched, {flag: 'wx', mode: 0o600});
-  await fs.writeFile(path.join(directory, 'inject.asb'), injectAsb(), {flag: 'wx', mode: 0o600});
+  await fs.writeFile(path.join(directory, 'inject.asb'), injectAsb(preferUpdate), {flag: 'wx', mode: 0o600});
   return (await fs.readdir(directory)).sort();
 }
 

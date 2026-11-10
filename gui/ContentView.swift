@@ -22,7 +22,7 @@ struct ContentView: View {
     @StateObject private var civSwitchControlCenter = CivSwitchControlCenterModel()
     @StateObject private var dnsSwitch = DNSwitchModel()
     @StateObject private var webKitResearch = WebKitResearchModel()
-    @StateObject private var artemisUpdates = ArtemisUpdateChecker()
+    @StateObject private var saveGameUpdates = SaveGameUpdateChecker()
     @State private var dnsSwitchDestinationURL = ""
     @State private var readyConfirmed = false
     @State private var setupReady = false
@@ -916,15 +916,15 @@ struct ContentView: View {
     private var existingRPCControls: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("RPC already held").font(.system(size: 15, weight: .semibold))
-            Text("Find an open session on this Mac or choose its switch2 run folder. Keep the original host and SmileBASIC open.")
+            Text("Find an open session on this Mac or choose its session folder. Keep the original host and SmileBASIC open.")
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-            TextField("Existing run folder", text: $model.existingRPCRunPath)
+            TextField("Existing session or run folder", text: $model.existingRPCRunPath)
                 .textFieldStyle(.roundedBorder).font(.system(size: 11))
                 .disabled(!model.canChangeHost)
             HStack(spacing: 12) {
                 Button("Find open RPC") { model.findOpenRPC() }
                     .disabled(!model.canFindOpenRPC || updater.blocksNewSession)
-                Button("Choose run folder…") { chooseExistingRPCRun() }.disabled(!model.canChangeHost)
+                Button("Choose session folder…") { chooseExistingRPCRun() }.disabled(!model.canChangeHost)
                 Spacer()
                 Button("Connect to open RPC") { model.attachExistingRPC() }
                     .disabled(!model.canAttachExistingRPC || updater.blocksNewSession)
@@ -955,8 +955,8 @@ struct ContentView: View {
     private func chooseExistingRPCRun() {
         guard model.canChangeHost else { return }
         let picker = NSOpenPanel()
-        picker.title = "Choose the existing RPC run"
-        picker.message = "Select the switch2 run folder shown by the original host. It contains connection.json and result.json."
+        picker.title = "Choose the existing RPC session"
+        picker.message = "Select the session folder in Application Support/mac2jb/Sessions, or its switch2 run folder."
         picker.canChooseDirectories = true; picker.canChooseFiles = false; picker.allowsMultipleSelection = false
         if model.existingRPCRunPath.hasPrefix("/") { picker.directoryURL = URL(fileURLWithPath: model.existingRPCRunPath) }
         picker.begin { response in
@@ -1456,19 +1456,6 @@ struct ContentView: View {
                         .help("Nora, Princess and Crying Cat 2 demo")
                     Button("Install hamihax") { model.installArtemisSave(game: .hamidashi) }
                 }.disabled(!model.canInstallArtemisSave)
-                HStack(spacing: 10) {
-                    Button("Check for upstream update") {
-                        artemisUpdates.check(runtimeRoot: model.runtime?.root)
-                    }.disabled(artemisUpdates.isChecking || model.runtime == nil || model.phase == .installingSave)
-                    if artemisUpdates.isChecking { ProgressView().controlSize(.small) }
-                    if let page = artemisUpdates.releasePage {
-                        Link("View release ↗", destination: page)
-                    }
-                }.font(.system(size: 10))
-                if !artemisUpdates.message.isEmpty {
-                    Text(artemisUpdates.message)
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                }
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Seedsow Lua Editor save")
                         .font(.system(size: 11, weight: .semibold))
@@ -1488,12 +1475,8 @@ struct ContentView: View {
                     Text("Requires the Switch 1 cartridge in compatibility mode; the native Switch 2 edition is unsupported. This save opens a Lua and FTP launcher instead of the game.")
                         .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        Button("Install Balatro RCE") { model.installBalatroSave(variant: .upstream) }
-                        if AppBuildIdentity.isTestBuild {
-                            Button("Install cpypwn showcase") { model.installBalatroSave(variant: .showcase) }
-                        }
-                    }.disabled(!model.canInstallBalatroSave)
+                    Button("Install Balatro RCE") { model.installBalatroSave(variant: .upstream) }
+                        .disabled(!model.canInstallBalatroSave)
                 }.padding(.top, 4)
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Gravity Circuit")
@@ -1552,6 +1535,24 @@ struct ContentView: View {
                         .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                 } else {
                     Text("Close the selected game before installing. Installing can replace game progress; the original save is verified and kept as a backup.")
+                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 10) {
+                    Button("Check all save game updates") {
+                        saveGameUpdates.check(runtimeRoot: model.runtime?.root)
+                    }.disabled(saveGameUpdates.isChecking || model.runtime == nil || model.phase == .installingSave)
+                    if saveGameUpdates.isChecking { ProgressView().controlSize(.small) }
+                    if !saveGameUpdates.releasePages.isEmpty {
+                        Menu("View releases") {
+                            ForEach(saveGameUpdates.releasePages) { page in
+                                Link(page.name, destination: page.url)
+                            }
+                        }
+                    }
+                }.font(.system(size: 10))
+                if !saveGameUpdates.message.isEmpty {
+                    Text(saveGameUpdates.message)
                         .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                         .fixedSize(horizontal: false, vertical: true)
                 }

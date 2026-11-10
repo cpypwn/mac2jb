@@ -6,7 +6,8 @@ const path = require('node:path');
 const http = require('node:http');
 const net = require('node:net');
 const crypto = require('node:crypto');
-const {prepare, validateManifest, OWNER, ATTEMPT} = require('./rpc-attachment.cjs');
+const {prepare, selectedRun, validateManifest, OWNER, ATTEMPT} = require('./rpc-attachment.cjs');
+const {discover} = require('./gui-discover-rpc.cjs');
 const {validateRun} = require('./gui-homebrew.cjs');
 const {verifiedSession} = require('./gui-dump.cjs');
 const {profileById} = require('./host-profiles.cjs');
@@ -17,9 +18,11 @@ const write = async (file, value) => {
   await fs.writeFile(file, JSON.stringify(value), {mode:0o600});
 };
 const update = async (file, mutate) => {const value = JSON.parse(await fs.readFile(file)); mutate(value); await write(file, value);};
-async function fixture(t, hostId = 'BermTheSequel', patched = false) {
+async function fixture(t, hostId = 'BermTheSequel', patched = false, sessionLayout = false) {
   const base = await fs.mkdtemp('/private/tmp/m2a-');
-  const root = path.join(base, 'app'), directory = path.join(base, 'original/switch2-test');
+  const sessionFolder = path.join(base, 'Sessions/01234567-89AB-CDEF-0123-456789ABCDEF');
+  const root = path.join(base, 'app'), directory = sessionLayout ?
+    path.join(sessionFolder, 'vendor/ns2jb/runs/switch2-aBc123') : path.join(base, 'original/switch2-test');
   await fs.mkdir(root, {mode:0o700});
   await fs.mkdir(directory, {recursive:true, mode:0o700});
   await fs.cp(path.join(repository, 'vendor/ns2jb'), path.join(root, 'vendor/ns2jb'), {recursive:true});
@@ -85,7 +88,7 @@ async function fixture(t, hostId = 'BermTheSequel', patched = false) {
   const attach = async (config = {kind:'local', runDirectory:directory}, options) => {
     const context = await prepare(root, config, options); contexts.push(context); return context;
   };
-  return {base, root, directory, resultFile, reportFile, proofFile, socketPath, state, requests, retainedRequests, attach};
+  return {base, root, directory, sessionFolder, resultFile, reportFile, proofFile, socketPath, state, requests, retainedRequests, attach};
 }
 
 test('local attachment validates real held proof and both live endpoints without starting a host', async t => {
@@ -103,6 +106,30 @@ test('local attachment validates real held proof and both live endpoints without
   await assert.rejects(context.verify(), /closed/);
   assert.equal(f.state.ready, true); assert.ok((await fs.stat(f.socketPath)).isSocket());
   assert.deepEqual(await fs.readFile(f.resultFile), before);
+});
+
+test('a selected mac2jb session folder resolves to its only verified live RPC run', async t => {
+  const f = await fixture(t, 'kurumuz', true, true);
+  const archived = path.join(f.directory, 'switch2/memory/reserved-gap-1794273122713-wave-overlap.cjs');
+  await fs.copyFile(path.join(f.directory, 'switch2/memory/wave-overlap.cjs'), archived);
+  const found = await discover(f.root, path.join(f.base, 'Sessions'));
+  assert.deepEqual(found.candidates.map(candidate => candidate.path), [f.directory]);
+  const selected = await selectedRun(f.root, f.sessionFolder);
+  assert.equal(selected.directory, f.directory);
+  const context = await f.attach({kind:'local', runDirectory:f.sessionFolder});
+  assert.equal(context.directory, f.directory);
+  assert.equal(context.sourceSession, 'switch2-aBc123');
+  assert.equal((await context.verify()).ready, true);
+});
+
+test('generated Kurumuz wave-overlap archive accepts only its pinned source bytes', async t => {
+  const f = await fixture(t, 'kurumuz', true);
+  const archived = path.join(f.directory, 'switch2/memory/reserved-gap-1794273122713-wave-overlap.cjs');
+  await fs.copyFile(path.join(f.directory, 'switch2/memory/wave-overlap.cjs'), archived);
+  const context = await f.attach();
+  assert.equal((await context.verify()).ready, true);
+  await fs.appendFile(archived, '\nthrow Error("altered archive")\n');
+  await assert.rejects(context.verify(), /unrecognized executable/);
 });
 
 for (const application of ['hblauncher','mintbrew','native-hblauncher','izlauncher']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {

@@ -885,7 +885,8 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
   let backup, writeStarted = false;
   try {
     report('progress', {stage: 'checking', message: `Checking the bundled ${profile.title} Artemis launcher`});
-    let files = await stageBundledArtemis(extracted, game);
+    let files = fullGame ? await stageUpstreamArtemis(extracted, game) :
+      await stageBundledArtemis(extracted, game);
     report('progress', {stage: 'finding', message: `Finding the ${profile.title} save`});
     const listed = await tool('save-pull-root.cjs',
       [runPath, '0000000000000000', '.', '--list-uids']);
@@ -909,7 +910,8 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
     check(pulled.code === 0, `The ${profile.title} backup failed. No save write was attempted.`);
     const original = await backupProof(backup, uid, profile.titleId);
     report('backup', {backupPath: backup, message: `${profile.title} save backed up and verified`});
-    if (fullGame) files = await require('./seedsow-full-save.cjs').stageFullSeedsow(extracted, backup);
+    if (fullGame) files = await require('./seedsow-full-save.cjs').stageFullSeedsow(
+      extracted, backup, {preferUpdate: false});
     const plan = fullGame ? await customEditorPlan(extracted, backup, files) :
       await artemisInstallPlan(extracted, backup, files, game);
     if (!plan.files.length) {
@@ -918,7 +920,9 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
         different: 'The existing Artemis launcher differs from the pinned release. The backup was kept; no files were changed.',
         'custom-http': 'The existing Artemis HTTP update differs from mac2jb. The backup was kept; no files were changed.',
         custom: 'The Artemis HTTP showcase is current. The existing B payload was preserved; no files were changed.',
-        current: 'The Artemis launcher and cpypwn HTTP showcase are current. The backup was kept; no files were changed.'
+        current: fullGame
+          ? 'The upstream Artemis launcher is current. The backup was kept; no files were changed.'
+          : 'The Artemis launcher and cpypwn HTTP showcase are current. The backup was kept; no files were changed.'
       };
       report('skipped', {backupPath: backup, files: original.files, message: messages[plan.kind]});
       return;
@@ -938,7 +942,9 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
       written.stdout.includes('verified ' + plan.files.length + ' written files after commit'),
     `The ${profile.title} launcher write was not fully verified. Keep the backup and restart the console.`);
     report('complete', {backupPath: backup, files: plan.files.length,
-      message: `${profile.title} Artemis launcher installed and verified with the cpypwn HTTP showcase${plan.present.has(artemisShowcase) && !plan.files.includes(artemisShowcase) ? '; the existing B payload was preserved' : ''}. Keep SmileBASIC open while using this held RPC session.`});
+      message: fullGame
+        ? `${profile.title} upstream Artemis launcher installed and verified. Keep SmileBASIC open while using this held RPC session.`
+        : `${profile.title} Artemis launcher installed and verified with the cpypwn HTTP showcase${plan.present.has(artemisShowcase) && !plan.files.includes(artemisShowcase) ? '; the existing B payload was preserved' : ''}. Keep SmileBASIC open while using this held RPC session.`});
   } catch (error) {
     report('failed', {backupPath: backup,
       ...(fullGame && backup && !writeStarted ? {reason: 'save-preflight'} : {}),
@@ -1115,7 +1121,7 @@ async function main(args = process.argv.slice(2)) {
 module.exports = {stageEditor, stageProEditor, stageCustomEditor, backupProof, chooseUser,
   existingEditorState, editorInstallPlan,
   customEditorPlan, artemisProfile, fullSeedsowProfile,
-  stageArtemis, stageBundledArtemis, artemisInstallPlan, cachedArtemisArchive,
+  stageArtemis, stageUpstreamArtemis, stageBundledArtemis, artemisInstallPlan, cachedArtemisArchive,
   artemisHttpShowcase, artemisInjectShowcase, missingSaveArchive,
   balatroProfile, stageBalatro, gravcircProfile, stageGravcirc, sameSaveEntries};
 if (require.main === module) {

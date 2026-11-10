@@ -58,7 +58,7 @@ async function verifyCode(directory, source, replacements = {}) {
     const memory = /^switch2\/memory\/reserved-gap-\d{10,17}-(.+)\.cjs$/.exec(name);
     if (memory) {
       const suffix = memory[1], direct = new Set(['cache-address-plan','fs-memory-control','session-tools',
-        'run-control','capture-workers','native-links']);
+        'run-control','capture-workers','native-links','wave-overlap']);
       if (direct.has(suffix)) return 'switch2/memory/'+suffix+'.cjs';
       if (['native-worker','affinity'].includes(suffix)) return 'switch2/app/'+suffix+'.cjs';
       const copies = {'source':'probe-reserved-gap','address-plan-source':'cache-address-plan',
@@ -256,6 +256,34 @@ async function manifestDirectory(root) {
   await owned(directory, 'directory'); return directory;
 }
 
+async function selectedRun(root, selected, options = {}) {
+  await owned(selected, 'directory');
+  if (!(await absent(path.join(selected, 'result.json')))) return inspect(root, selected, options);
+  const vendor = path.join(selected, 'vendor');
+  await owned(vendor, 'directory');
+  const matches = [];
+  for (const host of (await fs.readdir(vendor, {withFileTypes:true})).slice(0, 32)) {
+    if (!host.isDirectory() || host.name !== 'ns2jb' &&
+        !/^ns2-savekit-host-[A-Za-z0-9]{6}$/.test(host.name)) continue;
+    const runs = path.join(vendor, host.name, 'runs');
+    try {await owned(runs, 'directory');} catch {continue;}
+    for (const run of (await fs.readdir(runs, {withFileTypes:true})).slice(0, 32)) {
+      if (!run.isDirectory() || !/^switch2-[A-Za-z0-9]{6}$/.test(run.name)) continue;
+      try {
+        const current = await inspect(root, path.join(runs, run.name),
+          {...options, timeoutMs:Math.min(options.timeoutMs ?? 2500, 2500), allowRetainedBusy:true});
+        matches.push(current);
+      } catch {}
+      if (matches.length > 1) break;
+    }
+    if (matches.length > 1) break;
+  }
+  check(matches.length === 1, matches.length
+    ? 'This session has multiple live RPC runs. Choose the specific run folder.'
+    : 'No verified live RPC run was found inside this session folder.');
+  return matches[0];
+}
+
 async function validateManifest(root, directory, manifestPath = process.env.MAC2JB_ATTACHED_RUN_MANIFEST, options = {}) {
   root = await fs.realpath(root);
   check(typeof manifestPath === 'string' && path.dirname(manifestPath) === path.join(root, '.attachments') &&
@@ -276,12 +304,11 @@ async function validateManifest(root, directory, manifestPath = process.env.MAC2
 
 async function prepare(root, config, options = {}) {
   check(config && config.kind === 'local' && typeof config.runDirectory === 'string' &&
-    path.isAbsolute(config.runDirectory), 'Choose an existing local held RPC run folder.');
+    path.isAbsolute(config.runDirectory), 'Choose an existing local held RPC run or session folder.');
   root = await fs.realpath(root);
-  const directory = path.resolve(config.runDirectory);
-  // reject aliased selections rather than following a link into another run.
-  check(config.runDirectory === directory, 'Use the canonical path to the held run folder.');
-  const initial = await inspect(root, directory, options);
+  const selected = path.resolve(config.runDirectory);
+  check(config.runDirectory === selected, 'Use the canonical path to the held run or session folder.');
+  const initial = await selectedRun(root, selected, options), directory = initial.directory;
   check(await absent(path.join(directory, ATTEMPT)) && await absent(path.join(directory, OWNER)),
     'This held session already has a homebrew attempt. Start a fresh console session.');
   const token = crypto.randomBytes(32).toString('hex');
@@ -365,4 +392,4 @@ async function prepare(root, config, options = {}) {
     manifestPath, verify, abortVerification, claimApplication, releaseApplication, close};
 }
 
-module.exports = {prepare, validateManifest, inspect, verifyCode, statusRequest, retainedInfo, OWNER, ATTEMPT};
+module.exports = {prepare, validateManifest, inspect, selectedRun, verifyCode, statusRequest, retainedInfo, OWNER, ATTEMPT};

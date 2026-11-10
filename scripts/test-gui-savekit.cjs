@@ -8,7 +8,8 @@ const {spawn} = require('node:child_process');
 const {PassThrough} = require('node:stream');
 const {stageEditor, stageProEditor, stageCustomEditor, backupProof, chooseUser,
   existingEditorState, editorInstallPlan, customEditorPlan,
-  artemisProfile, fullSeedsowProfile, stageArtemis, artemisInstallPlan, cachedArtemisArchive,
+  artemisProfile, fullSeedsowProfile, stageArtemis, stageUpstreamArtemis,
+  artemisInstallPlan, cachedArtemisArchive,
   stageBundledArtemis, artemisHttpShowcase, artemisInjectShowcase,
   missingSaveArchive, balatroProfile, stageBalatro, gravcircProfile, stageGravcirc,
   sameSaveEntries} = require('./gui-savekit.cjs');
@@ -70,6 +71,31 @@ test('full Seedsow install patches only a verified v1003 autosave', async t => {
   assert.deepEqual(await fs.readFile(path.join(stage, 'save0001.dat')), patched);
   assert.equal(injectAsb().subarray(0, 5).toString('hex'), '4153420000');
   await assert.rejects(fs.stat(path.join(stage, 'saveg.dat')), {code: 'ENOENT'});
+});
+
+test('full Seedsow installer stages the upstream menu even after a showcase install', async t => {
+  const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-seedsow-upstream-'));
+  t.after(() => fs.rm(temp, {recursive: true, force: true}));
+  const backup = path.join(temp, 'backup'), stage = path.join(temp, 'stage');
+  await fs.mkdir(backup);
+  for (const name of ['autosave.dat', 'saveg.dat', 'system.dat', 'save0001.dat',
+    'save0001.png', 'save0001_s.png'])
+    await fs.writeFile(path.join(backup, name), name === 'autosave.dat'
+      ? fullSeedsowFixture() : Buffer.from(name));
+  await fs.writeFile(path.join(backup, 'inject.asb'), injectAsb());
+  await fs.writeFile(path.join(backup, 'inject2.lua'), 'personal HTTP display');
+  const staged = await stageUpstreamArtemis(stage, 'seedsow');
+  assert.equal(staged.includes('inject.lua'), true);
+  assert.equal(staged.includes('inject2.lua'), false);
+  const files = await stageFullSeedsow(stage, backup, {preferUpdate: false});
+  assert.equal(files.includes('exploitb.lua'), false);
+  assert.equal(files.includes('http2.lua'), false);
+  const loader = await fs.readFile(path.join(stage, 'inject.asb'));
+  assert.equal(loader.includes(Buffer.from('save:/inject.lua')), true);
+  assert.equal(loader.includes(Buffer.from('inject2.lua')), false);
+  const plan = await customEditorPlan(stage, backup, files);
+  assert.equal(plan.files.includes('inject.asb'), true);
+  assert.equal(plan.files.includes('inject.lua'), true);
 });
 
 test('Seedsow Lua Editor Pro stages its pinned demo save without replacing slot 6', async t => {

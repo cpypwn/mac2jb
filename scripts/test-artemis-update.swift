@@ -1,56 +1,53 @@
 import Foundation
 
-@main struct ArtemisUpdateTests {
+@main @MainActor struct SaveGameUpdateTests {
     static func main() throws {
         guard CommandLine.arguments.count == 2 else { throw NSError(domain: "test", code: 1) }
-        let manifest = try JSONSerialization.jsonObject(
-            with: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))) as? [String: Any]
-        guard manifest?["repository"] as? String == "https://github.com/alula/switch-artemis-launcher",
-              manifest?["release"] as? String == "v2" else {
-            throw NSError(domain: "test", code: 2)
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
+        let sources = try SaveGameUpdateChecker.loadSources(runtimeRoot: root)
+        precondition(sources.map(\.name) == [
+            "Artemis launcher", "Seedsow Lua Editor Pro", "Seedsow Lua Editor",
+            "Balatro RCE", "Gravity Circuit"
+        ])
+        let artemis = sources[0]
+        precondition(artemis.pinnedTag == "v2")
+        precondition(Set(artemis.expectedDigests.keys) == Set([
+            "seedsow_save.zip", "nora2_save.zip", "hamidashi_save.zip"
+        ]))
+        precondition(sources[3].expectedDigests.isEmpty)
+        for source in sources {
+            precondition(source.apiURL?.host == "api.github.com")
+            precondition(!source.pinnedTag.isEmpty)
         }
-        guard let assets = manifest?["assets"] as? [String: [String: String]],
-              let seedsowHash = assets["seedsow"]?["sha256"],
-              let noraHash = assets["nora"]?["sha256"],
-              let hamidashiHash = assets["hamidashi"]?["sha256"] else {
-            throw NSError(domain: "test", code: 3)
-        }
-        let expected = ["seedsow_save.zip": seedsowHash, "nora2_save.zip": noraHash,
-                        "hamidashi_save.zip": hamidashiHash]
-        let valid = try JSONDecoder().decode(ArtemisReleaseInfo.self,
-            from: Data(#"{"tag_name":"v2","html_url":"https://github.com/alula/switch-artemis-launcher/releases/tag/v2"}"#.utf8))
-        precondition(valid.page?.absoluteString == "https://github.com/alula/switch-artemis-launcher/releases/tag/v2")
-        precondition(valid.assetStatus(expected: expected) == .unavailable)
-        let matching = ArtemisReleaseInfo(tag_name: "v2", html_url: valid.html_url, assets: [
-            .init(name: "seedsow_save.zip", digest: "sha256:\(seedsowHash)"),
-            .init(name: "nora2_save.zip", digest: "sha256:\(noraHash)"),
-            .init(name: "hamidashi_save.zip", digest: "sha256:\(hamidashiHash)")
-        ])
-        precondition(matching.assetStatus(expected: expected) == .matches)
-        let changed = ArtemisReleaseInfo(tag_name: "v2", html_url: valid.html_url, assets: [
-            .init(name: "seedsow_save.zip", digest: "sha256:\(String(repeating: "0", count: 64))"),
-            .init(name: "nora2_save.zip", digest: "sha256:\(noraHash)"),
-            .init(name: "hamidashi_save.zip", digest: "sha256:\(hamidashiHash)")
-        ])
-        precondition(changed.assetStatus(expected: expected) == .changed)
-        let missing = ArtemisReleaseInfo(tag_name: "v2", html_url: valid.html_url, assets: [
-            .init(name: "seedsow_save.zip", digest: nil),
-            .init(name: "nora2_save.zip", digest: "sha256:\(noraHash)"),
-            .init(name: "hamidashi_save.zip", digest: "sha256:\(hamidashiHash)")
-        ])
-        precondition(missing.assetStatus(expected: expected) == .unavailable)
+
+        let valid = SaveReleaseInfo(tag_name: "v2",
+            html_url: "https://github.com/alula/switch-artemis-launcher/releases/tag/v2", assets: nil)
+        precondition(valid.page(for: artemis.repository)?.absoluteString == valid.html_url)
+        precondition(valid.assetStatus(expected: artemis.expectedDigests) == .unavailable)
+        let matching = SaveReleaseInfo(tag_name: "v2", html_url: valid.html_url,
+            assets: artemis.expectedDigests.map { .init(name: $0.key, digest: "sha256:\($0.value)") })
+        precondition(matching.assetStatus(expected: artemis.expectedDigests) == .matches)
+        let changed = SaveReleaseInfo(tag_name: "v2", html_url: valid.html_url,
+            assets: artemis.expectedDigests.map { name, hash in
+                .init(name: name, digest: "sha256:\(name == "seedsow_save.zip" ? String(repeating: "0", count: 64) : hash)")
+            })
+        precondition(changed.assetStatus(expected: artemis.expectedDigests) == .changed)
+        let missing = SaveReleaseInfo(tag_name: "v2", html_url: valid.html_url,
+            assets: artemis.expectedDigests.map { name, hash in
+                .init(name: name, digest: name == "seedsow_save.zip" ? nil : "sha256:\(hash)")
+            })
+        precondition(missing.assetStatus(expected: artemis.expectedDigests) == .unavailable)
         for url in [
             "http://github.com/alula/switch-artemis-launcher/releases/tag/v2",
             "https://example.com/alula/switch-artemis-launcher/releases/tag/v2",
             "https://github.com/alula/other/releases/tag/v2",
             "https://github.com/alula/switch-artemis-launcher/releases/tag/v2?redirect=1"
         ] {
-            let row = ArtemisReleaseInfo(tag_name: "v2", html_url: url, assets: nil)
-            precondition(row.page == nil)
+            precondition(SaveReleaseInfo(tag_name: "v2", html_url: url, assets: nil)
+                .page(for: artemis.repository) == nil)
         }
-        let unsafe = ArtemisReleaseInfo(tag_name: "../v2", html_url:
-            "https://github.com/alula/switch-artemis-launcher/releases/tag/../v2", assets: nil)
-        precondition(unsafe.page == nil)
-        print("Artemis update release URL and pinned manifest checks passed")
+        precondition(SaveReleaseInfo(tag_name: "../v2", html_url: valid.html_url, assets: nil)
+            .page(for: artemis.repository) == nil)
+        print("All pinned save game update sources and release URL checks passed")
     }
 }
