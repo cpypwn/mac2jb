@@ -46,7 +46,7 @@ Keep toolkit and runtime host-profile versions matched. If a new app session rep
 
 Suggested workflow: preflight → transfer matching bootstrap into intended empty editor → checksum in Direct mode → compare **both** values → save/run using the host profile's existing flow → discover held session → status. A mismatch means text needs repair; do not treat a partial transfer as valid.
 
-For a verified kurumuz bootstrap, save it as `NS2` and use the app's saved-bootstrap flow with its five-argument `START`. IZMYSH uses its matching `NS2I` bootstrap and nine-argument `START`; renaming a file does not change that ABI. SmileBASIC supports Favorites: see [the bootstrap helper guide](BOOTSTRAP_KIT.md) for registration and the initialization-only boundary.
+For a verified kurumuz bootstrap, save it as `NS2` and use the app's saved-bootstrap flow with its five-argument `START`. SmileBASIC supports Favorites: see [the bootstrap helper guide](BOOTSTRAP_KIT.md) for registration and the initialization-only boundary.
 
 The checksum uses `PRGEDIT 0` and `PRGGET$()` and changes the editor read position. It does not execute or save program code. It includes the LF returned with each line plus an explicit separator and detects accidental transfer errors, not cryptographic tampering. It covers the expected lines; inspect for unwanted extra text as well. Run it at a clear Direct prompt, never paste it into the program editor.
 

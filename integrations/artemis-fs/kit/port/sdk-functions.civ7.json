@@ -1,0 +1,50 @@
+{
+  "allocate": {
+    "offset": 5320512,
+    "bytes": "fd7bbca9f70b00f9f65702a9f44f03a9fd030091f30300aac00280523f2000f1a303005428fc41d3f50301aa08f10092280008cb09e5009208fd42d308e50092"
+  },
+  "free": {
+    "offset": 6179984,
+    "bytes": "102a00b0119244f91082249120021fd6"
+  },
+  "getService": {
+    "offset": 1363088,
+    "bytes": "fd7bbea9f44f01a9fd030091f30300aa020100b4280040395f0400f181050054ed031faaeb031faaea031faa05000014ed031faaeb031faaea031faae8031f2a"
+  },
+  "send": {
+    "offset": 1477716,
+    "bytes": "410400d4c0035fd6"
+  },
+  "close": {
+    "offset": 1477604,
+    "bytes": "c10200d4c0035fd6"
+  },
+  "memset": {
+    "offset": 5384944,
+    "bytes": "420600b44800008b5f0c00f10100003901f11f38a30500545f1c00f1010400390108003901e11f3801d11f38e30400545f2400f1010c003901c11f3863040054"
+  },
+  "memcpy": {
+    "offset": 5383392,
+    "bytes": "ec0301cb8a0940924b000aeb69040054e90301aae80300aa6a0100b4e80301aae90300aacc0910374c0a08376c000036080140392801003908000a8b29000a8b"
+  },
+  "memmove": {
+    "offset": 5384240,
+    "bytes": "1f0001ebe00a00542800028b1f0100eb090300540900028b3f0101eba90200541f0001eb820200545f8000f1c3060054290840f2c00600540a01805228f17db2"
+  },
+  "svcQueryMemory": {
+    "offset": 1477388,
+    "bytes": "e10f1ff8c10000d4e20340f9410000b9ff430091c0035fd6"
+  },
+  "svcSendSyncRequest": {
+    "offset": 1477716,
+    "bytes": "410400d4c0035fd6"
+  },
+  "svcCloseHandle": {
+    "offset": 1477604,
+    "bytes": "c10200d4c0035fd6"
+  },
+  "crc32": {
+    "offset": 470864,
+    "bytes": "e203022a5fcb1514"
+  }
+}

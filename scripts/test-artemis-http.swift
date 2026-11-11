@@ -49,6 +49,9 @@ private final class StubURLProtocol: URLProtocol {
         check((try? ArtemisHTTPRoute.request(address: "192.168.1.42", route: .eval,
                                              body: Data(repeating: 65, count: ArtemisHTTPRoute.bodyLimit + 1))) == nil,
               "upstream body cap")
+        check(ArtemisHTTPRoute.recognizedStatus("n2h HTTP server (seedsow)\nPOST /eval\n"), "Seedsow v2 status")
+        check(ArtemisHTTPRoute.recognizedStatus("n2h HTTP server (nora2)\nPOST /eval\n"), "Nora v2 status")
+        check(!ArtemisHTTPRoute.recognizedStatus("unknown HTTP server\n"), "unknown status")
 
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [StubURLProtocol.self]
@@ -56,7 +59,7 @@ private final class StubURLProtocol: URLProtocol {
         model.address = "192.168.1.42"
         StubURLProtocol.reply = { request in
             precondition(request.url?.path == "/status", "status route")
-            return (200, "nora2hax/seedsow HTTP server\nPOST /eval body=<lua>\n")
+            return (200, "n2h HTTP server (seedsow)\nPOST /eval body=<lua>\n")
         }
         await model.checkConnection()
         check(model.message == "Artemis launcher HTTP server is ready", "status identity")

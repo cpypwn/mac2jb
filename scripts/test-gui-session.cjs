@@ -44,7 +44,7 @@ function fixture(t, options = {}) {
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-session-test-')));
   const host=path.join(root,'vendor/ns2jb');
   fs.mkdirSync(host,{recursive:true});fs.mkdirSync(path.join(root,'scripts'));
-  for(const name of ['gui-host.cjs','usb-controllers.cjs','gui-session.cjs','host-profiles.cjs','izlauncher-panel.cjs','homebrew-reentry.cjs'])
+  for(const name of ['gui-host.cjs','usb-controllers.cjs','gui-session.cjs','host-profiles.cjs','homebrew-reentry.cjs'])
     fs.copyFileSync(path.join(__dirname,name),path.join(root,'scripts',name));
   fs.mkdirSync(path.join(root,'integrations/mintbrew-native'),{recursive:true});
   fs.copyFileSync(path.join(__dirname,'../integrations/mintbrew-native/sd-roms.cjs'),
@@ -118,7 +118,6 @@ function fixture(t, options = {}) {
     "if(folder==='/tmp/soulja-launcher')return {kind:'launcher',app:{name:'SouljaLauncher 2'},launcherFolder:path.join(root,'staged/souljalauncher'),cleanup:async()=>{fs.writeFileSync(path.join(root,'custom-preflight-cleaned'),'yes');}};",
     "if(folder==='/tmp/ouncecake-fork')return {kind:'rpc-app',adapter:'ouncecake',app:{name:'OunceCake fork'},packageFolder:path.join(root,'staged/ouncecake-fork'),cleanup:async()=>{fs.writeFileSync(path.join(root,'custom-preflight-cleaned'),'yes');}};",
     "if(folder==='/tmp/custom-rpc-app')return {kind:'rpc-app',adapter:'script',app:{name:'Custom RPC app'},packageFolder:path.join(root,'staged/custom-rpc-app'),cleanup:async()=>{fs.writeFileSync(path.join(root,'custom-preflight-cleaned'),'yes');}};",
-    "if(folder==='/tmp/custom-iz-module')return {kind:'iz-module',moduleId:'custom-iz',app:{name:'Custom IZ module'},cleanup:async()=>{fs.writeFileSync(path.join(root,'custom-preflight-cleaned'),'yes');}};",
     "if(folder==='/tmp/custom-native-app')return {kind:'native-app',app:{name:'Custom native app'},packageFolder:path.join(root,'staged/custom-native-app'),cleanup:async()=>{fs.writeFileSync(path.join(root,'custom-preflight-cleaned'),'yes');}};",
     "if(folder!=='/tmp/custom-gpu-app')throw Error('Missing or incompatible app.json');",
     "return {app:{name:'My GPU App'},appFolder:path.join(root,'staged/my-gpu-app'),cleanup:async()=>{fs.writeFileSync(path.join(root,'custom-preflight-cleaned'),'yes');}};};",
@@ -141,11 +140,6 @@ function fixture(t, options = {}) {
   fs.writeFileSync(path.join(root,'scripts/gui-native-hblauncher.cjs'),
     "require('fs').writeFileSync('native-entry-used',process.argv[2]);require('fs').writeFileSync('native-args',JSON.stringify(process.argv.slice(3)));\n"+
     fs.readFileSync(path.join(root,'scripts/gui-homebrew.cjs'),'utf8'));
-  fs.writeFileSync(path.join(root,'scripts/gui-izlauncher.cjs'),
-    "require('fs').writeFileSync('iz-args',JSON.stringify(process.argv.slice(3)));require('fs').writeFileSync('iz-entry-used',process.argv[2]);require('fs').writeFileSync('iz-stream-host',process.env.HB_STREAM_HOST||'');process.stdin.on('data',bytes=>{require('fs').appendFileSync('iz-controls',bytes);console.log('MAC2JB_HOMEBREW '+JSON.stringify({type:'module-progress',message:'Queued 1 IZlauncher module from this Mac.'}));});process.stdin.resume();\n"+
-    fs.readFileSync(path.join(root,'scripts/gui-homebrew.cjs'),'utf8'));
-  fs.writeFileSync(path.join(root,'scripts/izlauncher-modules.cjs'),
-    "exports.validIds=ids=>Array.isArray(ids)&&ids.length<=15&&ids.every(id=>/^[a-z0-9][a-z0-9-]{0,47}$/.test(id))&&new Set(ids).size===ids.length;exports.catalog=async()=>[{id:'blitbun',name:'BlitBun',version:'1.14.4',description:'Streaming'}];exports.withDefaults=ids=>[...new Set(['iz-exchange','blitbun','vacootube',...ids])];\n");
   if(options.customRpcAdapter==='ouncecake') {
     fs.writeFileSync(path.join(root,'scripts/gui-custom-homebrew.cjs'),[
       "const fs=require('fs'),assert=require('assert/strict');",
@@ -459,7 +453,7 @@ test('zero exit without final cleanup cannot claim verification',{timeout:10000}
   const session=fixture(t,{badCleanup:true});await session.wait('post-run-ready');session.send({action:'finish'});
   assert.notEqual((await session.done).code,0);assert.equal(session.events().some(event=>event.type==='verified'),false);
 });
-for(const application of ['mintbrew','native-hblauncher','izlauncher','custom-homebrew'])
+for(const application of ['mintbrew','native-hblauncher','custom-homebrew'])
 test(application+' requires confirmed held RPC, runs once, and stops before base RPC cleanup',{timeout:10000},async t=>{
   const session=fixture(t,{expectHomebrew:true,hblStopMs:150});await session.wait('post-run-ready');
   const launch={action:'launch-'+application,...(application==='custom-homebrew'?{customHomebrewPath:'/tmp/custom-gpu-app'}:{})};
@@ -468,9 +462,8 @@ test(application+' requires confirmed held RPC, runs once, and stops before base
   session.send(launch);await session.wait('homebrew-started');await session.wait('homebrew-running');
   session.send({action:'launch-mintbrew'});session.send({action:'rpc-status'});await session.wait('action-rejected',3);
   session.send({action:'finish'});const outcome=await session.done;assert.equal(outcome.code,0,outcome.output+outcome.error);
-  assert.equal(fs.existsSync(path.join(session.root,{mintbrew:'mint-entry-used','native-hblauncher':'native-entry-used',izlauncher:'iz-entry-used','custom-homebrew':'custom-entry-used'}[application])),true);
+  assert.equal(fs.existsSync(path.join(session.root,{mintbrew:'mint-entry-used','native-hblauncher':'native-entry-used','custom-homebrew':'custom-entry-used'}[application])),true);
   if(application==='native-hblauncher')assert.deepEqual(JSON.parse(fs.readFileSync(path.join(session.root,'native-args'),'utf8')),['--sd-rom-folder','/sd/roms/nes']);
-  if(application==='izlauncher')assert.equal(fs.readFileSync(path.join(session.root,'iz-stream-host'),'utf8'),'127.0.0.1');
   assert.equal(fs.readFileSync(path.join(session.host,'hbl-was-stopped.txt'),'utf8'),'true');
   assert.equal(fs.readFileSync(path.join(session.root,'homebrew-invocations.txt'),'utf8').trim().split('\n').length,1);
   assert.match(session.events().find(event=>event.type==='verified').message,/retained graphics allocations/);
@@ -479,30 +472,10 @@ test('packaged runtime rejects unavailable launchers without consuming held RPC'
   const session=fixture(t,{expectHomebrew:true});await session.wait('post-run-ready');
   fs.writeFileSync(path.join(session.root,'packaging/runtime-homebrew.json'),JSON.stringify({allowed:['mintbrew','ouncecake']}));
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  session.send({action:'list-izlauncher-modules'});
+  session.send({action:'launch-native-hblauncher'});
   assert.match((await session.wait('action-rejected')).message,/unavailable in this build/);
-  session.send({action:'launch-izlauncher'});
-  assert.match((await session.wait('action-rejected',2)).message,/unavailable in this build/);
   assert.equal(fs.existsSync(path.join(session.root,'homebrew-invocations.txt')),false);
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
-  session.send({action:'finish'});assert.equal((await session.done).code,0);
-});
-test('held IZlauncher catalogs and forwards selected modules to its live package queue',{timeout:10000},async t=>{
-  const session=fixture(t,{expectHomebrew:true});await session.wait('post-run-ready');
-  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  session.send({action:'list-izlauncher-modules'});
-  assert.deepEqual((await session.wait('izlauncher-catalog')).modules,
-    [{id:'blitbun',name:'BlitBun',version:'1.14.4',description:'Streaming'}]);
-  session.send({action:'launch-izlauncher',moduleIds:['blitbun']});await session.wait('homebrew-running');
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(session.root,'iz-args'),'utf8')),
-    ['--modules','["iz-exchange","blitbun","vacootube"]']);
-  session.send({action:'load-izlauncher-modules',ids:['blitbun']});
-  const control=path.join(session.root,'iz-controls'),deadline=Date.now()+3000;
-  while(!fs.existsSync(control)){assert.ok(Date.now()<deadline,'IZlauncher did not receive the selected module');
-    await new Promise(resolve=>setTimeout(resolve,10));}
-  assert.deepEqual(JSON.parse(fs.readFileSync(control,'utf8').trim()),{action:'load-modules',ids:['blitbun']});
-  assert.equal((await session.wait('izlauncher-module-progress')).message,'Queued 1 IZlauncher module from this Mac.');
-  assert.equal(session.events().some(event=>event.type==='homebrew-progress'&&event.message?.startsWith('Queued 1 IZlauncher module')),false);
   session.send({action:'finish'});assert.equal((await session.done).code,0);
 });
 test('invalid custom app path does not consume the held RPC launch attempt',{timeout:10000},async t=>{
@@ -534,7 +507,6 @@ test('custom launcher bundle uses the existing held RPC session',{timeout:10000}
   assert.equal(fs.readFileSync(path.join(session.root,'custom-preflight-cleaned'),'utf8'),'yes');
 });
 for(const [folder,kind,entry,argument] of [
-  ['/tmp/custom-iz-module','iz-module','iz-entry-used','--modules'],
   ['/tmp/custom-native-app','native-app','native-entry-used','--app-folder']
 ])test('custom '+kind+' opens its matching runtime once',{timeout:10000},async t=>{
   const session=fixture(t,{expectHomebrew:true});await session.wait('post-run-ready');
@@ -545,12 +517,9 @@ for(const [folder,kind,entry,argument] of [
   if(kind==='native-app')assert.match(accepted.message,/Select it in HBLauncher/);
   await session.wait('homebrew-running');
   assert.equal(fs.existsSync(path.join(session.root,entry)),true);
-  const args=JSON.parse(fs.readFileSync(path.join(session.root,
-    kind==='iz-module'?'iz-args':'native-args'),'utf8'));
+  const args=JSON.parse(fs.readFileSync(path.join(session.root,'native-args'),'utf8'));
   assert.equal(args.includes(argument),true);
-  if(kind==='iz-module')assert.deepEqual(JSON.parse(args.at(-1)),
-    ['iz-exchange','blitbun','vacootube','custom-iz']);
-  else assert.equal(args.at(-1),path.join(session.root,'staged/custom-native-app'));
+  assert.equal(args.at(-1),path.join(session.root,'staged/custom-native-app'));
   session.send({action:'launch-mintbrew'});await session.wait('action-rejected');
   session.send({action:'finish'});
   const outcome=await session.done;assert.equal(outcome.code,0,outcome.output+outcome.error);
@@ -596,23 +565,6 @@ test('manifest-defined RPC app uses its own adapter with one launch attempt',{ti
   session.send({action:'finish'});
   const outcome=await session.done;assert.equal(outcome.code,0,outcome.output+outcome.error);
   assert.equal(fs.readFileSync(path.join(session.root,'custom-preflight-cleaned'),'utf8'),'yes');
-});
-test('invalid IZlauncher module can be corrected before claiming held RPC',{timeout:10000},async t=>{
-  const session=fixture(t,{expectHomebrew:true});await session.wait('post-run-ready');
-  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  session.send({action:'launch-izlauncher',moduleFolderPath:'/tmp/incompatible-izmodule'});
-  const rejected=await session.wait('action-rejected');
-  assert.equal(rejected.action,'launch-izlauncher');
-  assert.match(rejected.message,/incompatible/);
-  assert.equal(fs.existsSync(path.join(session.root,'iz-entry-used')),false);
-  session.send({action:'launch-izlauncher',moduleFolderPath:'/tmp/compatible-izmodule'});
-  assert.equal((await session.wait('homebrew-accepted')).action,'launch-izlauncher');
-  await session.wait('homebrew-running');
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(session.root,'iz-args'),'utf8')),
-    ['--modules','["iz-exchange","blitbun","vacootube","my-module"]']);
-  session.send({action:'finish'});
-  const outcome=await session.done;assert.equal(outcome.code,0,outcome.output+outcome.error);
-  assert.equal(fs.existsSync(path.join(session.root,'iz-entry-used')),true);
 });
 for(const terminal of ['failed','stopped'])
   test('Finish after homebrew-'+terminal+' waits for helper close without sending another signal',{timeout:10000},async t=>{
@@ -685,7 +637,7 @@ test('MintBrew requires positive held proof, owns one app attempt, and finishes 
 test('another homebrew app prevents MintBrew in the same held session',{timeout:10000},async t=>{
   const session=fixture(t,{expectHomebrew:true});await session.wait('post-run-ready');
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  session.send({action:'launch-izlauncher'});await session.wait('homebrew-running');
+  session.send({action:'launch-native-hblauncher'});await session.wait('homebrew-running');
   session.send({action:'launch-mintbrew'});await session.wait('action-rejected');
   assert.equal(fs.existsSync(path.join(session.root,'mint-entry-used')),false);
   session.send({action:'finish'});assert.equal((await session.done).code,0);
@@ -708,16 +660,16 @@ test('stopping one launcher verifies RPC and permits another in the same held se
     });
     emit('started');emit('running');setInterval(()=>{},1000);
   `;
-  for(const name of ['gui-mintbrew.cjs','gui-izlauncher.cjs'])
+  for(const name of ['gui-mintbrew.cjs','gui-native-hblauncher.cjs'])
     fs.writeFileSync(path.join(session.root,'scripts',name),cleanLauncher);
   await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});
   await session.wait('rpc-held');
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
-  session.send({action:'launch-izlauncher'});await session.wait('action-rejected');
+  session.send({action:'launch-native-hblauncher'});await session.wait('action-rejected');
   session.send({action:'stop-homebrew'});await session.wait('homebrew-stopping');
   await session.wait('homebrew-ready');
   assert.equal(fs.existsSync(path.join(session.host,'runs/switch2-test/.mac2jb-hblauncher-attempt.json')),false);
-  session.send({action:'launch-izlauncher'});await session.wait('homebrew-running',2);
+  session.send({action:'launch-native-hblauncher'});await session.wait('homebrew-running',2);
   session.send({action:'stop-homebrew'});await session.wait('homebrew-ready',2);
   assert.equal(fs.readFileSync(path.join(session.root,'homebrew-invocations.txt'),'utf8').trim().split('\n').length,2);
   session.send({action:'finish'});assert.equal((await session.done).code,0);
@@ -732,7 +684,7 @@ test('MintBrew startup failure consumes its attempt and leaves Finish available'
   assert.equal(session.events().some(event=>event.type==='verified'),false);
   assert.equal(fs.readFileSync(path.join(session.host,'hbl-was-stopped.txt'),'utf8'),'true');
 });
-for(const application of ['mintbrew','izlauncher'])test(application+' unexpected zero exit cannot claim shutdown or final verification',{timeout:10000},async t=>{
+for(const application of ['mintbrew','native-hblauncher'])test(application+' unexpected zero exit cannot claim shutdown or final verification',{timeout:10000},async t=>{
   const session=fixture(t);fs.writeFileSync(path.join(session.root,'scripts/gui-'+application+'.cjs'),
     "console.log('MAC2JB_HOMEBREW '+JSON.stringify({type:'started'}));process.exitCode=0;\n");
   await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
@@ -742,7 +694,7 @@ for(const application of ['mintbrew','izlauncher'])test(application+' unexpected
   const result=await session.done;assert.equal(result.code,1,result.output+result.error);
   assert.equal(session.events().some(event=>event.type==='verified'),false);
 });
-for(const application of ['izlauncher','mintbrew','native-hblauncher'])test(application+' uncertain shutdown retains original native resources and blocks Finish',{timeout:10000},async t=>{
+for(const application of ['mintbrew','native-hblauncher'])test(application+' uncertain shutdown retains original native resources and blocks Finish',{timeout:10000},async t=>{
   const session=fixture(t);fs.writeFileSync(path.join(session.root,'scripts/gui-'+application+'.cjs'),
     "console.log('MAC2JB_HOMEBREW '+JSON.stringify({type:'failed',cleanupBlocked:true,message:'Native shutdown uncertain'}));process.exitCode=1;\n");
   await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');

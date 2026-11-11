@@ -1,2 +1,0 @@
-// Legacy SDK facade. Normal sessions activate module hooks instead.
-const values=require('./video-slot.cjs');module.exports={...values,async create(options){const p=await require('../components.cjs').provider('stream-host');return p.create(options);}};for(const name of ['uploader','changed','bars','dimensions','frameBytes','formatName'])Object.defineProperty(module.exports,name,{get:()=>require(require('../module-files.cjs').resolve('blitbun','server/lib/pc-screen.cjs'))[name]});

@@ -90,27 +90,6 @@
       ]
     },
     {
-      "id": "izmysh",
-      "label": "IZMYSH",
-      "revision": "d7a0df16e7e0c68acf78d2f68da8496ef3d9fd6b",
-      "upstream": "https://github.com/byizmysh/IZ2S-Platform",
-      "sourceDirectory": "vendor/ns2jb-hosts/izmysh-legacy",
-      "sourceSha256": "ce74321f98f1cd50cfdd335a45f6d27c882afa1074eab8b58cef52a677097fc2",
-      "bootstrap": "vendor/ns2jb-hosts/izmysh-legacy/bootstrap.bas",
-      "bootstrapSha256": "2261f65fb9ec0ed708ce0f0b6da5057168f706e541d956f658a3c2655e9e8c36",
-      "startArgumentCount": 9,
-      "startPort": 39395,
-      "saveName": "NS2I",
-      "engine": "izmysh",
-      "supportsHeldRPC": false,
-      "supportsDemo": false,
-      "licenseStatus": "IZMYSH code is GPL-2.0-or-later; inherited component terms and prior grants remain applicable.",
-      "distributionManifest": "packaging/IZMYSH-legacy-SHA256SUMS",
-      "supportedSmileBASIC": [
-        "4.4.9 full"
-      ]
-    },
-    {
       "id": "astral",
       "label": "Astral (custom)",
       "revision": "81d5bb114c856109dadaf1077d927a9f297fe58d",

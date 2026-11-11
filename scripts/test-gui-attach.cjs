@@ -43,7 +43,8 @@ function fixture(t, options = {}) {
     child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
     child.input = ''; child.signals = []; child.ended = false;
     child.stdin.on('data', bytes => {child.input += bytes;});
-    child.event = event => child.stdout.write('MAC2JB_HOMEBREW ' + JSON.stringify(event) + '\n');
+    child.event = event => child.stdout.write((args[0].endsWith('gui-modloader.cjs') ?
+      'MAC2JB_MODLOADER ' : 'MAC2JB_HOMEBREW ') + JSON.stringify(event) + '\n');
     child.close = (code = 0, signal = null) => {
       if (child.ended) return; child.ended = true;
       child.stdout.end(); child.stderr.end(); child.emit('close', code, signal);
@@ -56,6 +57,22 @@ function fixture(t, options = {}) {
         fs.writeFileSync(path.join(args[2], 'firmware-dump.json'),
           JSON.stringify({complete:true, inventory:{total:1}, entries:[{title:'fixture'}]}), {mode:0o600});
         child.close();
+      });
+      return child;
+    }
+    if (args[0].endsWith('gui-savekit-tools.cjs')) {
+      setImmediate(() => {
+        for (const event of options.savekitToolEvents || [])
+          child.stdout.write('MAC2JB_SAVEKIT ' + JSON.stringify(event) + '\n');
+        child.close(options.savekitToolExitCode ?? 0);
+      });
+      return child;
+    }
+    if (args[0].endsWith('gui-savekit.cjs')) {
+      setImmediate(() => {
+        for (const event of options.savekitEvents || [])
+          child.stdout.write('MAC2JB_SAVEKIT ' + JSON.stringify(event) + '\n');
+        child.close(options.savekitExitCode ?? 0);
       });
       return child;
     }
@@ -72,7 +89,7 @@ function fixture(t, options = {}) {
       assert.equal(proof?.cleanupVerified, true);
       options.releaseMarkers?.(run, proof, ouncecakeMode);
     },
-    listIZlauncherModules: async () => [{id:'blitbun',name:'BlitBun',version:'1.14.4',description:'Stream a browser'}],
+    validateModloaderFolder: options.validateModloaderFolder || (() => true),
     preflightCustomApp: async (selectedRoot, folder) => {
       calls.push(['preflight', selectedRoot, folder]);
       if (options.customPreflightGate) await options.customPreflightGate;
@@ -89,20 +106,12 @@ function fixture(t, options = {}) {
         return {kind:'rpc-app',adapter:'script',app:{name:'Native tool'},
           packageFolder:root+'/runs/staged/native-tool',
           cleanup:async()=>{calls.push(['preflight-cleanup']);}};
-      if (folder.includes('CustomIZ'))
-        return {kind:'iz-module',moduleId:'custom-iz',app:{name:'Custom IZ module'},
-          cleanup:async()=>{calls.push(['preflight-cleanup']);}};
       if (folder.includes('ABI3App'))
         return {kind:'native-app',app:{name:'ABI 3 app'},
           packageFolder:root+'/runs/staged/abi3-app',
           cleanup:async()=>{calls.push(['preflight-cleanup']);}};
       return {app: {name: 'My GPU App'}, appFolder: root + '/runs/staged/my-gpu-app',
         cleanup: async () => {calls.push(['preflight-cleanup']);}};
-    },
-    stageIZModule: async (selectedRoot, folder) => {
-      calls.push(['izmodule-preflight', selectedRoot, folder]);
-      if (folder.includes('missing')) throw Error('The module is incompatible');
-      return {id:'my-module', name: 'My Module', version: '1.0.0', cleanup: async () => {calls.push(['izmodule-cleanup']);}};
     },
     prepare: async (receivedRoot, connection, preparation) => {
       calls.push(['prepare', receivedRoot, connection]);
@@ -154,16 +163,172 @@ test('local attachment is announced only after prepare and live verification', a
   assert.equal(session.events.some(event => ['verified', 'host-ready', 'post-run-ready'].includes(event.type)), false);
   assert.deepEqual(session.calls.at(-1), ['close']);
 });
+test('CivSwitch FS attachment opens SaveKit, lists accounts and releases its claim for OunceCake', async t => {
+  const uid = 'a'.repeat(32);
+  const session = fixture(t, {profileId:'civswitch-fs', savekitToolEvents:[
+    {type:'accounts', users:[uid], message:'1 console account found'},
+    {type:'complete', action:'accounts', message:'Account list ready'}
+  ]});
+  await session.attach();
+  session.send({action:'start-savekit'}); await session.wait('savekit-selected');
+  assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim','savekit']]);
+  session.send({action:'savekit-tool',request:{action:'accounts'}});
+  assert.deepEqual((await session.wait('savekit-tool-accounts')).users,[uid]);
+  assert.equal((await session.wait('savekit-tool-complete')).action,'accounts');
+  session.send({action:'finish-savekit'}); await session.wait('savekit-done');
+  assert.equal(session.calls.filter(row => row[0] === 'release').length,1);
+  session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9'}); await session.wait('homebrew-started');
+  const child=session.children[1];
+  child.event({type:'catalog',games:[game]}); await session.wait('homebrew-catalog');
+  session.send({action:'select-ouncecake-game',titleId:game.titleId});
+  await until(()=>child.input.includes('select-game'));
+  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/'});
+  await session.wait('homebrew-running');
+  assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim','savekit'],['claim','ouncecake']]);
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch FS attachment installs modloader as the final action for this boot', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs', childStart:child => {
+    child.event({type:'started',message:'Native FS preflight passed'});
+    child.event({type:'progress',message:'Installing modloader'});
+    child.event({type:'ready',path:path.join(directory,'.mac2jb-modloader-fixture'),message:'Game handoff verified'});
+    child.close();
+  }});
+  await session.attach();
+  session.send({action:'modloader-install',modsFolder:'/Users/test/mods'});
+  assert.match((await session.wait('modloader-started')).message,/preflight passed/);
+  await session.wait('modloader-progress');
+  assert.equal((await session.wait('modloader-ready')).path,directory);
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','modloader']]);
+  const launch=session.calls.find(row=>row[0]==='spawn'&&row[2][0].endsWith('gui-modloader.cjs'));
+  assert.equal(launch[3].env.MAC2JB_ATTACHED_RUN_MANIFEST,session.context.manifestPath);
+  session.send({action:'start-savekit'});
+  assert.match((await session.wait('action-rejected')).message,/final action/);
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+  assert.equal(session.calls.some(row=>row[0]==='release'),false);
+});
+test('CivSwitch modloader read-only preflight failure releases its claim for SaveKit', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs', childStart:child => {
+    child.event({type:'failed',retrySafe:true,message:'FS binary did not match the pinned hash'});
+    child.close(1);
+  }});
+  await session.attach();
+  session.send({action:'modloader-install',modsFolder:'/Users/test/mods'});
+  assert.equal((await session.wait('modloader-failed')).retrySafe,true);
+  assert.deepEqual(session.calls.filter(row=>row[0]==='release'),[['release']]);
+  session.send({action:'start-savekit'}); await session.wait('savekit-selected');
+  session.send({action:'finish-savekit'}); await session.wait('savekit-done');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch modloader native failure keeps the session claimed and blocks a second action', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs', childStart:child => {
+    child.event({type:'started',message:'Native install started'});
+    child.event({type:'failed',retrySafe:false,message:'Native handoff could not be verified'});
+    child.close(1);
+  }});
+  await session.attach();
+  session.send({action:'modloader-install',modsFolder:'/Users/test/mods'});
+  await session.wait('modloader-started');
+  assert.equal((await session.wait('modloader-failed')).retrySafe,false);
+  assert.equal((await session.wait('cleanup-blocked')).resourcesRetained,true);
+  session.send({action:'start-savekit'});
+  assert.match((await session.wait('action-rejected')).message,/final action/);
+  assert.equal(session.calls.some(row=>row[0]==='release'),false);
+  session.send({action:'finish'}); assert.equal(await session.done,1);
+});
+test('other attached RPC profiles cannot install the CivSwitch modloader', async t => {
+  const session=fixture(t,{profileId:'kurumuz'}); await session.attach();
+  session.send({action:'modloader-install',modsFolder:'/Users/test/mods'});
+  assert.match((await session.wait('action-rejected')).message,/CivSwitch filesystem session/);
+  assert.equal(session.calls.some(row=>row[0]==='claim'||row[0]==='spawn'),false);
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch FS rejects SmileBASIC launchers before claiming and keeps SaveKit available', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs'}); await session.attach();
+  for(const [index,action] of ['launch-mintbrew','launch-native-hblauncher'].entries()){
+    session.send({action});
+    const rejected=await session.wait('action-rejected',index+1);
+    assert.equal(rejected.action,action);
+    assert.match(rejected.message,/SmileBASIC held RPC session/);
+  }
+  assert.equal(session.calls.some(row=>row[0]==='claim'||row[0]==='spawn'),false);
+  session.send({action:'start-savekit'}); await session.wait('savekit-selected');
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','savekit']]);
+  session.send({action:'finish-savekit'}); await session.wait('savekit-done');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch FS rejects incompatible custom apps before claiming and accepts an OunceCake RPC package', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs',childStart:child=>child.event({type:'started'})}); await session.attach();
+  for(const [index,folder] of ['/Users/test/GPUApp','/Users/test/Soulja',
+    '/Users/test/ABI3App','/Users/test/NativeTool'].entries()){
+    session.send({action:'launch-custom-homebrew',customHomebrewPath:folder});
+    const rejected=await session.wait('action-rejected',index+1);
+    assert.equal(rejected.action,'launch-custom-homebrew');
+    assert.match(rejected.message,/SmileBASIC held RPC session/);
+    await until(()=>session.calls.filter(row=>row[0]==='preflight-cleanup').length===index+1);
+  }
+  assert.equal(session.calls.some(row=>row[0]==='claim'||row[0]==='spawn'),false);
+  session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/OunceFork',
+    consoleAddress:'192.0.2.9'});
+  assert.equal((await session.wait('homebrew-accepted')).adapter,'ouncecake');
+  await session.wait('homebrew-started');
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','custom-homebrew']]);
+  const child=session.children[0];
+  child.event({type:'catalog',games:[game]}); await session.wait('homebrew-catalog');
+  session.send({action:'select-ouncecake-game',titleId:game.titleId});
+  await until(()=>child.input.includes('select-game'));
+  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/'});
+  await session.wait('homebrew-running');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch FS SaveKit read failure preserves the SaveKit event type and permits another action', async t => {
+  const session = fixture(t, {profileId:'civswitch-fs', savekitToolExitCode:1,
+    savekitToolEvents:[{type:'failed', safeToContinue:true, message:'No save exists'}]});
+  await session.attach();
+  session.send({action:'start-savekit'}); await session.wait('savekit-selected');
+  session.send({action:'savekit-tool',request:{action:'accounts'}});
+  const failed = await session.wait('savekit-tool-failed');
+  assert.equal(failed.action,'accounts'); assert.equal(failed.safeToContinue,true);
+  assert.equal(session.events.some(event => event.type === 'failed'),false);
+  session.send({action:'finish-savekit'}); await session.wait('savekit-done');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch FS attachment can install a save and then use SaveKit in the same held session', async t => {
+  const session = fixture(t, {profileId:'civswitch-fs', savekitEvents:[
+    {type:'complete', game:'nora', backupPath:root+'/artemis-backups/nora-fixture', files:2,
+      message:'Nora save verified'}
+  ]});
+  await session.attach();
+  session.send({action:'install-artemis-save',game:'nora'});
+  assert.equal((await session.wait('savekit-complete')).game,'nora');
+  await session.wait('savekit-ready');
+  assert.equal(session.calls.filter(row => row[0] === 'release').length,1);
+  session.send({action:'start-savekit'}); await session.wait('savekit-selected');
+  session.send({action:'finish-savekit'}); await session.wait('savekit-done');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('detaching an idle CivSwitch FS SaveKit releases its claim before closing the attachment', async t => {
+  const session = fixture(t, {profileId:'civswitch-fs'}); await session.attach();
+  session.send({action:'start-savekit'}); await session.wait('savekit-selected');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+  assert.deepEqual(session.calls.filter(row => ['claim','release','close'].includes(row[0])).map(row => row[0]),
+    ['claim','release','close']);
+});
+test('ordinary attached ns2jb sessions cannot start SaveKit through the CivSwitch FS path', async t => {
+  const session = fixture(t); await session.attach();
+  session.send({action:'start-savekit'});
+  assert.equal((await session.wait('action-rejected')).action,'start-savekit');
+  assert.equal(session.calls.some(row => row[0] === 'claim'),false);
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
 test('packaged attachment rejects unavailable launcher before claiming RPC', async t => {
   const runtime=fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-attached-apps-'));
   t.after(()=>fs.rmSync(runtime,{recursive:true,force:true}));
   fs.mkdirSync(path.join(runtime,'packaging'));
   fs.writeFileSync(path.join(runtime,'packaging/runtime-homebrew.json'),JSON.stringify({allowed:['mintbrew','ouncecake']}));
   const session=fixture(t,{root:runtime});await session.attach();
-  session.send({action:'list-izlauncher-modules'});
+  session.send({action:'launch-native-hblauncher'});
   assert.match((await session.wait('action-rejected')).message,/unavailable in this build/);
-  session.send({action:'launch-izlauncher'});
-  assert.match((await session.wait('action-rejected',2)).message,/unavailable in this build/);
   assert.equal(session.calls.some(row=>row[0]==='claim'),false);
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
   session.send({action:'finish'});assert.equal(await session.done,0);
@@ -197,15 +362,15 @@ test('attached stop button releases a clean launcher and accepts another app', a
   session.send({action:'stop-homebrew'});
   assert.equal((await session.wait('action-rejected')).action, 'stop-homebrew');
   session.send({action:'launch-mintbrew'}); await session.wait('homebrew-running');
-  session.send({action:'launch-izlauncher'});
+  session.send({action:'launch-native-hblauncher'});
   assert.match((await session.wait('action-rejected',2)).message,/one homebrew launch attempt/i);
   session.send({action:'stop-homebrew'});
   await session.wait('homebrew-stopping');
   await session.wait('homebrew-ready');
   assert.equal(session.calls.filter(row => row[0] === 'release').length, 1);
   assert.equal(session.calls.filter(row => row[0] === 'release-markers').length, 1);
-  session.send({action:'launch-izlauncher'}); await session.wait('homebrew-running',2);
-  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','mintbrew'],['claim','izlauncher']]);
+  session.send({action:'launch-native-hblauncher'}); await session.wait('homebrew-running',2);
+  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','mintbrew'],['claim','native-hblauncher']]);
   session.send({action:'finish'}); assert.equal(await session.done, 0);
 });
 test('detaching during a delayed claim releases it before closing the attachment', async t => {
@@ -252,41 +417,6 @@ test('attached dump failure retains its native claim and original host', async t
   assert.equal(session.events.some(event => event.type === 'dump-complete'), false);
   assert.ok(session.events.some(event => event.type === 'rpc-detached' && event.resourcesRetained));
 });
-test('attached IZlauncher lists modules and forwards live selected module loads',async t=>{
-  const session=fixture(t);await session.attach();
-  session.send({action:'list-izlauncher-modules'});
-  assert.deepEqual((await session.wait('izlauncher-catalog')).modules,
-    [{id:'blitbun',name:'BlitBun',version:'1.14.4',description:'Stream a browser'}]);
-  session.send({action:'launch-izlauncher',moduleIds:['blitbun']});await session.wait('homebrew-running');
-  assert.deepEqual(session.calls.find(row=>row[0]==='spawn')[2].slice(2),
-    ['--modules','["iz-exchange","blitbun","vacootube"]']);
-  session.send({action:'load-izlauncher-modules',ids:['blitbun']});
-  await until(()=>session.children[0].input.includes('"action":"load-modules"'));
-  assert.deepEqual(JSON.parse(session.children[0].input.trim()),{action:'load-modules',ids:['blitbun']});
-  session.children[0].event({type:'progress',message:'frame-loop console line'});
-  assert.equal((await session.wait('homebrew-progress')).message,'frame-loop console line');
-  session.children[0].event({type:'module-progress',message:'Queued 1 IZlauncher module from this Mac.'});
-  assert.equal((await session.wait('izlauncher-module-progress')).message,'Queued 1 IZlauncher module from this Mac.');
-  session.children[0].event({type:'module-progress',message:'invalid\nline'});
-  await new Promise(resolve=>setTimeout(resolve,5));
-  assert.equal(session.events.filter(event=>event.type==='izlauncher-module-progress').length,1);
-  session.send({action:'load-izlauncher-modules',ids:['blitbun','blitbun']});
-  assert.equal((await session.wait('action-rejected')).action,'load-izlauncher-modules');
-  session.send({action:'finish'});assert.equal(await session.done,0);
-});
-test('attached IZlauncher relays only the current private local panel URL',async t=>{
-  const fixtureRoot=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-attach-panel-')));
-  t.after(()=>fs.rmSync(fixtureRoot,{recursive:true,force:true}));
-  const runs=path.join(fixtureRoot,'runs');fs.mkdirSync(runs,{mode:0o700});
-  const panelRun=fs.mkdtempSync(path.join(runs,'izlauncher-'));
-  const url='http://127.0.0.1:53674/#'+'a'.repeat(48);
-  fs.writeFileSync(path.join(panelRun,'pc-screen-local.json'),JSON.stringify({url,port:53674}),{mode:0o600});
-  const session=fixture(t,{root:fixtureRoot});await session.attach();
-  session.send({action:'launch-izlauncher'});await session.wait('homebrew-running');
-  session.children[0].event({type:'panel',path:panelRun,url});
-  assert.deepEqual(await session.wait('izlauncher-panel'),{type:'izlauncher-panel',path:panelRun,url});
-  session.send({action:'finish'});assert.equal(await session.done,0);
-});
 test('invalid and nonlocal controls cannot prepare or claim a source', async t => {
   const session = fixture(t);
   for (const value of ['{', 'null', '[]', {action: 'attach', connection: {kind: 'ssh'}}, {action: 'attach'},
@@ -310,6 +440,7 @@ test('launch configurations reject unsupported input before reserving a native a
     {action: 'launch-gpubrewlauncher'},
     {action: 'launch-stremio'},
     {action: 'launch-ouncecake', consoleAddress: 'host.example'},
+    {action: 'launch-ouncecake', consoleAddress: '192.0.2.9', mode:'bad'},
     {action: 'launch-mintbrew', addonUrls: Array(33).fill('https://test/manifest.json')},
     {action: 'launch-mintbrew', addonUrls: ['x'.repeat(4097)]},
     {action: 'launch-mintbrew', addonUrls: [5]},
@@ -355,7 +486,6 @@ test('attached custom launcher keeps the same held RPC and selects its staged bu
   assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
 });
 for(const [folder,kind,claim,helper,argument] of [
-  ['/Users/test/CustomIZ','iz-module','izlauncher','gui-izlauncher.cjs','--modules'],
   ['/Users/test/ABI3App','native-app','native-hblauncher','gui-native-hblauncher.cjs','--app-folder']
 ])test('attached custom '+kind+' claims its matching runtime',async t=>{
   const session=fixture(t);await session.attach();
@@ -368,9 +498,7 @@ for(const [folder,kind,claim,helper,argument] of [
   const args=session.calls.find(row=>row[0]==='spawn')[2];
   assert.equal(args[0],root+'/scripts/'+helper);
   assert.equal(args.includes(argument),true);
-  if(kind==='iz-module')assert.deepEqual(JSON.parse(args.at(-1)),
-    ['iz-exchange','blitbun','vacootube','custom-iz']);
-  else assert.equal(args.at(-1),root+'/runs/staged/abi3-app');
+  assert.equal(args.at(-1),root+'/runs/staged/abi3-app');
   session.send({action:'launch-mintbrew'});await session.wait('action-rejected');
   session.send({action:'finish'});assert.equal(await session.done,0);
   assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
@@ -484,25 +612,7 @@ test('detaching during custom package validation cleans staging without claiming
   assert.equal(session.calls.filter(row => row[0] === 'spawn').length, 0);
   assert.equal(session.calls.filter(row => row[0] === 'preflight-cleanup').length, 1);
 });
-test('invalid IZlauncher module can be corrected before claiming the attached run', async t => {
-  const session = fixture(t); await session.attach();
-  const checksBefore = session.calls.filter(row => row[0] === 'verify').length;
-  session.send({action: 'launch-izlauncher', moduleFolderPath: '/Users/test/missing-module'});
-  const rejected = await session.wait('action-rejected');
-  assert.equal(rejected.action, 'launch-izlauncher');
-  assert.match(rejected.message, /incompatible/);
-  assert.equal(session.calls.filter(row => row[0] === 'claim').length, 0);
-  assert.equal(session.calls.filter(row => row[0] === 'verify').length, checksBefore);
-  session.send({action: 'launch-izlauncher', moduleFolderPath: '/Users/test/My Module'});
-  assert.equal((await session.wait('homebrew-accepted')).action, 'launch-izlauncher');
-  await session.wait('homebrew-running');
-  assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim', 'izlauncher']]);
-  assert.deepEqual(session.calls.find(row => row[0] === 'spawn')[2].slice(2),
-    ['--modules','["iz-exchange","blitbun","vacootube","my-module"]']);
-  session.send({action: 'finish'}); assert.equal(await session.done, 0);
-});
 for (const [action, application, name] of [
-  ['launch-izlauncher', 'izlauncher', 'gui-izlauncher.cjs'],
   ['launch-mintbrew', 'mintbrew', 'gui-mintbrew.cjs'],
   ['launch-native-hblauncher', 'native-hblauncher', 'gui-native-hblauncher.cjs'],
   ['launch-custom-homebrew', 'custom-homebrew', 'gui-custom-homebrew.cjs'],
@@ -518,7 +628,6 @@ for (const [action, application, name] of [
   assert.equal(call[1], process.execPath); assert.equal(call[2][0], root + '/scripts/' + name); assert.equal(call[2][1], directory);
   assert.equal(call[3].env.MAC2JB_ATTACHED_RUN_MANIFEST, session.context.manifestPath);
   assert.equal(call[3].detached, true); assert.equal(call[3].cwd, root);
-  if (application === 'izlauncher') assert.deepEqual(call[2].slice(2), []);
   if (application === 'native-hblauncher') assert.deepEqual(call[2].slice(2), ['--sd-rom-folder', '/sd/roms/nes']);
   if (application === 'custom-homebrew') assert.deepEqual(call[2].slice(2), ['--app-folder', root + '/runs/staged/my-gpu-app']);
   if (application === 'mintbrew') {
@@ -658,6 +767,33 @@ test('OunceCake catalog selection and WebDAV endpoint belong to the attached ses
   session.send({action: 'select-ouncecake-game', titleId: game.titleId}); await session.wait('action-rejected', 2);
   session.send({action: 'finish'}); assert.equal(await session.done, 0);
 });
+test('CivSwitch FS OunceCake FTP uses the Mac-local bridge and exposes its verified address', async t => {
+  const session = fixture(t, {profileId:'civswitch-fs', childStart:child=>child.event({type:'started'})});
+  await session.attach();
+  session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9',mode:'ftp'});
+  await session.wait('homebrew-started');
+  const child=session.children[0];
+  assert.equal(JSON.parse(child.input.split('\n')[0]).mode,'ftp');
+  child.event({type:'catalog',games:[game]}); await session.wait('homebrew-catalog');
+  session.send({action:'select-ouncecake-game',titleId:game.titleId});
+  await until(()=>child.input.includes('select-game'));
+  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/',
+    ftpURL:'ftp://127.0.0.1:40212/'});
+  assert.equal((await session.wait('homebrew-running')).ftpURL,'ftp://127.0.0.1:40212/');
+  session.send({action:'finish'}); assert.equal(await session.done,0);
+});
+test('CivSwitch FS OunceCake FTP rejects a missing Mac-local bridge address', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs',childStart:child=>child.event({type:'started'})});
+  await session.attach();
+  session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9',mode:'ftp'});
+  await session.wait('homebrew-started');
+  const child=session.children[0];child.event({type:'catalog',games:[game]});await session.wait('homebrew-catalog');
+  session.send({action:'select-ouncecake-game',titleId:game.titleId});await until(()=>child.input.includes('select-game'));
+  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/'});
+  await session.wait('homebrew-stopped');
+  assert.equal(session.events.some(event=>event.type==='homebrew-running'),false);
+  session.send({action:'finish'}); assert.equal(await session.done,1);
+});
 test('invalid or duplicate OunceCake catalogs are rejected before selection', async t => {
   for (const games of [[], [game, game], [{...game, titleId: 'bad'}], [{...game, name: 'bad\nname'}],
     [{...game, name: 'é'.repeat(81)}], [{...game, storages: [2, 2]}], [{...game, storages: [7]}]]) assert.equal(validCatalog(games), false);
@@ -683,7 +819,7 @@ test('selected OunceCake game rejects mismatched endpoint ' + endpoint.httpURL, 
   await session.wait('homebrew-stopped'); assert.equal(session.events.some(row => row.type === 'homebrew-running'), false);
   session.send({action: 'finish'}); assert.equal(await session.done, 1);
 });
-for (const application of ['ouncecake', 'izlauncher', 'mintbrew', 'native-hblauncher']) test(application + ' uncertain native cleanup is retained when the local helper is detached', async t => {
+for (const application of ['ouncecake', 'mintbrew', 'native-hblauncher']) test(application + ' uncertain native cleanup is retained when the local helper is detached', async t => {
   const session = fixture(t); await session.attach(); session.send({action: 'launch-' + application, consoleAddress: '192.0.2.9'});
   await session.wait('homebrew-started');
   session.children[0].event({type: 'failed', cleanupBlocked: true, message: 'Native join was not confirmed.'});

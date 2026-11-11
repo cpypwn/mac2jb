@@ -23,8 +23,7 @@ SOURCE_FOLDERS = (
 )
 RUNTIME_FOLDERS = (
     'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit', 'vendor/HBLauncher',
-    'vendor/GPUBrewLauncher', 'vendor/MintBrew', 'vendor/IZ2S-Platform', 'vendor/IZDOOM',
-    'vendor/BlitBun', 'vendor/CivSwitch-ControlCenter',
+    'vendor/GPUBrewLauncher', 'vendor/MintBrew',
     'vendor/CivSwitch/installer-creator/node_modules',
     'vendor/OunceCake', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
     'integrations',
@@ -41,6 +40,7 @@ PERSONAL_SHOWCASE_PATHS = (
     'scripts/build-seedsow-full-showcase.cjs',
     'integrations/civswitch/hello.js',
     'integrations/civswitch/send-hello.cjs',
+    'integrations/civswitch/send-hello.test.cjs',
     'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
     'integrations/balatro-rce/showcase.lua',
     'integrations/balatro-rce/build-showcase.py',
@@ -63,7 +63,11 @@ PERSONAL_SHOWCASE_PATHS = (
 RUNTIME_FILES = (
     'scripts/gui-host.cjs', 'scripts/usb-controllers.cjs', 'scripts/gui-dnswitch.cjs',
     'scripts/gui-webkit-research.cjs', 'scripts/gui-bundled-browser-probes.cjs',
+    'scripts/gui-nxformat.cjs', 'packaging/NXFormat-source.json',
+    'tools/nxformat/1.0.2/bin/nxconvert', 'tools/nxformat/1.0.2/LICENSE',
     'scripts/gui-nup.cjs', 'packaging/NUP-source.json',
+    'scripts/gui-civhomebrew.cjs', 'packaging/CivHomebrew-source.json',
+    'scripts/gui-civswitch-moonlight.cjs', 'packaging/Moonlight-CivSwitch-source.json',
     'scripts/check-webkit-research.cjs',
     'packaging/switch2-browser-research-provenance.json',
     'scripts/dnswitch-launch.applescript', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
@@ -86,26 +90,27 @@ RUNTIME_FILES = (
     'scripts/gui-stremio.cjs', 'scripts/check-homebrew-runtime.cjs',
     'scripts/gui-hblauncher.cjs', 'scripts/gui-mintbrew.cjs', 'scripts/prepare-mintbrew.cjs',
     'scripts/gui-native-hblauncher.cjs',
-    'scripts/gui-modloader.cjs',
-    'scripts/gui-izlauncher.cjs', 'scripts/prepare-izlauncher.cjs',
+    'scripts/gui-modloader.cjs', 'scripts/gui-modloader-sd.cjs',
     'scripts/gui-custom-homebrew.cjs', 'scripts/custom-rpc-package.cjs',
-    'scripts/check-izlauncher-runtime.cjs', 'scripts/izlauncher-modules.cjs',
-    'scripts/izlauncher-panel.cjs', 'scripts/stage-custom-izmodule.cjs',
     'packaging/HBLauncher-v0.2.0-SHA256SUMS',
     'scripts/gui-gpubrewlauncher.cjs', 'packaging/GPUBrewLauncher-provenance.json',
     'packaging/GPUBrewLauncher-SHA256SUMS',
-    'packaging/IZ2S-Platform-provenance.json',
-    'packaging/IZ2S-Platform-SHA256SUMS',
-    'packaging/IZMYSH-legacy-provenance.json',
-    'packaging/IZMYSH-legacy-SHA256SUMS', 'scripts/gui-keyboard.cjs',
+    'scripts/gui-keyboard.cjs',
     'scripts/prepare-homebrew-apps.cjs', 'scripts/check-stremio-runtime.cjs',
     'packaging/ftpd-sb-v0.1.0-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-release-SHA256SUMS',
     'packaging/ftpd-sb-v0.1.0-provenance.json',
     'scripts/gui-ouncecake.cjs', 'packaging/OunceCake-provenance.json',
-    'integrations/civswitch-control-center/mac-host.py',
-    'integrations/civswitch-control-center/verify-source.py',
-    'integrations/civswitch-control-center/provenance.json',
+    'integrations/civswitch/fs-host.cjs',
+    'integrations/artemis-fs/fs-host.cjs',
+    'integrations/artemis-fs/runtime-host.cjs',
+    'integrations/artemis-fs/kit/port/engine/run.cjs',
+    'integrations/artemis-fs/kit/port/nora/nora_bridge.lua',
+    'integrations/artemis-fs/kit/port/engine/shared/target.artemis-seedsow.json',
+    'integrations/civswitch/fs-kit/provenance.json',
+    'integrations/civswitch/fs-kit/LICENSE',
+    'scripts/prepare-civswitch-savekit.cjs',
+    'scripts/prepare-artemis-fs.cjs',
     'vendor/CivSwitch/LICENSE', 'vendor/CivSwitch/core.js',
     'vendor/CivSwitch/installer-creator/install.py',
     'vendor/CivSwitch/installer-creator/compress_stage.js',
@@ -127,8 +132,29 @@ EXECUTABLES = {
     'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard', 'mac2jb-civswitch-hid',
     'homebrew/bin/spirv-val', 'homebrew/bin/glslangValidator',
     'homebrew/python/bin/python3', 'homebrew/python/bin/python3.13',
-    'integrations/blitbun/doom-engine/doom-headless',
+    'tools/nxformat/1.0.2/bin/nxconvert',
 }
+
+REMOVED_COMPONENTS = (
+    'gui/CivSwitchControlCenterModel.swift',
+    'vendor/CivSwitch-ControlCenter',
+    'integrations/civswitch-control-center',
+    'vendor/IZ2S-Platform', 'vendor/IZDOOM', 'vendor/BlitBun',
+    'vendor/ns2jb-hosts/izmysh-legacy', 'integrations/izlauncher-shell',
+    'integrations/blitbun', 'integrations/vacootube', 'integrations/izdoom',
+    'integrations/mintbrew-iz-exchange', 'integrations/super-file-bros',
+    'integrations/civswitch/izlauncher-save',
+    'vendor/MintBrew/apps/izdoom', 'vendor/MintBrew/apps/iz-exchange',
+    'scripts/gui-izlauncher.cjs', 'scripts/gui-civswitch-izlauncher.cjs',
+    'scripts/gui-civswitch-izlauncher-save.cjs', 'scripts/prepare-izlauncher.cjs',
+    'scripts/check-izlauncher-runtime.cjs', 'scripts/izlauncher-modules.cjs',
+    'scripts/izlauncher-panel.cjs', 'scripts/stage-custom-izmodule.cjs',
+    'packaging/IZ2S-Platform-provenance.json',
+    'packaging/IZ2S-Platform-SHA256SUMS',
+    'packaging/IZMYSH-legacy-provenance.json',
+    'packaging/IZMYSH-legacy-SHA256SUMS',
+    'packaging/IZCIVSwitch-izlauncher-save.json',
+)
 
 
 def sha256_file(path):
@@ -161,6 +187,9 @@ def verify_minimum(payload):
 
 def safe(relative, source):
     parts = relative.parts
+    name = relative.as_posix()
+    if any(name == component or name.startswith(component + '/') for component in REMOVED_COMPONENTS):
+        return False
     if parts[:3] == ('tools', 'mcp', 'node_modules') or (
         parts[:2] == ('tools', 'bootstrap-kit') and len(parts) > 2 and parts[2].startswith('generated')
     ):
@@ -172,10 +201,6 @@ def safe(relative, source):
     ):
         return False
     if parts[-2:] == ('packaging', 'test-build.json'):
-        return False
-    if parts[:4] == ('integrations', 'vacootube', 'upstream', 'runtime'):
-        return False
-    if parts == ('integrations', 'vacootube', 'overlay', 'server', 'local-package', 'vacootube-audio'):
         return False
     if len(parts) > 2 and parts[0] == 'vendor' and parts[1] in ('HBLauncher', 'GPUBrewLauncher') and parts[2] in ('tools', 'dist'):
         return False
@@ -194,8 +219,6 @@ def copy_file(root, source, destination):
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
-    if relative.as_posix() == 'integrations/blitbun/doom-engine/doom-headless':
-        destination.chmod(0o700)
     return True
 
 
@@ -217,7 +240,7 @@ def stage(root, payload, node):
     (payload / 'packaging/test-build.json').write_text(marker)
     (source / 'packaging/test-build.json').write_text(marker)
     (payload / 'packaging/runtime-homebrew.json').write_text(
-        json.dumps({'allowed': ['mintbrew', 'native-hblauncher', 'ouncecake', 'izlauncher', 'custom-homebrew']}, indent=2) + '\n'
+        json.dumps({'allowed': ['mintbrew', 'native-hblauncher', 'ouncecake', 'custom-homebrew']}, indent=2) + '\n'
     )
     for name in SOURCE_FILES:
         if (root / name).exists():
@@ -271,10 +294,9 @@ def archive(payload, build, source_archive):
                     entry.uid = entry.gid = 0
                     entry.uname = entry.gname = ''
                     entry.mtime = 0
-                    entry.mode = 0o700 if item.is_dir() or relative in EXECUTABLES or (
-                        relative.startswith('homebrew/IZ2S-Platform/') and item.is_file() and
-                        item.stat().st_mode & 0o111
-                    ) else 0o600
+                    entry.mode = 0o755 if relative == 'tools/nxformat/1.0.2/bin/nxconvert' else (
+                        0o700 if item.is_dir() or relative in EXECUTABLES else 0o600
+                    )
                     if item.is_file():
                         with item.open('rb') as file:
                             tar.addfile(entry, file)

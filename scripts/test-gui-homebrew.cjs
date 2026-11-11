@@ -152,24 +152,19 @@ test('custom homebrew uses GPUBrewLauncher with an isolated selected-app library
     return app;
   }}),/changed during staging/);
 });
-for(const [marker,kind,option] of [
-  ['module.json','iz-module','stageIZModule'],
-  ['manifest.json','native-app','preflightNativeApp']
-])test('custom picker recognizes '+kind+' before GPU app staging',async t=>{
+test('custom picker recognizes native apps before GPU app staging',async t=>{
   const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-custom-kind-')));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const folder=path.join(root,'selected');fs.mkdirSync(folder);
-  fs.writeFileSync(path.join(folder,marker),'{}');
+  fs.writeFileSync(path.join(folder,'manifest.json'),'{}');
   let called=false;
-  const options={[option]:async(selectedRoot,selectedFolder)=>{
+  const options={preflightNativeApp:async(selectedRoot,selectedFolder)=>{
     assert.equal(selectedRoot,root);assert.equal(selectedFolder,folder);called=true;
-    return kind==='iz-module' ? {id:'my-module',name:'My module',version:'1.0.0',
-      sha256:'a'.repeat(64),cleanup:async()=>{}} : {kind:'native-app',
+    return {kind:'native-app',
       app:{id:'my-native',name:'My native app'},packageFolder:path.join(root,'staged'),cleanup:async()=>{}};
   }};
   const prepared=await preflightCustomHomebrew(root,folder,options);
-  assert.equal(called,true);assert.equal(prepared.kind,kind);
-  if(kind==='iz-module')assert.equal(prepared.moduleId,'my-module');
+  assert.equal(called,true);assert.equal(prepared.kind,'native-app');
 });
 test('custom homebrew helper runs only the selected package through the held RPC',async t=>{
   const f=fixture(t,{application:'custom-homebrew'}),source=path.join(f.root,'my-gpu-app');

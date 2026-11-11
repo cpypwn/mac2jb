@@ -25,4 +25,18 @@ function extractExeFs(image,directory){
   return out;
  }finally{fs.closeSync(fd);}
 }
-module.exports={extractExeFs};
+async function indexExeFs(image,reader){
+ const {readSource}=require('./sources.cjs'),h=await readSource(image,0,16,reader);check(h.toString('ascii',0,4)==='PFS0','exefs.nsp must be an unencrypted PFS0 image');
+ const count=h.readUInt32LE(4),strings=h.readUInt32LE(8),metadata=count*24+strings,dataStart=16+metadata;
+ check(count>0&&count<=4096&&metadata<=16*1024*1024&&dataStart<=image.size,'Invalid PFS0 metadata extent');
+ const bytes=await readSource(image,16,metadata,reader),entries=bytes.subarray(0,count*24),names=bytes.subarray(count*24),out=[],seen=new Set(),ranges=[];
+ for(let i=0;i<count;i++){
+  const at=i*24,offset=Number(entries.readBigUInt64LE(at)),size=Number(entries.readBigUInt64LE(at+8)),nameAt=entries.readUInt32LE(at+16),end=names.indexOf(0,nameAt);
+  check(nameAt<names.length&&end>nameAt,'Invalid PFS0 filename');const name=names.toString('utf8',nameAt,end);
+  check(!/[\\/\x00]/.test(name)&&!['.','..'].includes(name)&&Buffer.byteLength(name)<=0x300&&!seen.has(name.toLowerCase()),'Invalid or conflicting PFS0 entry '+name);seen.add(name.toLowerCase());
+  check(Number.isSafeInteger(offset)&&Number.isSafeInteger(size)&&offset>=0&&size>=0&&dataStart+offset+size<=image.size,'PFS0 file exceeds image');
+  check(!ranges.some(r=>size&&r.size&&offset<r.offset+r.size&&r.offset<offset+size),'Overlapping PFS0 files');ranges.push({offset,size});out.push({name,size,source:image,sourceOffset:dataStart+offset});
+ }
+ return out;
+}
+module.exports={extractExeFs,indexExeFs};

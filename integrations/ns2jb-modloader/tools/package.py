@@ -25,6 +25,8 @@ def main():
             if not member.isfile():
                 continue
             name = member.name
+            if name == "CHECKPOINT.md":
+                continue  # Internal investigation notes are not release documentation.
             if name.startswith("contents/") or name.endswith("/.gitkeep"):
                 continue
             if name.startswith("sd-card-root/") or name in ("README.md", "LICENSE"):

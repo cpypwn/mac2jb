@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "captureSize": 2416640,
+  "ranges": [
+    {
+      "offset": 309440,
+      "size": 44,
+      "sha256": "a398892186c0ef282da68229e6aeefc3ce42e68babb69075082569e5beb67bff",
+      "purpose": "SD filesystem reference retain"
+    },
+    {
+      "offset": 431296,
+      "size": 192,
+      "sha256": "d1c38d72af538453cd9a70059ec47b01596690041a00b5fb4b17d690b412ca81",
+      "purpose": "context allocation"
+    },
+    {
+      "offset": 431488,
+      "size": 184,
+      "sha256": "6ae654bd2df9a430ffb3693c064692d2c870c37fdfb06ab1ad62a21ab56d0241",
+      "purpose": "context free"
+    },
+    {
+      "offset": 973664,
+      "size": 116,
+      "sha256": "a8b3dc38e20fd7a079ed66d4289a2b333e33179001eb8595748f78f752e94d28",
+      "purpose": "current RomFS mount frontend"
+    },
+    {
+      "offset": 973792,
+      "size": 124,
+      "sha256": "a9fadad843480489ceecfe0d7e3dbaebbe5da223c98fbc28dbc8f2090a4450cf",
+      "purpose": "program RomFS mount frontend"
+    },
+    {
+      "offset": 973920,
+      "size": 140,
+      "sha256": "8652e974809af48d7cb086b34c835842a3cd4c5c5160727aa6a87cd72c2b445a",
+      "purpose": "data RomFS mount frontend"
+    },
+    {
+      "offset": 981504,
+      "size": 164,
+      "sha256": "5e2403b648e96637b6bfc7ae4fd6679f51c93057859359ce61a89468c63d987b",
+      "purpose": "program-scoped CodeFS mount frontend"
+    },
+    {
+      "offset": 1061776,
+      "size": 232,
+      "sha256": "205ffba2b49ba596f5ff460e73784616d97c722486bee1042cc710275099f737",
+      "purpose": "filesystem release"
+    },
+    {
+      "offset": 1062640,
+      "size": 44,
+      "sha256": "8592169ff5481cb758cee5f8d95163b2e5dbbd3032f47fb02228ba40da853a85",
+      "purpose": "file retain"
+    },
+    {
+      "offset": 1065696,
+      "size": 236,
+      "sha256": "3f3a6ed9e77348d42f3f6f550593141a8b182afb7b1dcb12bb8f2f91afc20b22",
+      "purpose": "namespace type"
+    },
+    {
+      "offset": 1066416,
+      "size": 772,
+      "sha256": "9619406c5faca0e15cd8c98636150c6c1398d92b1119d2104d3ddaebe12a4c83",
+      "purpose": "namespace file open"
+    },
+    {
+      "offset": 1067200,
+      "size": 772,
+      "sha256": "61ddd4137818ba14fd5eee27e77455f3d49e41a008d34c56ded14d3a896b3ede",
+      "purpose": "namespace directory open"
+    },
+    {
+      "offset": 1068560,
+      "size": 212,
+      "sha256": "24731a2d83aaf605020208ca38e49fdefed4b152d720458f603a795d6da7a1db",
+      "purpose": "file release"
+    },
+    {
+      "offset": 1068784,
+      "size": 432,
+      "sha256": "73f6c539efd6ae89454d30b52cd92833b00956960f52633bd52df9bf6c48d332",
+      "purpose": "file read"
+    },
+    {
+      "offset": 1069216,
+      "size": 816,
+      "sha256": "bcf752a08e1c6906132f128c0f4f0154056f9ca44452803788b7cdede539ccfe",
+      "purpose": "report write"
+    },
+    {
+      "offset": 1070032,
+      "size": 60,
+      "sha256": "0520f61e69e14ccaa680c2daa30f60411c1f6e92bd85db72920548bb02b20ba1",
+      "purpose": "report flush"
+    },
+    {
+      "offset": 1070096,
+      "size": 112,
+      "sha256": "230444d26917147cd5382913441eef885402f67b31122341ab5d8f648becde86",
+      "purpose": "report resize"
+    },
+    {
+      "offset": 1070208,
+      "size": 148,
+      "sha256": "f49c351ee919f2e7582daf48a343240173ef8c801fb30f8b9197d3281a071d52",
+      "purpose": "file size"
+    },
+    {
+      "offset": 1070880,
+      "size": 212,
+      "sha256": "feccabd5f40467308dcd00fa9b77bae59cbac54b702e2732cac6b09c22731b1a",
+      "purpose": "directory release"
+    },
+    {
+      "offset": 1071104,
+      "size": 240,
+      "sha256": "6c7133120e932a2e2d10e0e7e52ac7222e7f15be2bf8a1d59eaa97d0750bfa84",
+      "purpose": "directory read"
+    },
+    {
+      "offset": 1071344,
+      "size": 72,
+      "sha256": "6bfaf2092d7628725b512b9aa75a3580b28903cbd46eced7a42675df0d7b5381",
+      "purpose": "directory count"
+    },
+    {
+      "offset": 1078416,
+      "size": 220,
+      "sha256": "0b5785b3a7fb1cef0a418ca8377b37b0014fe30d57e754f2ff9441c9a2995099",
+      "purpose": "storage release"
+    },
+    {
+      "offset": 1078640,
+      "size": 16,
+      "sha256": "038994d0dda5a6ba3812554d4ce2f770586ca8cab9c56a5a81e52eca1f40b34c",
+      "purpose": "storage read"
+    },
+    {
+      "offset": 1078784,
+      "size": 72,
+      "sha256": "e7f11aa26321f99d567f828a9279a0eb793a86b9505b98b150e2cb9f55577e55",
+      "purpose": "storage size"
+    },
+    {
+      "offset": 1078864,
+      "size": 16,
+      "sha256": "71bd13f8bb4b12352346f07a4a16bf39191b7ac32424de66b607fc4ccceedb9d",
+      "purpose": "optional storage dispatch adapter"
+    },
+    {
+      "offset": 1079216,
+      "size": 320,
+      "sha256": "915a5093bdd4877cdb3abc5ac2f96e81ced2e9d7b6d93f26782c5318e2f9ddfc",
+      "purpose": "storage read implementation"
+    },
+    {
+      "offset": 1080256,
+      "size": 264,
+      "sha256": "739be5152affa95f4b797a2eb34ddb9b299d9fb3c933a4451577d3ccd373929d",
+      "purpose": "optional storage dispatch"
+    },
+    {
+      "offset": 1080528,
+      "size": 340,
+      "sha256": "a41be85ebddc15665b26695bfb609a913a5435cd50267c05da53c50f905c04c9",
+      "purpose": "batch storage dispatch"
+    },
+    {
+      "offset": 1179344,
+      "size": 16,
+      "sha256": "c595b70dcbd9746d333701daf11d6227710744fcc466050dd1507b4cb98dbebc",
+      "purpose": "batch storage dispatch adapter"
+    },
+    {
+      "offset": 1180080,
+      "size": 92,
+      "sha256": "8cffc0fb0cf9665d3217b03cd9cdfb3d498e7d2d13703ed4085951bd38c7b3ab",
+      "purpose": "native notifier"
+    },
+    {
+      "offset": 1184768,
+      "size": 680,
+      "sha256": "66c7a985a722e7d6aa5b60f860aee672a7d3b367554cefc4edfd31a347f19504",
+      "purpose": "live process program registry"
+    },
+    {
+      "offset": 2184736,
+      "size": 476,
+      "sha256": "53ac85fc7d76365460f38b1f9a743d561f08af82747b8ccaaf7fe23df36b1813",
+      "purpose": "owned native block allocation"
+    },
+    {
+      "offset": 2185216,
+      "size": 124,
+      "sha256": "81b5af977e3d28aa9aa5277632d645d799c32fec599a6b9423088035bbe1b3af",
+      "purpose": "owned native block free"
+    },
+    {
+      "offset": 2185344,
+      "size": 476,
+      "sha256": "0f845a35e2873a5f97804ee4061fa2624a7b13057984613f8f17aa5ce1b14729",
+      "purpose": "owned native block free"
+    },
+    {
+      "offset": 2197456,
+      "size": 232,
+      "sha256": "ba312c9c77def61ee146fb69e5f6e277962dac9125803b8fd61ca6914a96d412",
+      "purpose": "SDK priority-inheriting mutex slow paths"
+    },
+    {
+      "offset": 2402208,
+      "size": 84,
+      "sha256": "ed0d17305388aba04e03bc1633433d061d1bb5288eff2d81da37a6369bea11ce",
+      "purpose": "program registry weak reference release"
+    }
+  ],
+  "padding": {
+    "offset": 2412800,
+    "size": 3840,
+    "used": [
+      {
+        "offset": 2412800,
+        "size": 1024
+      },
+      {
+        "offset": 2414592,
+        "size": 256
+      }
+    ]
+  }
+}

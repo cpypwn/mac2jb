@@ -116,6 +116,13 @@ async function main() {
     check(typeof entry.local === 'string' && path.isAbsolute(entry.local),
       'Invalid staged source for ' + entry.path);
     const bytes = await fs.readFile(entry.local);
+    if (entry.size !== undefined)
+      check(Number.isSafeInteger(entry.size) && bytes.length === entry.size,
+        'Staged file size differs from the manifest: ' + entry.path);
+    if (entry.sha256 !== undefined)
+      check(typeof entry.sha256 === 'string' && /^[0-9a-f]{64}$/.test(entry.sha256) &&
+        sha(bytes) === entry.sha256,
+      'Staged file hash differs from the manifest: ' + entry.path);
     const rel = entry.path.slice(1);
     jobs.push({name: rel, path: entry.path, bytes, replace: entry.replace === true,
       local: path.join(verifyDirectory, rel)});
@@ -256,6 +263,8 @@ async function main() {
       const opened = await filesystem.openFile(s, save, job.path);
       const present = !opened.result;
       if (!present) {
+        check((Number(opened.canonicalResult ?? opened.result) & 0x3fffff) === 0x202,
+          'Cannot establish whether ' + job.path + ' exists: ' + code(opened.result));
         check(!job.replace, 'Cannot replace ' + job.path + ': it is not in the save');
         continue;
       }
@@ -345,6 +354,6 @@ async function main() {
   }
 }
 
-module.exports = {ensureParentDirectories};
+module.exports = {ensureParentDirectories, main};
 if (require.main === module)
   main().catch(error => { console.error('FAILED:', error.message); process.exit(1); });

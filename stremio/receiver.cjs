@@ -103,7 +103,8 @@ async function create({rpc,mapped,directory,onProgress=()=>{},dependencies={}}){
   const native=dependencies.native||require('./receiver-program.cjs');
   const code=require('../vendor/GPUBrewLauncher/smilebasic/engine/switch2/app/thread-code.json').functions;
   const definitions=require('../vendor/GPUBrewLauncher/sdk/native/ftp-functions.json');
-  const connect=require('../vendor/IZ2S-Platform/core/console/abi/connect-function.json');
+  const sdkFunctions=require('../vendor/GPUBrewLauncher/smilebasic/engine/shared/sdk-functions.json');
+  const connect={offset:sdkFunctions.connect.offset,hex:sdkFunctions.connect.bytes};
   const functions={};let base,fd=-1,program,listener,sender,thread=null,closePromise,threadUncertain=false;
   const report={session:rpc.a.session,transport:'dedicated-tcp-v1',started:new Date().toISOString(),threadRunning:false,resourcesRetained:true};
   const file=path.join(directory,'stremio-receiver.json');

@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/fab918/nxformat",
+  "release": "V1.0.2",
+  "version": "1.0.2",
+  "archive": "https://github.com/fab918/nxformat/releases/download/V1.0.2/nxformat-1.0.2-macos-universal.tar.gz",
+  "archiveBytes": 63936976,
+  "archiveSha256": "4cdd2e39d6e42aa123da1c8c666766db2326a4eb1f2621f6d7de9e68e775a349",
+  "binarySha256": "3af0d99093b88d6ede37d9d26ae4ee818d7b594aeb48a9e6c38fadec07775b3e",
+  "binaryPath": "bin/nxconvert",
+  "checksumSource": "https://github.com/fab918/nxformat/releases/download/V1.0.2/SHA256SUMS"
+}

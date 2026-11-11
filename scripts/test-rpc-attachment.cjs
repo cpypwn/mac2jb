@@ -132,7 +132,7 @@ test('generated Kurumuz wave-overlap archive accepts only its pinned source byte
   await assert.rejects(context.verify(), /unrecognized executable/);
 });
 
-for (const application of ['hblauncher','mintbrew','native-hblauncher','izlauncher']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {
+for (const application of ['hblauncher','mintbrew','native-hblauncher','modloader']) test(application+' external run needs exact claimed authorization; normal current-run validation stays strict', async t => {
   const f = await fixture(t), context = await f.attach();
   await assert.rejects(validateRun(f.root, f.directory, verifiedSession), /current held run|authorized/);
   await assert.rejects(validateManifest(f.root, f.directory, context.manifestPath), /authorization/);

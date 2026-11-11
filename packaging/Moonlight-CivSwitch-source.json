@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/XITRIX/Moonlight-CivSwitch",
+  "tag": "v0.1.3",
+  "commit": "64cdae7f4a3f19202c7f8eaa0e5ac12ce3330d72",
+  "asset": "https://github.com/XITRIX/Moonlight-CivSwitch/releases/download/v0.1.3/moonlight.civapp",
+  "assetSize": 1953490,
+  "assetSha256": "7986a1655431a6fbddc7a48d6c0ea9c76a5fd487f97ac446ad2155aeac5e35fc",
+  "packageId": "moonlight-civswitch",
+  "packageRelease": "0.1.3",
+  "cache": "~/Library/Application Support/mac2jb/CivSwitch/Moonlight/moonlight-v0.1.3.civapp",
+  "installation": "CivHomebrew companion protocol 1 on TCP 9027",
+  "distribution": "The release asset is downloaded only when the user requests preparation or installation. No Moonlight source or package is bundled."
+}

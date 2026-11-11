@@ -90,8 +90,45 @@ rm -rf "$TMP/mac2jb/vendor/ns2jb/runs"
 rm -rf "$TMP/mac2jb/vendor/ns2jb/dumps"
 rm -rf "$TMP/mac2jb/vendor/HBLauncher/runs" "$TMP/mac2jb/vendor/HBLauncher/tools" "$TMP/mac2jb/vendor/HBLauncher/dist"
 rm -rf "$TMP/mac2jb/vendor/GPUBrewLauncher/runs" "$TMP/mac2jb/vendor/GPUBrewLauncher/tools" "$TMP/mac2jb/vendor/GPUBrewLauncher/dist"
-rm -rf "$TMP/mac2jb/integrations/vacootube/upstream/runtime"
-rm -f "$TMP/mac2jb/integrations/vacootube/overlay/server/local-package/vacootube-audio"
+for removed in \
+    vendor/IZ2S-Platform vendor/IZDOOM vendor/BlitBun \
+    vendor/ns2jb-hosts/izmysh-legacy \
+    vendor/MintBrew/apps/izdoom vendor/MintBrew/apps/iz-exchange \
+    integrations/izlauncher-shell integrations/blitbun integrations/vacootube \
+    integrations/civswitch-control-center vendor/CivSwitch-ControlCenter \
+    integrations/izdoom integrations/mintbrew-iz-exchange \
+    integrations/super-file-bros integrations/civswitch/izlauncher-save \
+    scripts/gui-izlauncher.cjs scripts/gui-civswitch-izlauncher.cjs \
+    scripts/gui-civswitch-izlauncher-save.cjs scripts/prepare-izlauncher.cjs \
+    scripts/check-izlauncher-runtime.cjs scripts/izlauncher-modules.cjs \
+    scripts/izlauncher-panel.cjs scripts/stage-custom-izmodule.cjs \
+    scripts/build-seedsow-full-showcase.cjs \
+    integrations/civswitch/hello.js integrations/civswitch/send-hello.cjs \
+    integrations/civswitch/send-hello.test.cjs \
+    integrations/balatro-rce/balatro-cpypwn-showcase.zip \
+    integrations/balatro-rce/showcase.lua integrations/balatro-rce/build-showcase.py \
+    integrations/seedsow-lua \
+    integrations/ns2jb-showcase \
+    integrations/artemis/cpypwn-showcase.lua \
+    integrations/artemis/cpypwn-kaleidoscope.lua \
+    integrations/artemis/cpypwn-full-showcase.lua \
+    integrations/artemis/README-seedsow-full-showcase.txt \
+    integrations/artemis/seedsowhax-v1-mac2jb.zip \
+    integrations/artemis/norahax-v1-mac2jb.zip \
+    integrations/artemis/seedsowhax-v2-mac2jb.zip \
+    integrations/artemis/norahax-v2-mac2jb.zip \
+    integrations/artemis/hamihax-v2-mac2jb.zip \
+    integrations/artemis/norahax-nora1-mac2jb.zip \
+    integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip \
+    integrations/gravcirc-rce/cpypwn-circuit-showcase.lua \
+    integrations/gravcirc-rce/build-cpypwn-save.py \
+    integrations/gravcirc-rce/send-showcase.py \
+    packaging/IZ2S-Platform-provenance.json packaging/IZ2S-Platform-SHA256SUMS \
+    packaging/IZMYSH-legacy-provenance.json packaging/IZMYSH-legacy-SHA256SUMS \
+    packaging/IZCIVSwitch-izlauncher-save.json
+do
+    rm -rf "$TMP/mac2jb/$removed"
+done
 
 # A source package must not include executable kernel extensions, machine-local
 # Xcode data, or the unused unlicensed upstream USB-device example.

@@ -1,0 +1,73 @@
+{
+  "source": "Civ7 nnSdk dump/4e102a4000.bin; semantic AArch64 analysis",
+  "sha256": "afaa7c04bffe9f269f5e87b7188da789ab5e59bc87a74acce10c1874432452c3",
+  "functions": {
+    "initialize": {
+      "offset": 1254624,
+      "bytes": "280080525f04007108040039e8179f1a3f000072080000394800805208119f1a080400b9c0035fd6",
+      "size": 40,
+      "prefixSize": 40,
+      "sha256": "53e5c8b36d0c3526a503206c6dd878074f5ac9e8492a52e56f21dc56dade3b42",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "initialize an 8-byte light event; auto/manual reset and initial signal state"
+    },
+    "finalize": {
+      "offset": 1254672,
+      "bytes": "1f040039c0035fd6",
+      "size": 8,
+      "prefixSize": 8,
+      "sha256": "fd7659e1ba6520a434ce9d504dfa52e162e2c3a43614542ead2d4dd901d016cc",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body"
+    },
+    "wait": {
+      "offset": 1255040,
+      "bytes": "ff0301d1fd7b01a9f65702a9f44f03a9fd430091f30300aa6846403848050034350080521400809236409f5268fedf88c80100351b0000141f2003d51f2003d5e00313aa4100805222008052e30314aa93d90094085400121f01166be106005468fedf88e80100341f050071a0feff541f090071610400541f2003d51f2003d568fe5f881f090071610100547ffe088888ffff352b0000141f2003d51f2003d568fe5f888800003575fe0888a8ffff35e4ffff175f3f03d568fedf8868fdff35f8ffff172800805269fedf882901003569fe5f888900003568fe0988a9ffff35090000145f3f03d569fedf8829ffff343f050071800000543f09007120020054",
+      "size": 352,
+      "prefixSize": 256,
+      "sha256": "baa667166a35e7ef06f37d05fcdaf56ac13a128c4e39afd78740866a4615ea5d",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body"
+    },
+    "tryWait": {
+      "offset": 1255392,
+      "bytes": "08444038680100341f2003d51f2003d508fc5f881f090071610100541ffc088888ffff3520008052bf3b03d5c0035fd608fcdf88bf3b03d51f090071e0179f1ac0035fd6e0031f2a5f3f03d5bf3b03d5c0035fd6",
+      "size": 84,
+      "prefixSize": 84,
+      "sha256": "1721ba27e4b98940a5fb91ee96d48f4d58fb3c1a55f45df7954c7d7e6fd66c5b",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body"
+    },
+    "signal": {
+      "offset": 1254688,
+      "bytes": "ff0301d1fd7b01a9f65702a9f44f03a9fd430091f30300aa68464038e80200345400805235409f52bf3b03d5680240b9c80100341f05007101050054e00313aa410080522200805223008052eed90094085400121f01156b80feff542200001474fe0888c804003468fe5f88a8ffff345f3f03d5edffff17550080521400801236409f52bf3b03d5680240b9e80100341f05007121020054e00313aa2100805222008052e303142ad7d90094085400121f01166b80feff540f0000141f2003d575fe0888c801003468fe5f88a8ffff345f3f03d5ecffff171f09007100010054f8c81294e00b00b9a0000034e0230091f0cf1294a0c31fb8c0000035f44f43a9",
+      "size": 280,
+      "prefixSize": 256,
+      "sha256": "ff9de01950a731f625c623e550909bfcc70c7bda984ad913576a1a808b72e29b",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body"
+    },
+    "clear": {
+      "offset": 1254976,
+      "bytes": "08100091bf3b03d51f2003d51f2003d509fd5f883f090071a10000541ffd098889ffff35bf3b03d5c0035fd65f3f03d5bf3b03d5c0035fd6",
+      "size": 56,
+      "prefixSize": 56,
+      "sha256": "3df510ae49d9f16fb094718d53cd84e07bcee615f35c15b6731f59b62c49e7f8",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body"
+    },
+    "waitAddress": {
+      "offset": 1477916,
+      "bytes": "810600d4c0035fd6",
+      "size": 8,
+      "prefixSize": 8,
+      "sha256": "5947e40f261901d94cdde170dd691370df85fb5f36058c7d055a6ea8285e625f",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "svc 0x34 WaitForAddress; ret"
+    },
+    "signalAddress": {
+      "offset": 1477924,
+      "bytes": "a10600d4c0035fd6",
+      "size": 8,
+      "prefixSize": 8,
+      "sha256": "e7bee437483a241346fcf76260b18f0d6606640835da1ff50ac21566829091ba",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "svc 0x35 SignalToAddress; ret"
+    }
+  }
+}

@@ -40,7 +40,7 @@ import Foundation
                 precondition(mode.hostArguments(address: address, host: host) == ["host", address] +
                     (mode == .hostOnlyHeld ? ["--post-run-options", "--savekit-tools"] : []))
             }
-            for host in ["BermTheSequel", "pepsipu", "izmysh"] {
+            for host in ["BermTheSequel", "pepsipu"] {
                 precondition(mode.hostArguments(address: address, host: host) == ["host", address] +
                     (mode == .hostOnlyHeld ? ["--post-run-options"] : []))
             }

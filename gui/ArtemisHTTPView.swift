@@ -11,6 +11,12 @@ enum ArtemisHTTPRoute {
 
     static let bodyLimit = 0x7000
 
+    static func recognizedStatus(_ text: String) -> Bool {
+        if text.hasPrefix("nora2hax/seedsow HTTP server\n") { return true }
+        let games = ["seedsow", "nora", "nora2", "hamidashi"]
+        return games.contains { text.hasPrefix("n2h HTTP server (\($0))\n") }
+    }
+
     private static let protectedFiles: Set<String> = [
         "core.lua", "inject.iet", "inject.lua", "http.lua", "proggy.ttf",
         "save9999.dat", "saveg.dat", "system.dat"
@@ -185,7 +191,7 @@ private final class ArtemisHTTPNoRedirect: NSObject, URLSessionTaskDelegate {
             }
             switch route {
             case .status:
-                guard text.hasPrefix("nora2hax/seedsow HTTP server\n") else {
+                guard ArtemisHTTPRoute.recognizedStatus(text) else {
                     throw ArtemisHTTPError.invalidServerResponse
                 }
             case .eval:

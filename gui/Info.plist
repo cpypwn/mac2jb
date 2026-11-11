@@ -17,20 +17,18 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.7.3</string>
+	<string>0.8.0</string>
 	<key>CFBundleVersion</key>
-	<string>537</string>
+	<string>539</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>MAC2JBTestBuild</key>
-	<true/>
+	<false/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSAudioCaptureUsageDescription</key>
-	<string>mac2jb captures Mac audio when you choose to stream with VacooTube.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>

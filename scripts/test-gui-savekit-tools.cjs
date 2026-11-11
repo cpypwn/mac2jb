@@ -6,13 +6,32 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {spawnSync} = require('node:child_process');
 const {request, archive, archiveArgs, selectedArchiveArgs, verifyPull,
-  stageFiles, stageRestoredFiles, parseListing, parseInventory, parseTitleNames} =
+  stageFiles, stageRestoredFiles, parseListing, parseInventory, parseTitleNames, validRun} =
   require('./gui-savekit-tools.cjs');
 const {assertPreservedFiles, assertMatchingFiles, verifyBackupFiles, safeRootName} =
   require('../vendor/ns2-savekit/tools/save-delete-root.cjs');
 const {listApplications} = require('../vendor/ns2-savekit/tools/list-apps.cjs');
 const {listSystem} = require('../vendor/ns2-savekit/overlay/engine/switch2/ro/ncm.cjs');
 const saveTree = require('../vendor/ns2-savekit/tools/lib/save-tree.cjs');
+
+test('Artemis SaveKit run requires a prepared source and a separate filesystem proof', async t => {
+  const made = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-artemis-savekit-'));
+  const root = await fs.realpath(made);
+  t.after(() => fs.rm(root, {recursive: true, force: true}));
+  const stage = path.join(root, 'runs/artemis-fs-1234567890abcdef/port');
+  await fs.mkdir(path.dirname(stage), {recursive: true});
+  await fs.cp(path.resolve(__dirname, '../integrations/artemis-fs/kit/port'), stage, {recursive: true});
+  const run = path.join(stage, 'engine/runs/switch2-test');
+  await fs.mkdir(run, {recursive: true, mode: 0o700});
+  await assert.rejects(validRun(run), /staged Artemis source/);
+  await fs.rm(run, {recursive: true});
+  const prepared = await require('./prepare-artemis-fs.cjs').prepare(stage);
+  await fs.mkdir(run, {recursive: true, mode: 0o700});
+  await fs.writeFile(path.join(run, 'result.json'), JSON.stringify({
+    target: 'artemis-seedsow', sourceSha256: prepared.sourceSha256,
+  }), {mode: 0o600});
+  await assert.rejects(validRun(run), error => error.code === 'ENOENT');
+});
 
 test('save traversal rejects directory names that could escape an export', async () => {
   const api = {list: async () => [{name: '..', type: saveTree.DIRECTORY, size: 0}]};

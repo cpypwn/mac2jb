@@ -1,0 +1,127 @@
+{
+  "titleId": "0100cd801ce5e000",
+  "name": "Balatro (Switch 1 edition)",
+  "edition": "Switch 1; also supported by upstream on Switch 2 in compatibility mode",
+  "supportedVersions": [
+    "1.0.1f",
+    "1.0.1o"
+  ],
+  "buildId": "de52bef7",
+  "upstream": {
+    "repo": "https://github.com/Luminger/balatro-switch-rce",
+    "tag": "v1.1.0",
+    "commit": "0be2c4c1e7932c21cb053d77126b50a69476f9c8",
+    "url": "https://github.com/Luminger/balatro-switch-rce/releases/download/v1.1.0/balatro-switch-rce-1.1.0.zip",
+    "size": 58223,
+    "sha256": "2c8055ec080f3c7bd7b5392f4484dbe8247efaa712563b662dfabab1b616b704",
+    "license": "GPL-3.0",
+    "fontLicense": "OFL-1.1"
+  },
+  "metadata": {
+    "path": ".nx_save_meta.bin",
+    "size": 86,
+    "sha256": "88de7981f2240ce13aefa0a7be866c8a6a4d175995a50ca27bf4309dc46d8526"
+  },
+  "files": [
+    {
+      "path": "/.lovegame/bl/app.lua",
+      "size": 9891,
+      "sha256": "f5b6cf7e3a940d2abff3fe8ba7d2d8669e8933ebaa87d298b7be2c1c60e2d8b0"
+    },
+    {
+      "path": "/.lovegame/bl/assets/OFL.txt",
+      "size": 4399,
+      "sha256": "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697"
+    },
+    {
+      "path": "/.lovegame/bl/assets/mono.ttf",
+      "size": 8828,
+      "sha256": "961f99ed9d40055a2677234b392796d67ca52a0b5ee025aaee4c59461dc00047"
+    },
+    {
+      "path": "/.lovegame/bl/call.lua",
+      "size": 3277,
+      "sha256": "4fd272ca0c8d46162f6ffa29172dde988efe220b0178ec6499316e82bcfbe1ad"
+    },
+    {
+      "path": "/.lovegame/bl/console.lua",
+      "size": 13565,
+      "sha256": "baa31b8178a8fd3b4e33e55707dc7bfacef5b2c6474264551100b4ba88f741c8"
+    },
+    {
+      "path": "/.lovegame/bl/ffi_call.lua",
+      "size": 35867,
+      "sha256": "f7b1f0b5437921e8d8ec0f67c4ac032a6bc69f49b04fdf86ae6cdaa98655490c"
+    },
+    {
+      "path": "/.lovegame/bl/ftp.lua",
+      "size": 6128,
+      "sha256": "967e61f71a47d8f35b0c4c00174f3a8756fc52854ede706af68f782913666c5c"
+    },
+    {
+      "path": "/.lovegame/bl/ftp_server.lua",
+      "size": 12308,
+      "sha256": "359f0fca76a29aa023370b22a83e1f3f78021c25857097b5633730e74d10dfc2"
+    },
+    {
+      "path": "/.lovegame/bl/hooks.lua",
+      "size": 6518,
+      "sha256": "6d3e36f0e5c05df3c2649092969462c3f83a6d3807bf930b9ae5579155b2d866"
+    },
+    {
+      "path": "/.lovegame/bl/jffi.lua",
+      "size": 8518,
+      "sha256": "df7fbda9dc2313c2fc9d9f1f7259fceffbef3735d5759e580636a008a343f5e1"
+    },
+    {
+      "path": "/.lovegame/bl/log.lua",
+      "size": 3773,
+      "sha256": "fb42dd88c98e2136f852980f24914c43af3112587cbc5a70cf12e7d943d636c1"
+    },
+    {
+      "path": "/.lovegame/bl/offsets.lua",
+      "size": 4419,
+      "sha256": "29206ec2137093f736d7c4b0aa6f7e0c43f0e601ec67a21261be848246b4557a"
+    },
+    {
+      "path": "/.lovegame/bl/repl.lua",
+      "size": 1116,
+      "sha256": "89efb2727ce9a3b795101ed9bbb3be276845a6466579c5b3587821db215ae2eb"
+    },
+    {
+      "path": "/.lovegame/bl/resolve.lua",
+      "size": 4258,
+      "sha256": "3ccc04221f422140a56a5d094c9e1aa7bae061e70858e4a07955480930f04d8c"
+    },
+    {
+      "path": "/.lovegame/bl/rpc.lua",
+      "size": 3881,
+      "sha256": "af3bd5ab8966facec2e57d574f638cf1d6a13cbf696361edff1514abc1e52cb8"
+    },
+    {
+      "path": "/.lovegame/bl/socket.lua",
+      "size": 10929,
+      "sha256": "b6150e5398ab13ed0058698ae94619d417eb350c58005dded96e9c4139b43311"
+    },
+    {
+      "path": "/.lovegame/bl/socket_types.lua",
+      "size": 1413,
+      "sha256": "e8625ed06dcf5b25cc62ab764e414f46716681d92979fc7fbbfb8fe3a2d5db9d"
+    },
+    {
+      "path": "/.lovegame/bl/stamp.lua",
+      "size": 5336,
+      "sha256": "4d0eab2e5eb0e30a53f3ec8fac9f6ba828f420ac425dc25e3b2b44a6d7880077"
+    },
+    {
+      "path": "/.lovegame/conf.lua",
+      "size": 1515,
+      "sha256": "116dfe652a7edb0719371f6e8362f75e129bcba6da1c9fa4e8efb85fc09514fc"
+    },
+    {
+      "path": "/.lovegame/main.lua",
+      "size": 2301,
+      "sha256": "059d281161ab7639434e4b46608268c7d8ccb49e53ef111e32aa35058adad0e7"
+    }
+  ]
+}

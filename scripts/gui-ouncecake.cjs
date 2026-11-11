@@ -120,7 +120,9 @@ async function main(args=process.argv.slice(2),options={}){
   await fs.writeFile(path.join(run.directory,'.mac2jb-hblauncher-attempt.json'),marker,{flag:'wx',mode:0o600});
   await fs.writeFile(path.join(run.directory,'.mac2jb-ouncecake-attempt.json'),marker,{flag:'wx',mode:0o600});
   const modules=options.modules||Object.fromEntries(['session','content','mounts','server'].map(name=>[name,require(path.join(snapshot.vendor,'engine',name+'.cjs'))]));
-  emit('started',{message:'Preparing '+label+' game export. Keep SmileBASIC and mac2jb open.'});
+  emit('started',{message:'Preparing '+label+' game export. Keep '+
+   (run.connection?.addresses?.target==='civ7'?'Civilization VII':
+    run.connection?.addresses?.target==='artemis-seedsow'?'Seedsow Lullaby':'SmileBASIC')+' and mac2jb open.'});
   monitor=setInterval(()=>{if(!isLive())stop();},1000);monitor.unref();
   try{attachment=await modules.session.attachGame(run.directory);}
   catch(error){error.cleanupBlocked=true;throw error;}

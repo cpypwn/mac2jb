@@ -19,28 +19,6 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
   const backup = path.join(root, 'seedsow-backups/demo-fixture');
   const exportPath = path.join(root, 'savekit-exports/nora-fixture');
   fs.mkdirSync(scripts, {recursive: true});
-  const sdIntegration = path.join(root, 'integrations/super-file-bros');
-  fs.mkdirSync(sdIntegration, {recursive: true});
-  fs.writeFileSync(path.join(sdIntegration, 'read-only-export.cjs'), `
-    const fs = require('node:fs');
-    const path = require('node:path');
-    const root = path.resolve(__dirname, '../..');
-    const address = process.argv[3];
-    const emit = (type, fields = {}) => console.log('MAC2JB_SDFTP ' + JSON.stringify({type,
-      message: 'fixture ' + type, ...fields}));
-    emit('ready', {url: 'ftp://' + address + ':2122/sd/', browserURL:
-      'http://127.0.0.1:12345/#' + 'a'.repeat(32), port: 2122,
-      mounts: ['sd'], readOnly: true});
-    process.stdin.setEncoding('utf8');
-    process.stdin.on('data', data => {
-      if (!data.includes('"action":"stop"')) return;
-      fs.writeFileSync(path.join(root, 'sd-browser-stop-completed'), 'yes');
-      emit('stopped');
-      process.exit(0);
-    });
-    process.stdin.resume();
-    setInterval(() => {}, 1000);
-  `);
   fs.mkdirSync(run, {recursive: true, mode: 0o700});
   fs.mkdirSync(backup, {recursive: true, mode: 0o700});
   fs.mkdirSync(exportPath, {recursive: true, mode: 0o700});
@@ -87,8 +65,6 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
     console.log('Run folder: ' + run);
     console.log(${JSON.stringify(require('./gui-session.cjs').heldMessage)});
     process.on('SIGTERM', () => {
-      fs.writeFileSync(path.join(root, 'runner-saw-sd-stop'),
-        String(fs.existsSync(path.join(root, 'sd-browser-stop-completed'))));
       result.rpc.state = 'closed';
       result.fs.cleanup = {cleanedUp: true};
       result.completed = new Date().toISOString();
@@ -944,39 +920,4 @@ test('existing Seedsow editor skips the write and keeps rpc held for Nora export
     'vendor/ns2-savekit-host-fixture/runs/switch2-test/result.json'), 'utf8'));
   assert.equal(report.rpc.state, 'closed');
   assert.equal(report.fs.cleanup.cleanedUp, true);
-});
-
-test('read-only SD browser blocks competing tools and stops before held RPC cleanup',
-  {timeout: 15000}, async t => {
-    const session = fixture(t);
-    await session.wait('post-run-ready');
-    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
-    await session.wait('rpc-held');
-    session.send({action: 'start-sd-browser', consoleAddress: '127.0.0.2'});
-    const ready = await session.wait('sd-browser-ready');
-    assert.equal(ready.url, 'ftp://127.0.0.2:2122/sd/');
-    session.send({action: 'launch-mintbrew'});
-    await session.wait('action-rejected');
-    assert.equal(fs.existsSync(path.join(session.root, 'mintbrew-launched')), false);
-    session.send({action: 'finish'});
-    await session.wait('sd-browser-stopped');
-    const result = await session.done;
-    assert.equal(result.code, 0, result.output + result.error);
-    assert.equal(fs.readFileSync(path.join(session.root, 'runner-saw-sd-stop'), 'utf8'), 'true');
-  });
-
-test('stopping the SD browser permits another held-RPC choice', {timeout: 15000}, async t => {
-  const session = fixture(t);
-  await session.wait('post-run-ready');
-  session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
-  await session.wait('rpc-held');
-  session.send({action: 'start-sd-browser', consoleAddress: '127.0.0.2'});
-  await session.wait('sd-browser-ready');
-  session.send({action: 'stop-sd-browser'});
-  await session.wait('sd-browser-stopped');
-  session.send({action: 'launch-mintbrew'});
-  await session.wait('homebrew-running');
-  session.send({action: 'finish'});
-  const result = await session.done;
-  assert.equal(result.code, 0, result.output + result.error);
 });

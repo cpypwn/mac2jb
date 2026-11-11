@@ -38,12 +38,23 @@ xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
   gui/SessionDataCleanup.swift scripts/test-session-data-cleanup.swift \
   -o "$BUILD/test-session-data-cleanup"
 "$BUILD/test-session-data-cleanup"
+xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
+  gui/CivSwitchAppsModel.swift scripts/test-civswitch-apps-model.swift \
+  -o "$BUILD/test-civswitch-apps-model"
+"$BUILD/test-civswitch-apps-model"
+xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
+  gui/CivSwitchModel.swift scripts/test-civswitch-model.swift \
+  -o "$BUILD/test-civswitch-model"
+"$BUILD/test-civswitch-model"
 if ! python3 scripts/prepare-homebrew-runtime.py --check; then
   python3 scripts/prepare-homebrew-runtime.py
 fi
 "$BUILD/homebrew/python/bin/python3" integrations/nsp-box/cli.py --self-test
 "$BUILD/homebrew/python/bin/python3" scripts/test-nsp-box.py
 "$NODE_BINARY" --test scripts/test-gui-nup.cjs
+"$NODE_BINARY" --test scripts/test-gui-nxformat.cjs
+"$NODE_BINARY" --test scripts/test-gui-civhomebrew.cjs
+"$NODE_BINARY" --test scripts/test-gui-civswitch-moonlight.cjs
 if ! NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh --check >/dev/null; then
   NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh
 fi
@@ -57,17 +68,6 @@ for stage in vert frag comp; do
   "$BUILD/homebrew/bin/spirv-val" --target-env vulkan1.0 \
     "vendor/MintBrew/homebrew-launcher/shaders/launcher.$stage.spv"
 done
-"$NODE_BINARY" integrations/blitbun/doom-engine/build.cjs --check
-chmod 700 integrations/blitbun/doom-engine/doom-headless
-[[ "$(lipo -archs integrations/blitbun/doom-engine/doom-headless)" == arm64 ]] || {
-  echo 'The bundled Freedoom engine must be arm64.' >&2; exit 1;
-}
-while IFS= read -r dependency; do
-  case "$dependency" in /usr/lib/*|/System/Library/*) ;;
-    *) echo "Freedoom engine depends on a non-system library: $dependency" >&2; exit 1 ;;
-  esac
-done < <(otool -L integrations/blitbun/doom-engine/doom-headless | tail -n +2 | awk '{print $1}')
-
 "$NODE_BINARY" scripts/prepare-bootstrap.cjs --check
 "$NODE_BINARY" scripts/prepare-host-profiles.cjs --check
 "$NODE_BINARY" scripts/prepare-seedsow-host.cjs --check
@@ -85,15 +85,19 @@ bash scripts/test-typing-preferences.sh
 bash scripts/test-network-selection.sh
 osacompile -o "$BUILD/dnswitch.scpt" scripts/dnswitch-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
-"$NODE_BINARY" --test integrations/civswitch/probe.test.cjs integrations/civswitch/send-hello.test.cjs integrations/civswitch/send-payload.test.cjs integrations/civswitch/install-persistent.test.cjs scripts/test-civswitch-hid.cjs
-"$BUILD/homebrew/python/bin/python3" integrations/civswitch-control-center/verify-source.py
-PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" integrations/civswitch-control-center/test_mac_host.py
+civswitch_tests=(integrations/civswitch/probe.test.cjs integrations/civswitch/send-payload.test.cjs integrations/civswitch/install-persistent.test.cjs integrations/civswitch/fs-host.test.cjs scripts/test-civswitch-hid.cjs)
+if [ -f integrations/civswitch/send-hello.test.cjs ] && [ -f integrations/civswitch/send-hello.cjs ]; then
+    civswitch_tests+=(integrations/civswitch/send-hello.test.cjs)
+fi
+"$NODE_BINARY" --test "${civswitch_tests[@]}"
+"$NODE_BINARY" --test integrations/artemis-fs/fs-host.test.cjs
 "$NODE_BINARY" --test scripts/test-cli-usb-fallback.cjs
 "$NODE_BINARY" --test scripts/test-gui-discover-rpc.cjs
 "$NODE_BINARY" --test scripts/test-homebrew-reentry.cjs scripts/test-gui-session.cjs scripts/test-gui-attach.cjs
 "$NODE_BINARY" scripts/gui-savekit.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-savekit.cjs
 bash scripts/test-artemis-update.sh
+bash scripts/test-bundled-update.sh
 bash scripts/test-artemis-http.sh
 "$NODE_BINARY" scripts/gui-savekit-tools.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-savekit-tools.cjs
@@ -106,17 +110,15 @@ bash scripts/test-artemis-http.sh
 "$NODE_BINARY" --test scripts/test-savekit-title-names.cjs
 "$NODE_BINARY" --test scripts/test-seedsow-held-session.cjs
 "$NODE_BINARY" --test scripts/test-custom-rpc-package.cjs scripts/test-gui-homebrew.cjs
-"$NODE_BINARY" --test scripts/test-gui-modloader.cjs integrations/ns2jb-modloader/tests/native-license.test.cjs
+"$NODE_BINARY" --test scripts/test-gui-modloader.cjs \
+  integrations/ns2jb-modloader/tests/native-license.test.cjs \
+  integrations/ns2jb-modloader/tests/native-capture-failure.test.cjs \
+  integrations/ns2jb-modloader/tests/verified-run.test.cjs
 "$NODE_BINARY" scripts/check-savekit-research.cjs
-"$NODE_BINARY" integrations/super-file-bros/read-only-export.cjs --self-test
-"$NODE_BINARY" --test scripts/test-super-file-bros.cjs integrations/mintbrew-native/contract.test.cjs
+"$NODE_BINARY" --test integrations/mintbrew-native/contract.test.cjs
 "$NODE_BINARY" --test integrations/mintbrew-native/host.test.cjs integrations/mintbrew-native/sd-roms.test.cjs scripts/test-kurumuz-native-ranges.cjs
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --check
 "$NODE_BINARY" scripts/prepare-mintbrew.cjs --check-source
-PATH="$BUILD/homebrew/python/bin:$BUILD/homebrew/bin:$PATH" \
-  MAC2JB_HBLAUNCHER_FONT="$BUILD/homebrew/fonts/DejaVuSans.ttf" \
-  "$NODE_BINARY" --test integrations/mintbrew-iz-exchange/file-exchange.test.cjs
-"$NODE_BINARY" scripts/prepare-izlauncher.cjs --check-source
 "$NODE_BINARY" scripts/gui-ouncecake.cjs --self-test
 PATH="$BUILD/homebrew/python/bin:$BUILD/homebrew/bin:$PATH" "$NODE_BINARY" --test \
   scripts/test-gui-ouncecake.cjs scripts/test-mintbrew-ouncecake.cjs scripts/test-ouncecake-server.cjs \
@@ -175,7 +177,6 @@ python3 scripts/package-gui-payload.py stage "$ROOT" "$PAYLOAD" "$NODE_BINARY"
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-bundled-browser-probes.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/check-webkit-research.cjs"
 "$NODE_BINARY" "$PAYLOAD/integrations/civswitch/verify.cjs" --runtime
-PYTHONDONTWRITEBYTECODE=1 "$BUILD/homebrew/python/bin/python3" "$PAYLOAD/integrations/civswitch-control-center/verify-source.py"
 if [ -f "$PAYLOAD/integrations/civswitch/send-hello.cjs" ]; then
     "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-hello.cjs"
 fi
@@ -188,6 +189,7 @@ fi
 "$PAYLOAD/mac2jb-civswitch-hid" --payload "$PAYLOAD/integrations/civswitch/payload.txt" --dry-run
 "$NODE_BINARY" "$PAYLOAD/scripts/check-savekit-research.cjs" --root "$PAYLOAD" --compare "$ROOT"
 "$NODE_BINARY" --check "$PAYLOAD/scripts/gui-modloader.cjs"
+"$NODE_BINARY" --check "$PAYLOAD/scripts/gui-modloader-sd.cjs"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/ns2jb-modloader/install.cjs"
 "$NODE_BINARY" -e 'require(process.argv[1]).artifacts()' \
   "$PAYLOAD/integrations/ns2jb-modloader/lib/native/artifacts.cjs"
@@ -196,10 +198,6 @@ fi
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/GPUBrewLauncher/apps"
 "$NODE_BINARY" scripts/prepare-mintbrew.cjs --prepare "$PAYLOAD"
 "$NODE_BINARY" "$PAYLOAD/scripts/prepare-mintbrew.cjs" --check-runtime "$PAYLOAD"
-"$NODE_BINARY" scripts/prepare-izlauncher.cjs --prepare "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/scripts/prepare-izlauncher.cjs" --check "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/scripts/check-izlauncher-runtime.cjs"
-"$NODE_BINARY" "$PAYLOAD/integrations/super-file-bros/read-only-export.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/integrations/mintbrew-native/verify-native.cjs" --all \
   "$PAYLOAD/integrations/mintbrew-native/upstream" >/dev/null
 

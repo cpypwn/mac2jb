@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "name": "civ7",
+  "displayName": "Civilization VII via CivSwitch",
+  "sdkBytes": 6299648,
+  "hello": {
+    "scratchBytes": 524288,
+    "gotOffsetFromMain": null,
+    "sdkCrc32": 157086863,
+    "zeroFields": ["backing", "controller"]
+  },
+  "nativeFunctions": {
+    "memcpy": "memcpy",
+    "memmove": "memmove",
+    "queryMemory": "svcQueryMemory",
+    "cancelSynchronization": 1477644,
+    "eventSyscallScan": 1477376,
+    "threadId": 1477748,
+    "waitZero": 1477620,
+    "processInfo": 1477796,
+    "syscallCapture": 1474560
+  },
+  "sdkMapping": {
+    "type": 3,
+    "permissions": 5,
+    "attributes": 0
+  },
+  "crc32": {
+    "function": "crc32",
+    "expected": 157086863
+  },
+  "importRestoration": false,
+  "sessionManager": {
+    "stateSize": 2048,
+    "stateOffset": 92,
+    "stateValue": 3
+  },
+  "romMount": {
+    "implementationVtableOffset": 11459432,
+    "storageWrapperVtableOffset": 11447336,
+    "serviceVtableOffset": 11450856
+  },
+  "keepAwake": {
+    "enabled": false
+  },
+  "heartbeat": {
+    "intervalMs": 5000,
+    "keepAwakeAfterMs": 30000
+  },
+  "timing": {
+    "mode": "measured",
+    "nativeFrequency": 31250000,
+    "sdkFrequency": 19200000,
+    "measurementNs": 10000000000,
+    "tolerancePpm": 100000
+  },
+  "affinity": {
+    "mode": "direct"
+  },
+  "pinningAllocationBytes": 6960,
+  "heapJitterBytes": 192,
+  "fieldCopies": 1,
+  "memoryMap": {
+    "attempts": 5,
+    "retryDelayMs": 250,
+    "maxRegions": 4096
+  },
+  "thread": {
+    "mode": "raw-svc",
+    "priority": "borrowed",
+    "objectBytes": 4096,
+    "stackBytes": 81920
+  },
+  "worker": {
+    "joinTimeoutMs": 30000,
+    "joinPollMs": 10
+  },
+  "retainedCaptureBytes": 5079040,
+  "retainedCaptureOffset": 5242880,
+  "smServiceOffset": 4768,
+  "programIds": {
+    "host": ["0100c3601518c000"],
+    "ro": "0x0400000000000037",
+    "allowedRo": [
+      "0x0400000000000037",
+      "0x0400000000000019",
+      "0x040000000000000a",
+      "0x040000000000004f",
+      "0x0400000000000014",
+      "0x0400000000000013",
+      "0x040000000000001d"
+    ]
+  },
+  "artifacts": {
+    "sdkFunctions": "sdk-functions.civ7.json",
+    "sdkLayout": "sdk-layout.civ7.json",
+    "app": {
+      "thread-code.json": "civ7-app/thread-code.json",
+      "event-code.json": "civ7-app/event-code.json",
+      "timing-code.json": "civ7-app/timing-code.json",
+      "hash-code.json": "civ7-app/hash-code.json",
+      "sdk-proxy-code.json": "civ7-app/sdk-proxy-code.json",
+      "thread-scheduling-reference.json": "civ7-app/thread-scheduling-reference.json",
+      "compat-affinity-reference.json": "civ7-app/compat-affinity-reference.json"
+    }
+  }
+}

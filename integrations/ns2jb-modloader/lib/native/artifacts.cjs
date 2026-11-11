@@ -20,17 +20,17 @@ function object(name,base,externals={}){
  const row=artifacts().templates[name];check(row?.object&&row.symbols,'Missing prebuilt ARM64 template: '+name);
  return {code:textSection(Buffer.from(row.object,'base64'),BigInt(base),externals),symbols:row.symbols};
 }
-function romfs(base,context){
- const r=object('romfs',BigInt(base)+0x24d100n,{original_read:BigInt(base)+0x1077b0n,original_size_tail:BigInt(base)+0x107604n,source_read:BigInt(base)+0x104ef0n});
- check(r.symbols.resident_context&&r.symbols.lfs_size,'Incomplete RomFS template');r.code.writeBigUInt64LE(BigInt(context),r.symbols.resident_context.value);return r;
-}
-function bridge(base,owner,args,externals){
- const r=object('call'+args.length,base,externals);r.code.writeBigUInt64LE(BigInt(owner),r.symbols.owner.value);
+function bridge(base,owner,args,externals,publish=false){
+ const r=object(publish?'publish':externals.clearAllocation?'allocate':'call'+args.length,base,{original_tail:externals.original_tail});r.code.writeBigUInt64LE(BigInt(owner),r.symbols.owner.value);r.code.writeBigUInt64LE(BigInt(externals.operation??0),r.symbols.operation.value);
+ r.code.writeBigUInt64LE(BigInt(externals.result??BigInt(owner)+8n),r.symbols.result.value);
  for(let i=0;i<args.length;i++)r.code.writeBigUInt64LE(BigInt(args[i]),r.symbols['arg'+i].value);
  check(r.code.length<=256,'Native call template exceeds the bridge');return r.code;
 }
-function namespace(context){
- const r=artifacts().templates.namespace,code=Buffer.from(r.code,'base64');
- check(r.contextOffset>=0&&r.contextOffset+8<=code.length,'Invalid namespace context literal');code.writeBigUInt64LE(BigInt(context),r.contextOffset);return{code,offsets:r.offsets};
+function runtime(context,namespaceContext,lazyContext=0n){
+ const r=artifacts().templates.runtime,code=Buffer.from(r.code,'base64');
+ check(r.offsets.resident_context>=0&&r.offsets.namespace_context>=0,'Missing runtime context literals');
+ code.writeBigUInt64LE(BigInt(context),r.offsets.resident_context);code.writeBigUInt64LE(BigInt(namespaceContext),r.offsets.namespace_context);
+ if(r.offsets.lazy_context!==undefined)code.writeBigUInt64LE(BigInt(lazyContext),r.offsets.lazy_context);
+ return{code,offsets:r.offsets};
 }
-module.exports={artifacts,romfs,bridge,namespace};
+module.exports={artifacts,bridge,runtime};

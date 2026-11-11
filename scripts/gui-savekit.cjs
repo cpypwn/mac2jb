@@ -784,11 +784,7 @@ async function install(runDirectory, sourcePath, variant) {
   check(!(variant === 'pro' && sourcePath), 'Choose the bundled Pro editor or a local save.');
   check(personalBuild || variant === 'pro' || sourcePath,
     'Choose Lua Editor Pro or provide a local editor save.');
-  const runs = fs.realpathSync(path.join(root, 'vendor')).replace(/\/$/, '');
-  const runPath = fs.realpathSync(runDirectory);
-  check(runPath.startsWith(runs + '/ns2-savekit-host-') &&
-        path.basename(path.dirname(runPath)) === 'runs',
-    'The Seedsow save action needs its own patched SaveKit host run.');
+  const runPath = await require('./gui-savekit-tools.cjs').validRun(runDirectory);
   const stageRoot = await fsp.mkdtemp(path.join(root, 'seedsow-stage-'));
   const extracted = path.join(stageRoot, 'editor');
   let backup;
@@ -874,11 +870,7 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
     'Choose Seedsow full game or a supported demo.');
   const fullGame = game === 'seedsow' && variant === 'full';
   const profile = fullGame ? fullSeedsowProfile() : artemisProfile(game);
-  const runs = fs.realpathSync(path.join(root, 'vendor')).replace(/\/$/, '');
-  const runPath = fs.realpathSync(runDirectory);
-  check(runPath.startsWith(runs + '/ns2-savekit-host-') &&
-        path.basename(path.dirname(runPath)) === 'runs',
-    'The Artemis launcher needs its own patched SaveKit host run.');
+  const runPath = await require('./gui-savekit-tools.cjs').validRun(runDirectory);
   const stageRoot = await fsp.mkdtemp(path.join(root, 'artemis-stage-'));
   const extracted = path.join(stageRoot, 'save');
   const report = (type, fields) => emit(type, {game, ...fields});

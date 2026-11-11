@@ -200,6 +200,16 @@ async function validRun(runDirectory) {
   check(typeof runDirectory === 'string' && path.isAbsolute(runDirectory),
     'Choose a verified held RPC run.');
   const run = await fsp.realpath(runDirectory);
+  const civ = /\/civswitch-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(run);
+  const artemis = /\/artemis-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(run);
+  if (civ || artemis) {
+    if (civ) await require('./prepare-civswitch-savekit.cjs').verifyPreparedRun(null, run);
+    else await require('./prepare-artemis-fs.cjs').verifyPreparedRun(null, run);
+    await require('./gui-dump.cjs').verifiedSession(run);
+    if (process.env.MAC2JB_ATTACHED_RUN_MANIFEST)
+      await require('./rpc-attachment.cjs').validateManifest(root, run);
+    return run;
+  }
   const vendor = await fsp.realpath(path.join(root, 'vendor'));
   const relative = path.relative(vendor, run).split(path.sep);
   check(relative.length === 3 && /^ns2-savekit-host-[A-Za-z0-9]+$/.test(relative[0]) &&

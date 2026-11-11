@@ -1,7 +1,0 @@
-#!/bin/sh
-set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-if [ -x "$ROOT/data/runtime/node/bin/node" ]; then
-  exec "$ROOT/data/runtime/node/bin/node" "$@"
-fi
-exec node "$@"

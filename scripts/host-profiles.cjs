@@ -18,19 +18,6 @@ function sourceDirectory(root, profile) {
   return fs.existsSync(original) ? original : path.join(root, profile.sourceDirectory);
 }
 function sourceDigest(folder, profile, replacements = {}) {
-  if (profile?.engine === 'izmysh') {
-    const names = [];
-    function walkIZMYSH(directory, relative = '') {
-      for (const item of fs.readdirSync(directory, {withFileTypes: true})) {
-        const name = relative + item.name, file = path.join(directory, item.name);
-        if (item.isDirectory()) walkIZMYSH(file, name + '/');
-        else if (item.isFile()) names.push(name);
-        else throw Error('Unexpected IZMYSH source file: ' + name);
-      }
-    }
-    walkIZMYSH(folder);
-    return hash(JSON.stringify(names.sort().map(name => [name, hash(fs.readFileSync(path.join(folder, name)))])));
-  }
   const names = ['run.cjs', 'bootstrap.bas'];
   for (const name of ['rpc.cjs', 'dump-firmware.cjs'])
     if (fs.existsSync(path.join(folder, name))) names.push(name);

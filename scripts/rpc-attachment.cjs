@@ -10,7 +10,7 @@ const {verifiedSession} = require('./gui-dump.cjs');
 const FORMAT = 'mac2jb-local-rpc-attachment-v1';
 const OWNER = '.mac2jb-attachment-owner.json';
 const ATTEMPT = '.mac2jb-hblauncher-attempt.json';
-const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'native-hblauncher', 'custom-homebrew', 'izlauncher', 'stremio', 'ouncecake', 'system-code-dump']);
+const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'native-hblauncher', 'custom-homebrew', 'stremio', 'ouncecake', 'modloader', 'system-code-dump', 'savekit']);
 const check = (value, message) => {if (!value) throw Error(message);};
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -168,7 +168,14 @@ function retainedInfo(socketPath, timeoutMs = 60000, signal) {
 async function inspect(root, directory, options = {}) {
   await owned(directory, 'directory');
   const result = await readJSON(path.join(directory, 'result.json'));
-  const trusted = trustedSourceForDigest(root, result.sourceSha256), profile = trusted.profile;
+  const civ = /\/civswitch-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(directory);
+  const artemis = /\/artemis-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(directory);
+  const trusted = civ ? await require('./prepare-civswitch-savekit.cjs').verifyPreparedRun(null, directory)
+    : artemis ? await require('./prepare-artemis-fs.cjs').verifyPreparedRun(null, directory)
+      : trustedSourceForDigest(root, result.sourceSha256);
+  check(trusted.sourceSha256 === undefined || trusted.sourceSha256 === result.sourceSha256,
+    'The held run source digest does not match its pinned host.');
+  const profile = trusted.profile;
   // bounded private reads supplement the ordinary held proof validator.
   const current = await readJSON(path.join(directory, 'switch2/fs-execution-current.json'));
   async function runJSON(file) {
@@ -187,11 +194,14 @@ async function inspect(root, directory, options = {}) {
   const connectionFile = path.join(directory, 'connection.json');
   const connection = await readJSON(connectionFile), addresses = connection.addresses;
   check(Number.isSafeInteger(connection.port) && connection.port > 0 && connection.port <= 65535 &&
-    addresses?.session === proof.session && addresses?.platform === 2 && addresses?.target === 'switch2',
+    addresses?.session === proof.session && addresses?.platform === 2 &&
+    addresses?.target === (civ ? 'civ7' : artemis ? 'artemis-seedsow' : 'switch2'),
     'The native bridge does not belong to the selected held run.');
-  for (const name of ['scratch','main','sdk','backing','controller'])
+  for (const name of ['scratch','main','sdk',...(civ || artemis ? [] : ['backing','controller'])])
     check(Number.isSafeInteger(addresses[name]) && addresses[name] >= 4096 && addresses[name] < 2 ** 39,
       'Invalid held native address: '+name);
+  if (civ || artemis) check(addresses.backing === 0 && addresses.controller === 0,
+    'The application bridge has unexpected reserved addresses.');
   const socketPath = current.retainedEndpoint.socketPath;
   check(acquisition.socketPath === socketPath && report.memoryControl?.socketPath === socketPath,
     'The held retained endpoint does not belong to the current acquisition.');

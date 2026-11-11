@@ -1,2 +1,0 @@
-#define IZ_STREAM 1
-#define IZ_STREAM_PRIVATE 1

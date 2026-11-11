@@ -83,28 +83,63 @@ function cleanAttachment(attachment) {
     session.threads?.size === 0;
 }
 
+async function createSDStorage(attachment) {
+  const {s, root, domain, filesystem} = attachment;
+  const opened = await s.ipc('Open SD filesystem', root, 18);
+  check(!opened.result, 'The SD filesystem is unavailable in this held session');
+  const handle = domain.oneHandle(opened);
+  function sdPath(value) {
+    check(value === '/sd' || value.startsWith('/sd/'), 'Path is outside the SD filesystem');
+    const relative = value.slice(3) || '/';
+    check(!relative.split('/').some(part => part === '.' || part === '..'),
+      'Invalid SD filesystem path');
+    return relative;
+  }
+  return {
+    mounts: ['sd'],
+    async list(value) {
+      const entries = await filesystem.listDirectory(s, handle, sdPath(value), 1024);
+      return entries.map(entry => {
+        const size = Number(entry.size);
+        check(Number.isSafeInteger(size) && size >= 0, 'Invalid SD directory entry size');
+        check(entry.type === 0 || entry.type === 1, 'Invalid SD directory entry type');
+        return {name: entry.name, type: entry.type === 0 ? 'dir' : 'file', size};
+      });
+    },
+    async openRead(value) {
+      const file = await filesystem.openFile(s, handle, sdPath(value));
+      check(!file.result, 'Could not open SD ROM: ' + path.posix.basename(value));
+      try {
+        const size = Number(await filesystem.fileSize(s, file.handle));
+        check(Number.isSafeInteger(size) && size >= 0, 'Invalid SD ROM size');
+        return {handle: file.handle, size};
+      } catch (error) {
+        await s.close(file.handle);
+        throw error;
+      }
+    },
+    read: (file, offset, count) => filesystem.readFile(s, file.handle, offset, count),
+    close: file => s.close(file.handle),
+    release: () => s.close(handle),
+  };
+}
+
 async function readSDRoms(runDirectory, options = {}) {
   const folder = validSDRomFolder(options.folder);
-  const source = options.sourceRoot || path.join(__dirname, '../super-file-bros/upstream');
-  const exported = require('../super-file-bros/read-only-export.cjs');
-  await (options.verifySource || exported.verifySource)(source);
-  const attach = options.attachGame || require(path.join(source,
-    'modules/iz-exchange/server/ouncecake/engine/session.cjs')).attachGame;
-  const createStorage = options.createStorage || require(path.join(source,
-    'tools/dolphin-fs-rpc/storage.cjs')).createStorage;
+  const attach = options.attachGame || require('../../vendor/OunceCake/engine/session.cjs').attachGame;
+  const createStorage = options.createStorage || createSDStorage;
   const notify = options.progress || (() => {});
   const stop = options.shouldStop || (() => false);
   const limit = options.limit === undefined ? MAX_ROMS - 1 : options.limit;
   check(Number.isInteger(limit) && limit >= 0 && limit <= MAX_ROMS,
     'Invalid SD ROM import limit');
-  let attachment, attachAttempted = false, result, failure;
+  let attachment, storage, attachAttempted = false, result, failure;
   try {
     check(!stop(), 'SD ROM import stopped');
     attachAttempted = true;
     attachment = await attach(runDirectory);
-    const opened = await createStorage(attachment);
-    check(opened.mounts.includes('sd'), 'The SD filesystem is unavailable in this held session');
-    const storage = exported.readOnlySD(opened);
+    storage = await createStorage(attachment);
+    check(storage.mounts.includes('sd'), 'The SD filesystem is unavailable in this held session');
     const entries = await folderEntries(storage, folder);
     if (!entries) {
       result = {folder, missing: true, roms: [], skipped: []};
@@ -133,6 +168,15 @@ async function readSDRoms(runDirectory, options = {}) {
   } catch (error) {
     failure = error;
     if (attachAttempted && !attachment) failure.cleanupBlocked = true;
+  }
+  if (storage?.release) {
+    try {await storage.release();}
+    catch (error) {
+      const unsafe = Error('SD ROM filesystem handle did not close: ' + error.message);
+      unsafe.cleanupBlocked = true;
+      failure = failure ? Object.assign(Error(failure.message + '; ' + unsafe.message),
+        {cleanupBlocked: true}) : unsafe;
+    }
   }
   if (attachment) {
     try {
@@ -259,4 +303,4 @@ async function stageApps(runDirectory, appsRoot, roms) {
 }
 
 module.exports = {DEFAULT_SD_ROM_FOLDER, MAX_ROMS, validSDRomFolder, compatibleINES,
-  macRomDirectory, readMacRoms, readSDRoms, stageApps};
+  macRomDirectory, readMacRoms, createSDStorage, readSDRoms, stageApps};

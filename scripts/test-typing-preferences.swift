@@ -39,10 +39,10 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         check(invalid.keyDelayMs == 10 && invalid.keyHoldMs == 0 && invalid.enterSettleMs == 0 && invalid.pollInterval == 10, "corrupt transport preferences fail back to stock")
         check(invalid.enumerationTimeoutSeconds == 4 && invalid.loadWaitMs == 1000 && invalid.runWaitMs == 0, "corrupt command preferences are rejected")
         check(!model.hasLiveWorkers && !reopened.hasLiveWorkers && !stock.hasLiveWorkers, "preference changes never start workers")
-        check(HostProfile.allCases.count == 6 && HostProfile(rawValue: "astral") != nil, "all six host profiles remain available")
+        check(HostProfile.allCases.count == 5 && HostProfile(rawValue: "astral") != nil, "all five host profiles remain available")
         check(HostProfile.kurumuz.supportsModloader && HostProfile.cellenseres.supportsModloader &&
               !HostProfile.astral.supportsModloader && !HostProfile.bermTheSequel.supportsModloader &&
-              !HostProfile.izmysh.supportsModloader && !HostProfile.pepsipu.supportsModloader,
+              !HostProfile.pepsipu.supportsModloader,
               "Modloader is offered only on supported hosts")
         print("Typing preference checks passed: \(checks). No runtime, USB or RPC started.")
     }

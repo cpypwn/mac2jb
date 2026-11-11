@@ -103,8 +103,6 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                 : > held-choice-received
                 gate release-rpc-held
                 printf '{"type":"rpc-held","path":"%s/held-fixture","rpcCommand":"inert-fixture-rpc"}\n' "$PWD" ;;
-              *'"action":"list-izlauncher-modules"'*)
-                emit '{"type":"izlauncher-catalog","modules":[]}' ;;
               *'"action":"start-savekit"'*)
                 emit '{"type":"savekit-selected","message":"SaveKit is ready"}' ;;
               *'"action":"finish-savekit"'*)
@@ -162,7 +160,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                     emit '{"type":"savekit-tool-complete","action":"titles","message":"Title list ready"}' ;;
                   *) emit '{"type":"savekit-tool-complete","action":"backup","message":"Save export verified"}' ;;
                 esac ;;
-              *'"action":"launch-mintbrew"'*|*'"action":"launch-izlauncher"'*)
+              *'"action":"launch-mintbrew"'*)
                 emit '{"type":"homebrew-started"}'
                 gate release-gpu-running
                 emit '{"type":"homebrew-running","message":"Inert GPU launcher ready."}' ;;
@@ -800,7 +798,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               gpu.model.detail.contains("safely disconnect") && gpu.model.detail.contains("same network") &&
               gpu.model.detail.contains("SmileBASIC and mac2jb open"),
               "the selected MintBrew path shows post-RPC USB guidance")
-        gpu.model.launchMintBrew(); gpu.model.launchIZlauncher(); gpu.model.checkRPCStatus(); gpu.model.startKeyboardForwarding()
+        gpu.model.launchMintBrew(); gpu.model.checkRPCStatus(); gpu.model.startKeyboardForwarding()
         check(!gpu.model.postRun.canFinish && !gpu.model.canLaunchHomebrew && !gpu.model.canStartKeyboard,
               "MintBrew startup blocks other apps, status, keyboard and premature Finish")
         try gpu.put("release-gpu-running")
@@ -817,7 +815,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try await until("MintBrew original-session final cleanup") { gpu.model.phase == .verified && !gpu.model.hasLiveWorkers }
         let controls = try String(contentsOf: gpu.root.appendingPathComponent("controls"), encoding: .utf8)
             .split(separator: "\n").map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String:Any] }
-        check(controls.compactMap { $0["action"] as? String }.filter { $0 != "list-izlauncher-modules" } ==
+        check(controls.compactMap { $0["action"] as? String } ==
               ["post-run", "launch-mintbrew", "dump-system-code", "finish"] &&
               gpu.invocations == ["host"],
               "chosen MintBrew and its dump use the same original held host")
@@ -826,7 +824,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
               (launchControl?["libraryItems"] as? [[String: String]])?.first?["id"] == "fixture-library",
               "chosen MintBrew receives the current Stremio account configuration")
 
-        for (keepRPC, launcher) in [(false, "mint"), (true, "mint"), (true, "iz")] {
+        for keepRPC in [false, true] {
             let host = try SetupFixture(edition: .full, addressProvider: { [address] })
             defer { host.dispose() }
             host.model.addresses = [address]; host.model.selectedAddress = address.address
@@ -851,7 +849,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                   "host-ready exposes only the captured pairing command and never launches HID")
             check(host.model.activeSessionSupportsHomebrew == keepRPC && !host.model.canLaunchHomebrew && !host.model.postRun.heldConfirmed,
                   "host readiness alone never grants homebrew or held proof")
-            host.model.start(); host.model.launchMintBrew(); host.model.launchIZlauncher()
+            host.model.start(); host.model.launchMintBrew()
             try host.put("release-console-result")
             if keepRPC {
                 try await until("manual host held choice") { FileManager.default.fileExists(atPath: host.root.appendingPathComponent("held-choice-received").path) }
@@ -860,9 +858,9 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
                 try await until("host-only positive held proof") { host.model.canLaunchHomebrew }
                 check(host.model.phase == .rpcHeld && !host.model.postRun.homebrewAttempted,
                       "host-only held RPC keeps app selection manual")
-                if launcher == "iz" { host.model.launchIZlauncher() } else { host.model.launchMintBrew() }
-                check(host.model.homebrewTitle == (launcher == "iz" ? "IZlauncher" : "MintBrew"),
-                      "host-only launches the selected independent launcher")
+                host.model.launchMintBrew()
+                check(host.model.homebrewTitle == "MintBrew",
+                      "host-only launches the selected homebrew")
                 try host.put("release-gpu-running")
                 try await until("homebrew on manually connected host") { host.model.phase == .homebrewRunning }
                 host.model.finishPostRun()
@@ -997,7 +995,7 @@ enum EmbeddedPayloadMetadata { static let sha256 = "unused-fixture" }
         try await until("demo MintBrew session finishes") { demo.model.phase == .verified && !demo.model.hasLiveWorkers }
         let demoControls = try String(contentsOf: demo.root.appendingPathComponent("controls"), encoding: .utf8)
             .split(separator: "\n").map { try JSONSerialization.jsonObject(with: Data($0.utf8)) as! [String:Any] }
-        check(demoControls.compactMap { $0["action"] as? String }.filter { $0 != "list-izlauncher-modules" } ==
+        check(demoControls.compactMap { $0["action"] as? String } ==
               ["post-run", "launch-mintbrew", "finish"] && demo.invocations == ["host"],
               "chosen demo MintBrew reuses the original kurumuz host")
 

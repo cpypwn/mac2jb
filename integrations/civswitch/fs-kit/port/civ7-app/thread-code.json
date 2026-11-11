@@ -1,0 +1,399 @@
+{
+ "source": "Civ7 nnSdk dump/4e102a4000.bin; semantic AArch64 analysis",
+ "sha256": "afaa7c04bffe9f269f5e87b7188da789ab5e59bc87a74acce10c1874432452c3",
+ "frameCompatibility": {
+  "referenceBuilderDropIn": false,
+  "requiredChanges": [
+   "Apply the call4 table+0x80 target-slot adjustment described in functions.call4.",
+   "The direct nn::os lifecycle is NO-GO while CreateThread hangs without returning; do not attempt exitContinuation or DestroyThread as a workaround."
+  ],
+  "bti": "No BTI C, BTI JC, PACIBSP or RETAB opcode was found in the complete text dump. All selected frame gadgets begin without a BTI landing pad, matching the reference gadget style. Runtime BTI enforcement cannot be established from the dump and requires the normal worker qualification."
+ },
+ "directNnOs": {
+  "status": "NO_GO_CREATE_THREAD_HANG_UNRESOLVED",
+  "hardwareBlock": {
+   "observation": "Two independent clean Civ7 processes hung inside CreateThread with page-aligned zeroed 0x1000 ThreadType, separate page-aligned 0x14000 stack, priority 20, and the longjmp/frame entry. StartThread was never reached.",
+   "identicalPthreadCallee": "pthread_create at 0x1422d0 branches through 0x5e6b30 to the same exported CreateThread at 0x136d50; its start path branches through 0x5e6b40 to the same StartThread at 0x136da0.",
+   "staticConclusion": "Object zeroing is sufficient because ThreadManager clears 0x1c0 itself. Stack top is stack base+size. Entry is stored but not executed before return. Resource retry is bounded at ten 10 ms attempts. No direct-input correction or special caller-context requirement is established by the dump.",
+   "recommendation": "NO-GO: do not make further direct CreateThread attempts without new evidence locating the blocking call. The previous direct-path recommendation is withdrawn."
+  },
+  "functions": {
+   "create": {
+    "offset": 1273168,
+    "bytes": "684f0090e603052a084141f9e50304aae40303aae30302aae20301aae10300aa00c103915fd01214",
+    "size": 40,
+    "prefixSize": 40,
+    "sha256": "d8895e88f44003b72c83327c9781c80bcd69058be23f397b54ce92735c16ffb7",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "dynamicSymbol": "nn::os::CreateThread default-core overload (defined symbol 23039, size 0x28)",
+    "call": "CreateThread(thread, entry, argument, stack, stackBytes, priority) -> result; x0=ThreadType*, x1=entry, x2=argument, x3=stack, x4=stackBytes, w5=priority; default core is selected by the manager",
+    "semantics": "forwards to ThreadManager::CreateThread; its default-core overload at 0x13819c sets w7=-2"
+   },
+   "start": {
+    "offset": 1273248,
+    "bytes": "684f0090e10300aa084141f900c1039158d01214",
+    "size": 20,
+    "prefixSize": 20,
+    "sha256": "4901b472b5ad11c5e2d534390f34781c701ae493fbee20adcd9f9faffd890ea2",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "dynamicSymbol": "nn::os::StartThread (defined symbol 6825, size 0x14)",
+    "call": "StartThread(thread) -> result; x0=ThreadType*"
+   },
+   "destroy": {
+    "offset": 1273216,
+    "bytes": "684f0090e10300aa084141f900c103915cd01214",
+    "size": 20,
+    "prefixSize": 20,
+    "sha256": "dcd51fe4d22da754e64321bc5fc9bb2b95690e52bb75489845c34f8f7053e046",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "dynamicSymbol": "nn::os::DestroyThread (defined symbol 8559, size 0x14)",
+    "call": "DestroyThread(thread) -> result; x0=ThreadType*; call only after TryWaitThread observes exit"
+   },
+   "exitContinuation": {
+    "offset": 1302676,
+    "bytes": "284f0090083d40f9080140f9480000b400013fd6a9aa00941f2003d500000014",
+    "size": 32,
+    "prefixSize": 32,
+    "sha256": "74ceda6581c32e10ec029a54a61f5c7139988d5cd9a2e92519aaa2df6a35799a",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "status": "REQUIRED_FINAL_FRAME_TARGET_FOR_DIRECT_THREADS",
+    "semantics": "normal nn::os bootstrap continuation immediately after blr at 0x13e090; runs the optional exit hook and svcExitThread. Use this instead of pthread_exit so the frame returns through the normal direct-thread path"
+   }
+  },
+  "threadType": {
+   "requestedBytes": 1024,
+   "requestedBytesSupported": false,
+   "minimumBytes": 1537,
+   "recommendedBytes": 4096,
+   "evidence": "ThreadManager::CreateThread at 0x137ea4 clears 0x1c0 bytes and writes fields through ThreadType+0x1b4, plus a flag byte at ThreadType+0x600 (0x137f34). A zeroed 0x400-byte buffer is therefore too small; use a zeroed page-aligned 0x1000-byte owned buffer."
+  },
+  "stack": {
+   "bytes": 81920,
+   "separateFromThreadType": true,
+   "pageAligned": true,
+   "evidence": "The direct wrapper forwards caller stack address/size. The low-level creator derives the initial stack context from ThreadType+0x48/+0x50. Use separate page-aligned owned RW memory of the same size as the default pthread stack; do not place it in the 0x1000-byte ThreadType buffer."
+  },
+  "priority": {
+   "value": 20,
+   "evidence": "ThreadManager::CreateThread stores w6 as a halfword at ThreadType+0x88 (0x137f0c)."
+  },
+  "tryWait": {
+   "function": "functions.tryWait",
+   "implementation": "functions.tryWaitImplementation",
+   "runningResult": 0,
+   "exitedResult": 1,
+   "evidence": "TryWaitForExitThread initializes w20=1 and returns it on a successful synchronization wait; timeout result 0xea01 changes it to zero."
+  },
+  "cleanup": {
+   "requiresPthreadJoin": false,
+   "recipe": "After TryWaitThread returns one, read worker results from the owned frame and call DestroyThread. The manager removes the object from its list, unmaps any alias stack, closes the kernel handle, and clears state. Only then release the owned ThreadType and stack buffers.",
+   "evidence": "DestroyThreadUnsafe at 0x13e0e4 closes ThreadType+0x1b0; DestroyThreadObject at 0x138340 unlinks and cleans the object. No pthread_join result is required."
+  },
+  "pthreadExit": {
+   "compatible": false,
+   "resultFieldSupported": false,
+   "evidence": "pthread_exit reads the musl thread object from TPIDRRO_EL0+0x1e0 and stores its result at that object's+0x1d0. Direct CreateThread initializes the nn::os current-thread slot at TPIDRRO_EL0+0x1f8 (0x13e04c) but does not initialize the musl object. Do not use pthread_exit or expect a direct ThreadType+0x1d0 result; use exitContinuation and read owned frame results."
+  },
+  "affinity": {
+   "compatible": true,
+   "get": "thread-scheduling-reference.json functions['nn::os::GetThreadCoreMask(int*, unsigned long*, nn::os::ThreadType const*)']",
+   "set": "thread-scheduling-reference.json functions['nn::os::SetThreadCoreMask(nn::os::ThreadType*, int, unsigned long)']",
+   "evidence": "Both wrappers accept the direct ThreadType* and the detail implementations use the kernel handle at ThreadType+0x1b0. Get/SetThreadCoreMask can be used after CreateThread and before/after StartThread with the direct available-core mask."
+  },
+  "lifecycle": [
+   "NO-GO: do not retry direct CreateThread or progress to StartThread until a concrete correction is identified."
+  ]
+ },
+ "managerListRecovery": {
+  "status": "STATICALLY_SUPPORTED_BOUNDED_LIST_WALK",
+  "purpose": "Locate the already-created pthread worker without calling CreateThread or using the failed frame-output formula.",
+  "layout": {
+   "globalManagerPointerOffset": 11674240,
+   "managerBias": 240,
+   "listSentinelOffset": 464,
+   "nextOffset": 0,
+   "previousOffset": 8,
+   "entryOffset": 104,
+   "argumentOffset": 96,
+   "pthreadBaseFromNode": -784,
+   "pthreadEntryOffset": 448,
+   "pthreadArgumentOffset": 456,
+   "kernelHandleOffset": 432,
+   "managerLockOffset": 456
+  },
+  "evidence": "Every public wrapper loads the manager pointer at sdk+0xb22280 and adds 0xf0. Constructor 0x138604 sets manager+0x1d0 to that same sentinel address. Create inserts the ThreadType at manager+0x1d0 before StartThread (0x13804c-0x13806c), storing entry at node+0x68 and argument at node+0x60. pthread_create places this inner ThreadType at pthread_base+0x310 and separately stores entry/argument at pthread_base+0x1c0/+0x1c8. DestroyThreadObject unlinks nodes at 0x138340.",
+  "guardedWalk": {
+   "maxNodes": 128,
+   "steps": [
+    "Read manager=read64(sdk+0xb22280)+0xf0; validate a readable mapping covering manager through manager+0x1e8.",
+    "Set sentinel=manager+0x1d0 and node=read64(sentinel). Keep a visited-address set.",
+    "For at most 128 nodes: stop at sentinel; reject an unaligned node, a duplicate/self-cycle, or a mapping that does not cover node through node+0x608.",
+    "Read entry=read64(node+0x68), argument=read64(node+0x60), and next=read64(node+0). Match entry==sdk+0x5511b4 and argument==ownedFrameBase; otherwise continue at next.",
+    "For a match, set pthreadBase=node-0x310, validate its mapping through +0x1c8, and require read64(pthreadBase+0x1c0)==entry and read64(pthreadBase+0x1c8)==argument.",
+    "Revalidate node and its manager linkage immediately before any native operation. Abort on mismatch rather than following an invalid pointer."
+   ],
+   "archivedExample": {
+    "ownedFrameBase": "0x597cd0f000",
+    "note": "This value is ASLR-specific; a new diagnostic must use that run's actual ownedFrameBase."
+   }
+  },
+  "operations": {
+   "getCoreMask": "Call 0x1371c0(outIdealCore,outMask,node) and read outMask.",
+   "setCoreMask": "Call 0x1371a0(node,0,mask), then verify with GetThreadCoreMask.",
+   "tryWait": "Call existing 0x137110(node): 0 means still running, 1 means exited. Do not destroy a gate-blocked worker while it is running.",
+   "destroy": "Only after TryWaitThread returns 1, call 0x136d80(node) and require zero. No pthread_join and no new CreateThread call."
+  }
+ },
+ "functions": {
+  "create": {
+   "offset": 1319296,
+   "bytes": "ff4302d1fd7b04a9f92b00f9f85f06a9f65707a9f44f08a9fd030191f50303aaf60302aaf40301aaf30300aa810000b5e0230091f4230091ee000094881e40b91f050071480d005401010054882240b91f050071c80c0054882640b9081500511f7d0071480c0054880240f9d80280521f0540f1e30b0054092d4092a90b00b5980a40f91f2f40f2210b0054971640f9d70000b48f9212941f0017ea800a0054880240f9980a40f91f0100f1090088522900a0723901889af80000b401648152000180525ba51294f70300aa000100b550000014210740910000825255a51294800900b4f70300aa18044091e0820c91e1031f2aff22067902008152ff4a0c39",
+   "size": 544,
+   "prefixSize": 256,
+   "sha256": "8dffba0835a9546545cf341956b255a93c9b0c25181e38440f2608eaf56f236d",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "dynamicSymbol": "pthread_create (defined symbol 21430, size 0x220)",
+   "semantics": "pthread_create(thread*, attr, entry, arg); null attr uses the default joinable attribute path",
+   "outputSemantics": {
+    "status": "RUNTIME_DISCOVERY_REQUIRED",
+    "evidence": "0x14235c computes x8=x23&7 and 0x142364 stores it to the output slot. The allocated thread object is 8-byte aligned, so a successful create can return 0 with output 0.",
+    "threadPointerFormula": "At 0x142340 x20=x23+0x310; at 0x14234c x8=x21+(w0<<3), where x21 is the entry argument (ownedFrameBase); at 0x142354 x20 is stored at [x8+0x80]. w0 is the helper return at 0x142348 and is not stored in the frame; its value is not statically known.",
+    "diagnostic": "Read only owned memory after create returns. Test the bounded diagnostic candidates w0=0..3 at ownedFrameBase+0x80,+0x88,+0x90,+0x98; this probe bound is not a claimed semantic maximum for w0. For each nonzero aligned candidate, query its mapping, then verify [candidate-0x150]==sdk+0x5511b4 and [candidate-0x148]==ownedFrameBase (the thread object's entry/argument at x23+0x1c0/+0x1c8). Stop if none matches; do not call through an unvalidated pointer or change create/default attributes."
+   }
+  },
+  "join": {
+   "offset": 1320064,
+   "bytes": "e803202a1f0940f261020054fd7bbea9f44f01a9fd030091f30301aa14f07d92d49412941f0014eba001005488420c914a008052097d5f083f050071810100540a7d0b088bffff352a0080526a01003612000014c0028052c0035fd660048052f44f41a9fd7bc2a8c0035fd6ea031f2a5f3f03d53f0100373f110071e1010054a90080520a7d5f085f11007141010054097d0a088affff35e00314aae10313aabc030094e0031f2af44f41a9fd7bc2a8c0035fd65f3f03d5c0028052f44f41a9fd7bc2a8c0035fd6",
+   "size": 200,
+   "prefixSize": 200,
+   "sha256": "68288628acc77529870752fe9428ca2a7e1f9e172286b031d76d791a1956e4cd",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "dynamicSymbol": "pthread_join (defined symbol 21128, size 0xc8)",
+   "semantics": "pthread_join(thread, result**, unused); waits and returns the stored thread result"
+  },
+  "exit": {
+   "offset": 1319952,
+   "bytes": "fd7bbea9f30b00f9fd030091f30300aaf494129468d03bd5493d00b029810f9108f140f91f0100f1041149fac000005408054039090840b2081d00121f4101712001809ae803202a1f0940f28100005408f07d9209494c394900003599851294006107912100805213e900f945891294",
+   "size": 112,
+   "prefixSize": 112,
+   "sha256": "b1c651f536af9372aadf1e0d7533405ab8834f96e1eae8e72a1c74dba7b31e50",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "status": "CONFIRMED_DEFINED_SYMBOL",
+   "dynamicSymbol": "pthread_exit (defined symbol 9614, size 0x70)",
+   "semantics": "save x0 as the thread result at current thread+0x1d0, then signal thread+0x1d8; safe for the existing final frame target"
+  },
+  "current": {
+   "offset": 1273936,
+   "bytes": "68d03bd500fd40f9c0035fd6",
+   "size": 12,
+   "prefixSize": 12,
+   "sha256": "41ff69256629619329b17d2142b55267ac2f4ddb051ac8c297437a75ff48feeb",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "read current nn::os::ThreadType from TPIDRRO_EL0+0x1f8"
+  },
+  "longjmp": {
+   "offset": 5575092,
+   "bytes": "135040a9155841a9176042a9196843a91b7044a91d7845a9023440f95f0000910824476d0a2c486d0c34496d0e3c4a6d3f00007120149f1ac0031fd6",
+   "size": 60,
+   "prefixSize": 60,
+   "sha256": "4677301891327e9941edbc2e8a9807c98b7cbf40fd2ad9520d51f6bafa98a048",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "restore x19-x30, SP and d8-d15 from x0; normalize w1; br x30"
+  },
+  "loadTable": {
+   "offset": 319636,
+   "bytes": "a80240f90041348bf44f42a9f50b40f9fd7bc3a8c0035fd6",
+   "size": 24,
+   "prefixSize": 24,
+   "sha256": "815e8dea17cca89eee06955a32cc79317d875b40790b74be6a8b79b09f1ab3a8",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "x8=[x21]; x0=x8+(x20<<16); restore x20,x19,x21,x29,x30; ret; frame x20 is zero"
+  },
+  "call4": {
+   "offset": 3513224,
+   "bytes": "e00319aae10315aae20314aae30313aae7031faa083940f900013fd6f44f4ea9f6574da9f85f4ca9fa674ba9fd7b4aa9ffc30391c0035fd6",
+   "size": 56,
+   "prefixSize": 56,
+   "sha256": "f10eb4cf9a47de76e8ddad0cc2a93b8a58eed65ef5aef8b823d07ec85a22691d",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "status": "CONFIRMED_SEMANTIC_VARIANT",
+   "semantics": "move x0=x25,x1=x21,x2=x20,x3=x19,x7=x30; ldr x8,[x8,#0x70]; br x8; restore the reference epilogue",
+   "loadFromSelfOffset": 112,
+   "referenceLoadFromSelfOffset": 104,
+   "requiredFrameChange": "Store call.function at table+0x80 (self pointer table+0x10 plus 0x70); the reference builder stores it at table+0x78."
+  },
+  "saveResult": {
+   "offset": 2673024,
+   "bytes": "600200b9f30b40f9fd7bc2a8c0035fd6",
+   "size": 16,
+   "prefixSize": 16,
+   "sha256": "32b82dfbced758fa1d68e6d98c55fe13b220996c1bd5e50ab0c6441ce9e5b4be",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "store w0 at [x1]; restore x19,x29,x30; ret"
+  },
+  "saveResult64": {
+   "offset": 1686720,
+   "bytes": "600200f9f30b40f9fd7bc2a8c0035fd6",
+   "size": 16,
+   "prefixSize": 16,
+   "sha256": "397fa89e372874847103490bc1159773258edd456212ee9c9d4d14aadf835a44",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "store x0 at [x1]; restore x19,x29,x30; ret"
+  },
+  "tryWait": {
+   "offset": 1274128,
+   "bytes": "484f00f0e10300aa084141f900c10391accf1214",
+   "size": 20,
+   "prefixSize": 20,
+   "sha256": "23ff78d573c618542c70dbdd5fcc9fb134fac4f356c0b6125b1b1d10e5a5cb58",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "nn::os::TryWaitThread wrapper; forwards ThreadType* to the manager implementation"
+  },
+  "tryWaitImplementation": {
+   "offset": 1302816,
+   "bytes": "ff0301d1fd7b01a9f51300f9f44f03a9fd43009128b041b9f30301aaa0630091a173009122008052a81f00b9e3031faa34008052a8aa0094a001003435809d52085400121f01156be101005468b241b9a0630091a173009122008052e3031faaa81f00b99caa0094c0feff35e003142af44f43a9f51340f9fd7b41a9ff030191c0035fd629409d521f0109eb01010054f4031f2ae003142af44f43a9f51340f9fd7b41a9ff030191c0035fd6a0c31fb8a01300d1ffa01294",
+   "size": 184,
+   "prefixSize": 184,
+   "sha256": "20cd57e7e1d47de641dcff20b6c467fc0005911f6c6c8356492b1b6027c12769",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "dynamicSymbol": "nn::os::detail::ThreadManagerImplByHorizon::TryWaitForExitThread (defined symbol 9296, size 0xb8)",
+   "semantics": "poll the thread handle with zero timeout; return one when exited and zero when still running, matching native-worker join polling"
+  },
+  "sleep": {
+   "offset": 1274112,
+   "bytes": "b0cf1214",
+   "size": 4,
+   "prefixSize": 4,
+   "sha256": "b556884e97c924f1a858f02757125c60c9471c0612285f8338006fcebe76eb08",
+   "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+   "semantics": "tail branch through the SDK sleep-thread import thunk"
+  }
+ },
+ "rawSvc": {
+  "status": "HARDWARE_QUALIFIED",
+  "hardwareEvidence": {
+   "date": "2026-11-02",
+   "probe": "port/probes/probe_raw_svc_thread.js phases A and B passed on console <CONSOLE_IP>",
+   "observation": "svcCreateThread at +0x168B2C returns synchronously with a real handle when given a valid borrowed priority (43) and a mask-valid core (2). Create, start, wait-synchronization, frame execution (longjmp -> loadTable -> call4 -> memmove -> saveResult64 -> svcExitThread) and close all returned zero. The nn::os::CreateThread hang is in nn::os bookkeeping, not the kernel.",
+   "prioritySource": "Borrowed from the first nn::os manager-list node: node+0x1B0 holds a real kernel thread handle; svcGetThreadPriority on it returned 43. The struct halfword at ThreadType+0x88 reads 0 and the nn::os getter decodes +0x44 (reads 15 on the head node); neither mirrors the kernel value, so only the kernel query is authoritative.",
+   "coreEvidence": "Core 2 (from the borrowed thread's svcGetThreadCoreMask 0x4) accepted and ran the thread. Cores 6 and 7 passed create validation in earlier runs with an invalid priority; cores 0-5 then returned 0xE001, which was an artifact of priority validation."
+  },
+  "functions": {
+   "createThread": {
+    "offset": 1477420,
+    "bytes": "e00f1ff8010100d4e20340f9410000b9ff430091c0035fd6",
+    "size": 24,
+    "prefixSize": 24,
+    "sha256": "f219e6844e5bc00b1cfddc1d79b17d8912de4694f1afb4ecccac311b5fa8e7aa",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcCreateThread(u32* outHandle, entry, argument, stackTop, s32 priority, s32 core) -> result",
+    "semantics": "svc #0x08 wrapper; stores handle to [x0]"
+   },
+   "startThread": {
+    "offset": 1477444,
+    "bytes": "210100d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "74ad737290d0b3378cd228fdcb9ade82616a21e4d4ec9d404f26b496601b91cd",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcStartThread(Handle handle) -> result",
+    "semantics": "svc #0x09; ret"
+   },
+   "exitThread": {
+    "offset": 1477452,
+    "bytes": "410100d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "4cf40568345612b57aa00bb1203772b3dba1a414aa87aff6950f18d710333b9a",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcExitThread() -> noreturn; NOT +0x168B24 (that is svc #0x07 ExitProcess and kills the game)",
+    "semantics": "svc #0x0A; ret (never returns)"
+   },
+   "getThreadPriority": {
+    "offset": 1477468,
+    "bytes": "e00f1ff8810100d4e20340f9410000b9ff430091c0035fd6",
+    "size": 24,
+    "prefixSize": 24,
+    "sha256": "b6bbee60394563b51b4fa608a61b4cd978c41313934e36555e7b024e03dc82d3",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcGetThreadPriority(s32* out, Handle handle) -> result; real handles only, pseudo-handles rejected 0xE401",
+    "semantics": "svc #0x0C wrapper; stores priority to [x0]"
+   },
+   "getThreadCoreMask": {
+    "offset": 1477500,
+    "bytes": "e007bfa9c10100d4e30340f9610000b9e30740f9620000f9ff430091c0035fd6",
+    "size": 32,
+    "prefixSize": 32,
+    "sha256": "edef9bd01da0ce33c69f48c4012afe76099a9a384d48ac91a2c4e89542299a12",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcGetThreadCoreMask(s32* outIdeal, u64* outMask, Handle handle) -> result; handle in w2",
+    "semantics": "svc #0x0E wrapper; stores ideal core and mask"
+   },
+   "setThreadCoreMask": {
+    "offset": 1477532,
+    "bytes": "e10100d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "7f95f9bc19d4d77aa81c618046994a1f21e550df121cc5ab7913daa0f604ad2b",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcSetThreadCoreMask(Handle handle, s32 idealCore, u64 mask) -> result; handle in w0, ideal in w1 (-1 keeps ideal), mask in x2",
+    "semantics": "svc #0x0F; ret"
+   },
+   "getCurrentProcessorNumber": {
+    "offset": 1477540,
+    "bytes": "010200d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "92b6b6ee094a27d4f3fe32801a9a6e23955487bdf6f6a59b836abb47b2e22055",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcGetCurrentProcessorNumber() -> s64 core",
+    "semantics": "svc #0x10; ret"
+   },
+   "closeHandle": {
+    "offset": 1477604,
+    "bytes": "c10200d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "deece32043f3736d68d757a1b01501d4f9a43a053fa3049fbfb1fdcbc0a13965",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcCloseHandle(Handle handle) -> result",
+    "semantics": "svc #0x16; ret"
+   },
+   "waitSynchronization": {
+    "offset": 1477620,
+    "bytes": "e00f1ff8010300d4e20340f9410000b9ff430091c0035fd6",
+    "size": 24,
+    "prefixSize": 24,
+    "sha256": "c21ce9ebd6f850c74271da02d514754994b1757019d4a70ec5316f16ecfc5992",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "svcWaitSynchronization(s32* outIndex, const Handle* handles, s32 count, s64 timeoutNs) -> result; 0xEA01 on timeout",
+    "semantics": "svc #0x18 wrapper; stores signaled index to [x0]"
+   },
+   "readTpidrro": {
+    "offset": 1358464,
+    "bytes": "60d03bd5c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "e5f6e73ea64dea0683f62379503079d4ca4b36248b1a235d59739696f1d7ae7a",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "call": "readTpidrro() -> u64; measures the raw thread's read-only TLS base",
+    "semantics": "mrs x0, tpidrro_el0; ret"
+   }
+  },
+  "managerList": {
+   "globalPointerOffset": 11674240,
+   "managerBias": 240,
+   "listSentinelOffset": 464,
+   "nodeHandleOffset": 432,
+   "maxNodes": 32,
+   "semantics": "manager = read64(sdk + globalPointerOffset) + managerBias; sentinel = manager + listSentinelOffset; first node = read64(sentinel); node+0x1B0 is a real kernel thread handle usable with the priority/core-mask SVCs"
+  },
+  "waitTimeoutResult": 59905,
+  "pollTimeoutNs": 0,
+  "fallbackCores": [
+   6,
+   7
+  ],
+  "frameCompatibility": "Raw threads have no nn::os ThreadType: worker identity and pthread join are unavailable, exit must be the svcExitThread gadget, affinity uses the svc wrappers with the kernel handle, and TPIDRRO_EL0 is kernel-initialized (no msr tpidrro_el0 gadget exists in the dump; measure with readTpidrro before IPC use)."
+ }
+}

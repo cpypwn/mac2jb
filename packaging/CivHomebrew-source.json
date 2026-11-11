@@ -1,0 +1,11 @@
+{
+  "name": "CivHomebrew",
+  "version": "0.4.3",
+  "commit": "ebb3857ebd2c80e4978ab7934651f2bcbefa78b7",
+  "url": "https://codeload.github.com/XITRIX/CivHomebrew/zip/ebb3857ebd2c80e4978ab7934651f2bcbefa78b7",
+  "archiveSha256": "c38cb1c193362fb8b1599b6776b4315b5c64aa8dada3d21944de4e67cd68a542",
+  "treeSha256": "fe5b5c4891261c45cf869873169b01d34fec0187051b58feb0e5d9f3524045d5",
+  "fileCount": 107,
+  "sourceLicense": "not declared upstream",
+  "upstream": "https://github.com/XITRIX/CivHomebrew"
+}

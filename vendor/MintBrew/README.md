@@ -1,6 +1,6 @@
 # MintBrew
 
-MintBrew is mac2jb's combined on-console GPU homebrew launcher. It uses the GPUBrewLauncher held-RPC runtime and the shared HBLauncher GPU app ABI. The menu uses mac2jb's dark and mint colors. The bundled app catalog includes Hello World, Froggy Road and an experimental CPU to GPU timer probe. mac2jb adds ftpd-sb v0.1.0, IZDOOM v0.17.1 and Stremio when preparing the Mac app.
+MintBrew is mac2jb's combined on-console GPU homebrew launcher. It uses the GPUBrewLauncher held-RPC runtime and the shared HBLauncher GPU app ABI. The menu uses mac2jb's dark and mint colors. The bundled app catalog includes Hello World, Froggy Road and an experimental CPU to GPU timer probe. mac2jb adds ftpd-sb v0.1.0, OunceCake and Stremio when preparing the Mac app.
 
 Start it from mac2jb after a held RPC session is available. The host runs `homebrew-launcher/start-launcher.cjs` from this directory and serves apps from `apps/`. Apps must be compatible `hblauncher.gpu-app` ABI 1 packages; this is not an NRO loader.
 

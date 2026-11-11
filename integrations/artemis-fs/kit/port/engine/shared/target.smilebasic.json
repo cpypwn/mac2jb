@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "name": "smilebasic",
+  "displayName": "SmileBASIC 4.4.9",
+  "sdkBytes": 6164480,
+  "hello": {
+    "scratchBytes": 524288,
+    "gotOffsetFromMain": 10261232,
+    "sdkCrc32": 3925528160,
+    "zeroFields": []
+  },
+  "nativeFunctions": {
+    "memcpy": 5795760,
+    "memmove": 5796592,
+    "queryMemory": 1409812,
+    "cancelSynchronization": 1410068,
+    "eventSyscallScan": 1409788,
+    "threadId": 1410172,
+    "waitZero": 1410044,
+    "processInfo": 1410220,
+    "syscallCapture": 1409024
+  },
+  "sdkMapping": {
+    "type": 3,
+    "permissions": 5,
+    "attributes": 0
+  },
+  "crc32": {
+    "offset": 463632,
+    "expected": 3925528160
+  },
+  "importRestoration": true,
+  "sessionManager": {
+    "stateSize": 2048,
+    "stateOffset": 92,
+    "stateValue": 3
+  },
+  "romMount": {
+    "implementationVtableOffset": 13333912,
+    "storageWrapperVtableOffset": 13321944,
+    "serviceVtableOffset": 13325576
+  },
+  "keepAwake": {
+    "enabled": true,
+    "activityReportOffset": 1775776,
+    "controllerGetterOffset": 1751552,
+    "activityReportBytes": "0020009121088052e6401014",
+    "controllerVtableOffset": 13421200,
+    "activityVtableEntryOffset": 288
+  },
+  "heartbeat": {
+    "intervalMs": 5000,
+    "keepAwakeAfterMs": 30000
+  },
+  "timing": {
+    "mode": "native-module",
+    "nativeFrequency": 31250000,
+    "sdkFrequency": 19200000,
+    "nativeModuleBytes": 45989888,
+    "nativeFrequencyCode": {
+      "offset": 1300208,
+      "bytes": "00ca9a52803ba072c0035fd6"
+    }
+  },
+  "affinity": {
+    "mode": "compat"
+  },
+  "memoryMap": {
+    "attempts": 1,
+    "retryDelayMs": 0,
+    "maxRegions": 4096
+  },
+  "thread": {
+    "mode": "pthread"
+  },
+  "worker": {
+    "joinTimeoutMs": 15000,
+    "joinPollMs": 10
+  },
+  "retainedCaptureBytes": 5079040,
+  "retainedCaptureOffset": 5242880,
+  "smServiceOffset": 4768,
+  "programIds": {
+    "host": ["0100c9100b06a000", "0100b4b00f9f6000"],
+    "ro": "0x0400000000000037",
+    "allowedRo": [
+      "0x0400000000000037",
+      "0x0400000000000019",
+      "0x040000000000000a",
+      "0x040000000000004f",
+      "0x0400000000000014",
+      "0x0400000000000013",
+      "0x040000000000001d"
+    ]
+  },
+  "artifacts": {}
+}

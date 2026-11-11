@@ -2,6 +2,7 @@
 // Restore the stock RO service before releasing the held ns2jb session.
 // The resident FS overlay stays installed. Never replay a transition journal.
 const fs=require('node:fs/promises'),path=require('node:path'),crypto=require('node:crypto');
+const {identifyFs,verifyBulk}=require('./identity.cjs');
 const check=(v,s)=>{if(!v)throw Error(s);};
 const read=p=>fs.readFile(p,'utf8').then(JSON.parse);
 const digest=b=>crypto.createHash('sha256').update(b).digest('hex');
@@ -30,7 +31,7 @@ async function transition(io,helperPid,journal,save) {
 }
 async function apply(run,{baseline=false,residentDirectory,contextMagic='NS2LFS01'}={}) {
  run=path.resolve(run);const session=path.basename(run),dir=residentDirectory?path.resolve(residentDirectory):path.join(__dirname,'../../state',session);
- check(path.basename(dir)===session&&['SMODFS01','MKWFS002','NS2LFS01'].includes(contextMagic),'Invalid resident handoff context');
+ check(path.basename(dir)===session&&['SMODFS01','MKWFS002','NS2LFS01','NS2LFS02'].includes(contextMagic),'Invalid resident handoff context');
  await fs.mkdir(dir,{recursive:true});const file=path.join(dir,'stock-ro-restoration.json');
  const journal={schema:1,session,hardwareValidated:false,baseline,started:new Date().toISOString(),steps:[]};
  // Exclusive creation deliberately refuses completed and incomplete retries alike.
@@ -41,7 +42,7 @@ async function apply(run,{baseline=false,residentDirectory,contextMagic='NS2LFS0
   const executionFile=path.join(run,'switch2/ro/current-execution.json'),execution=await read(executionFile);
   const activation=await read(execution.identity);
   check(execution.verified&&execution.session===session&&activation.session===session&&execution.pid===activation.pid&&activation.termination?.result===0,'No current qualified replacement RO');
-  const {Client}=require(path.join(run,'switch2/process/client.cjs'));c=await new Client().open();
+  c=await require('./client.cjs').openClient(run);
   const m=c.memory,state=await m.request({command:'root-native-info'});
   check(state.session===session&&state.worker?.joined&&!c.pending,'Worker is not idle');
   check(state.donor?.cleanedUp&&!state.donor.pendingRemoval&&state.donor.files.every(x=>!x.created||x.removed),'Donor cleanup incomplete');
@@ -61,19 +62,20 @@ async function apply(run,{baseline=false,residentDirectory,contextMagic='NS2LFS0
   if(baseline)check(!resident?.hookMayBeAttached,'Baseline must have no resident hook in this boot');
   else {
    check(resident?.session===session&&resident.verified&&resident.active&&resident.clientSessionClosed&&resident.hookAttached,'No verified same-session resident overlay');
-   const h=await c.fsProcess(),at=BigInt(resident.context);
-   const result=await c.read(h,8n,at,104);check(!result.result&&!result.unmapResult,'Cannot inspect resident context');
+   const h=await c.fsProcess(),identity=await identifyFs(c,h),at=BigInt(resident.context);
+   const result=await c.read(h,identity.pid,at,104);check(!result.result&&!result.unmapResult,'Cannot inspect resident context');
    const b=Buffer.from(result.hex,'hex');
    check(b.toString('ascii',0,8)===contextMagic&&b.readUInt32LE(8)===1&&b.readBigUInt64LE(88)===0n&&b.readBigUInt64LE(96)===0n,'Resident is inactive, failed or busy');
    const hooks=resident.hooks??[resident.hook];check(hooks.length>0&&hooks.every(Boolean),'Resident has no hook records');
-   for(const expected of hooks){
-    const hook=await c.read(h,8n,BigInt(expected.target),16);
-    check(!hook.result&&!hook.unmapResult&&hook.hex===expected.replacementHex,'Resident hook changed');
-   }
+   const first=hooks.reduce((n,h)=>BigInt(h.target)<n?BigInt(h.target):n,BigInt(hooks[0].target)),last=hooks.reduce((n,h)=>BigInt(h.target)>n?BigInt(h.target):n,first)+16n;
+   check(last-first<=0x200000n,'Resident hook span is too large');
+   const code=await c.readBulk(h,identity.pid,first,Number(last-first));
+   verifyBulk(code,identity,Number(last-first));
+   for(const expected of hooks){const at=Number(BigInt(expected.target)-first);check(code.bytes.subarray(at,at+16).toString('hex')===expected.replacementHex,'Resident hook changed');}
    journal.residentVerifiedBeforeHandoff=true;
    if(resident.exefsContext){
-    const state=await c.read(h,8n,BigInt(resident.exefsContext),112);check(!state.result&&!state.unmapResult,'Cannot inspect ExeFS context');
-    const bytes=Buffer.from(state.hex,'hex');check(bytes.readUInt32LE()===1&&bytes.readUInt32LE(4)===0x33465343&&bytes.readBigUInt64LE(96)===0n&&bytes.readBigUInt64LE(104)===0n,'ExeFS reader is inactive, failed or busy');journal.exefsVerifiedBeforeHandoff=true;
+    const state=await c.read(h,identity.pid,BigInt(resident.exefsContext),112);check(!state.result&&!state.unmapResult,'Cannot inspect ExeFS context');
+    const bytes=Buffer.from(state.hex,'hex');check(bytes.readUInt32LE()===1&&bytes.readUInt32LE(4)===(contextMagic==='NS2LFS02'?0x34465343:0x33465343)&&bytes.readBigUInt64LE(96)===0n&&bytes.readBigUInt64LE(104)===0n,'ExeFS reader is inactive, failed or busy');journal.exefsVerifiedBeforeHandoff=true;
    }
   }
   const pmShell=state.services.find(x=>x.name==='pm:shell')?.handle,pmMonitor=state.services.find(x=>x.name==='pm:dmnt')?.handle;

@@ -1,10 +1,12 @@
 {
   "upstream": "https://github.com/SebaaMG/ns2jb-modloader",
-  "commit": "b3e1736848ea2ed0157148c3049ab139b55c7ac0",
+  "commit": "cb9031dfa4989e3f21b2632aa2a48283c48ccaaf",
   "license": "GPL-2.0",
   "localChanges": [
     "installed ELicense game-key-card content access adapted from Cellenseres/OunceCake",
-    "offline tests for the installed ELicense path"
+    "verified CivSwitch FS host support and retry-safe native capture handling",
+    "session-specific SD staging for mod folders chosen in mac2jb",
+    "offline tests for the installed ELicense and held-session paths"
   ],
-  "runtime": "mac2jb copies the bundled loader into a private held-session folder and stages selected local mods there before invoking install.cjs with --run-dir"
+  "runtime": "mac2jb copies the bundled loader and OunceCake engine into a private held-session folder, uploads selected mods to a unique SD directory, then invokes install.cjs with --run-dir and --mod-source"
 }

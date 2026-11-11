@@ -17,7 +17,7 @@ test('variant preserves every original byte and its START ABI',()=>{
 });
 test('rejects changed source, unsupported profiles and malformed preset input',()=>{
   assert.throws(()=>generate({source:Buffer.concat([original,Buffer.from('\n')])}),/SHA256 mismatch/);
-  for(const profileId of ['izmysh','cellenseres','../kurumuz','']) assert.throws(()=>generate({profileId}),/Only/);
+  for(const profileId of ['unsupported','cellenseres','../kurumuz','']) assert.throws(()=>generate({profileId}),/Only/);
   for(const address of ['256.1.2.3','192.168.1','1.2.3.4:39380','01.2.3.4','-1.2.3.4','1.2.3.4\nEND','1.2.3.4\n',null,1])
     assert.throws(()=>generate({address}),/IPv4/);
 });

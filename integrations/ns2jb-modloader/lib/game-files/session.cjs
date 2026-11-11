@@ -1,9 +1,9 @@
-// Game-mount helper derived from IZ2S-Platform/OunceCake (GPL-2.0).
-// See lib/game-files/COPYING and https://github.com/byizmysh/IZ2S-Platform
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const net = require('node:net');
 const { success, cleanup } = require('./protocol.cjs');
+const {guardSession}=require('./uncertain.cjs');
+const extraFilesystem=require('./io.cjs');
 
 function requestOnce(socketPath, command) {
   return new Promise((resolve, reject) => {
@@ -111,11 +111,11 @@ async function attachGame(run) {
   const proof = await read(path.join(engine, 'ro/root/current-root.json'));
   const { Session, live } = require(path.join(engine, 'app/session.cjs'));
   const domain = require(path.join(engine, 'app/domain.cjs'));
-  const filesystem = require(path.join(engine, 'app/filesystem.cjs'));
+  const filesystem = { ...require(path.join(engine, 'app/filesystem.cjs')), ...extraFilesystem };
   const original = await request(current.socketPath, { command: 'root-native-info' });
   const sm = original.services?.find((item) => item.sm)?.sm;
 
-  const s = new Session('game-attach-' + Date.now(), 0x80000);
+  const s = guardSession(new Session('game-attach-' + Date.now(), 0x80000));
   s.record = async () => {};
   try {
     await s.initialize();

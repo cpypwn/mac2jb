@@ -19,6 +19,25 @@ Seedsow Lua Editor -- reference save and format documentation, NOT bundled.
     tools/indexed_save.py, with the index field order corrected and relocation
     applied on write.
 
+balatro-switch-rce -- Luminger's upstream Balatro launcher, NOT vendored.
+    https://github.com/Luminger/balatro-switch-rce
+    By Luminger (Simon Brakhane). Launcher code is licensed GPL-3.0; see the
+    upstream LICENSE. tools/balatro-launcher.cjs downloads release v1.1.0
+    (tag commit 0be2c4c1e7932c21cb053d77126b50a69476f9c8) at run time, or accepts
+    the same local release ZIP, and verifies the archive and installed files
+    against the SHA-256 values in config/balatro-launcher.json. No upstream
+    launcher code or game save is stored in this repository. The integration
+    writes the upstream payload into the user's own save without relicensing
+    it under this repository's MIT license.
+
+JetBrains Mono NL subset -- font redistributed by balatro-switch-rce,
+    downloaded with its release, NOT bundled in this repository.
+    https://github.com/JetBrains/JetBrainsMono
+    Copyright 2020 The JetBrains Mono Project Authors.
+    SIL Open Font License 1.1. The upstream subset is named mono.ttf, and its
+    accompanying bl/assets/OFL.txt is retained in the staged and installed
+    payload. See upstream src/bl/assets/README.md for subset provenance.
+
 titledb -- title names, fetched at run time, NOT bundled.
     https://github.com/blawar/titledb
     By Blake Warner. Licensed MIT (Copyright (c) 2019 Blake Warner).

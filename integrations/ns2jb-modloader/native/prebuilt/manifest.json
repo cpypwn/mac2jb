@@ -2,15 +2,33 @@
   "schema": 1,
   "zig": "0.15.2",
   "sources": {
-    "native/romfs.S": "841a22d7c76deddfbbcc805c5f09b003699425726e333221b3435abfcfa16de7",
-    "native/namespace.S": "46078c71d3ceb8754a29b53c709867038738690a7500e54c05f5a7f89ddf0a2c",
-    "native/namespace.c": "a3ba6730d0d6e4491ecd8f46657eb9d33c714cdecdf44987567689a62fd8bb90",
-    "native/namespace.h": "49ddbd4f9f2e07796f0fac89bafff27a90402f510e3d48ae7d05250047e4194d",
-    "lib/native/call-source.cjs": "f859e7de093b29558a88912cb67cae43b75837a65843c49809bb155a1232c494",
-    "native/vendor/zstd/zstd.inc": "4cd9bf41ead4f59b0380a5668b9b018010f5a7a893a2948e0ab84e1653a08b38"
+    "native/romfs.c": "b4aadd15c489961309dbc8fbe1ea959fe37588e44ec3e2ef18881960050a53df",
+    "native/namespace.c": "15806efa91eb8415e3f0945d391e8eeb202df9b0bd45b15851b017f813b509e7",
+    "native/diagnostics.c": "f10771eb44172a159f99eabeb6191f0a5a57199b41956ae6bf10dc7db789c0a2",
+    "native/trace.c": "a83e60850ad907b1cfc5a4eae1a6ac582a8956867a4bb08b82409150609388b8",
+    "native/inventory.c": "31975873bfa0d89789335afc4c7e3dc60437a4410b09fd7195ef7056a170bc90",
+    "native/capture.c": "4fe84f9e663baf56669308e6b7aeb302435e5672ae669888e45046d278d86a83",
+    "native/verify.c": "3b75f361e3e0b96496a810984a7892ff33666f4ff38925f88cde434073fd0912",
+    "native/lazy.c": "ebfb5a09b396ca2f9e85f07b097b1ed8c7fd99c40ddaab5baf765a5af2bba33a",
+    "native/lazy-romfs.c": "905122f9ea9a7b15738bd7f361480cd6a4d776d92df4398284a83831ea3b1b63",
+    "native/lazy-codefs.c": "9707b79372711aa895f2da8e0f038dbafc1a837c4cdec63f7b83dc1e4adccceb",
+    "native/lazy-nso.c": "a02f91adcf4dd5dbbd89e7b91314e9d79fca2ef13c50ed115c97a9f14204e37f",
+    "native/minilibc.c": "bc252849bc0897e6c4371cae46a5233f785336eaa8b68678ed77ec23e95d55e4",
+    "native/zbic-native.c": "c5ed7aefc496f583b297a6e48d7ab81937ec17f64a14b0ec9aa295abffd537c1",
+    "native/namespace.S": "c8b0c5977acae7db0122617df02e0cba042913a6647ad7d24ec571bffe32093f",
+    "native/namespace.h": "e771cdfee8ce51d0e0df21f6a8ed8e8282f82c17e58c8df8e28b3afb2654cd0e",
+    "native/lazy.h": "7bd8f0bc7560bc64c6bec3baf35414f0ce2fb44a49d8216d931037e6fa52fd8f",
+    "native/trace.h": "cea25a788be3d03859371dcf1ee24ad7183032ab6a6effbfaf5f992facf6e4ce",
+    "lib/native/call-source.cjs": "31fe1b652eda40208cc519e35d6a3b5b3683f1d30aa4a8e1529736d2488cfcfa",
+    "native/vendor/zstd/zstd.inc": "4cd9bf41ead4f59b0380a5668b9b018010f5a7a893a2948e0ab84e1653a08b38",
+    "native/vendor/freestanding/assert.h": "371de203806079e9a1b4fbdad5bf72df8d5fbb659144c2a8ee394f3e3ef9f28c",
+    "native/vendor/freestanding/stdio.h": "0e14f5afbb70fd231ed475f87206b1f71283b1d8c81a0f90e12fdfc09409b782",
+    "native/vendor/freestanding/stdlib.h": "2ec29eedbd5fb2b98d364d2fa4302c4e616bc8203cee41d84805358d16af572d",
+    "native/vendor/freestanding/string.h": "5b59567875af97387bb546efb14d84c1e9b35db7846d3dab3a57943c001e9654",
+    "native/vendor/freestanding/time.h": "c88d0d62cbec91922c054ac64cbc308412cf9304b51a2a3fb7b32d5f8b50be83"
   },
   "files": {
-    "templates.json": "f985fd4511f56a6b64ddac3d17d529cc1eaad447dcea0c18730c53dc96e63060",
+    "templates.json": "478d36f21a058b8afb7edffd5479c57e52b8cce88d35a0d4745b115df29eba06",
     "zbic.wasm": "332a0d964cdad308777f3c5d8732e2fa452a81858a008ec323a745ab7e4e763d"
   }
 }

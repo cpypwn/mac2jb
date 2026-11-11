@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "mode": "direct-nnSdk",
+  "source": "Civ7 nnSdk dump/4e102a4000.bin; semantic AArch64 analysis",
+  "symbol": "_ZN2nn2os26GetThreadAvailableCoreMaskEv",
+  "availableCoreMask": {
+    "config": "thread-scheduling-reference.json",
+    "function": "nn::os::GetThreadAvailableCoreMask()",
+    "offset": 1274336,
+    "bytes": "484f00f0084141f900c1039195cf1214",
+    "size": 16,
+    "prefixSize": 16,
+    "sha256": "237a2436057fc17e20fe78c6a909802927b69976dd3478818ab9d2eba96e96fc",
+    "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+    "semantics": "return the direct process-available core mask",
+    "implementationOffset": 1303684
+  },
+  "effect": "Use the direct nnSdk process mask and direct nn::os core-mask get/set calls for owned workers. This bypasses the external compatibility mask used inside pthread_setaffinity_np.",
+  "pthreadAffinityCompatibility": {
+    "gotOffset": 11692288,
+    "import": {
+      "offset": 6188112,
+      "bytes": "102a0090118244f91002249120021fd6",
+      "size": 16,
+      "prefixSize": 16,
+      "sha256": "4f8f1eb911d7e6d34623212b303cad172f8ac23515e57df0134862378ec18ce5",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "PLT import called by pthread_setaffinity_np before it ANDs the requested mask with the returned value"
+    },
+    "target": {
+      "capturedAddress": "0x4e0291f970",
+      "offset": null,
+      "bytes": null,
+      "size": null,
+      "status": "UNRESOLVED",
+      "blocker": "The external compatibility module is not present in the dumps. Its module-relative target offset, exact expected bytes, and nearby symbol string cannot be validated; capturedAddress is session-absolute and is not an offset."
+    },
+    "symbolOffsetFromTarget": null,
+    "effectOnPthread": "At 0x141afc pthread_setaffinity_np calls the import and at 0x141b00 computes requestedMask &= importedMask. Keeping pthread affinity therefore still requires runtime validation of this target."
+  },
+  "consumerRequirements": [
+    "Replace affinity.cjs GOT/import/target verification with byte verification of the direct available/current/implementation functions in thread-scheduling-reference.json.",
+    "In available(), call only the direct available-core-mask function and use that process mask for pinning.",
+    "Replace pthread_getaffinity_np/pthread_setaffinity_np in get()/pin() with nn::os::GetThreadCoreMask and nn::os::SetThreadCoreMask. This is required to bypass the compat AND inside pthread_setaffinity_np, not an optional cleanup.",
+    "Confirm the direct mask is nonzero and each requested single-core mask is a subset at runtime; verify affinity by reading it back through nn::os::GetThreadCoreMask."
+  ]
+}

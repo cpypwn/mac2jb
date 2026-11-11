@@ -1,0 +1,40 @@
+{
+  "source": "Civ7 nnSdk dump/4e102a4000.bin; semantic AArch64 analysis",
+  "sha256": "afaa7c04bffe9f269f5e87b7188da789ab5e59bc87a74acce10c1874432452c3",
+  "functions": {
+    "tick": {
+      "offset": 1274432,
+      "bytes": "20e03bd5c0035fd6",
+      "size": 8,
+      "prefixSize": 8,
+      "sha256": "6b254b2c585ce95bdb60cd5207921d2f7e1b2ed62cff30a9a04e87f4db10b56a",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "mrs x0,cntpct_el0; ret"
+    },
+    "frequency": {
+      "offset": 1274480,
+      "bytes": "00009f528024a072c0035fd6",
+      "size": 12,
+      "prefixSize": 12,
+      "sha256": "c65b3e4ba811187303769f4d4946d35c11bfc2379e328c4c3b91e3fc150a73ce",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "return 19200000 (legacy SDK counter-frequency constant)"
+    },
+    "priority": {
+      "offset": 1274048,
+      "bytes": "0088c079c0035fd6",
+      "size": 8,
+      "prefixSize": 8,
+      "sha256": "48d560b9ee9c47ce6e35c59d8beada42c928195116403f06484361b25556eaf1",
+      "validation": "exact dump verification prefix; size and sha256 cover the full function body",
+      "semantics": "return the current thread priority halfword at ThreadType+0x44"
+    }
+  },
+  "nativeFrequencyCode": {
+    "offset": null,
+    "bytes": null,
+    "status": "UNRESOLVED",
+    "expectedFrequency": 31250000,
+    "blocker": "The nnCompatThin/native compatibility module was not dumped. Civ7 module identity cannot be inferred from SmileBASIC's exact 45989888-byte region size. Verify 31250000 Hz at runtime without that size heuristic or dump and identify the module first."
+  }
+}

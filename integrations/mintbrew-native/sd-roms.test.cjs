@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {validSDRomFolder, compatibleINES, readMacRoms, readSDRoms, stageApps} =
+const {validSDRomFolder, compatibleINES, readMacRoms, createSDStorage, readSDRoms, stageApps} =
   require('./sd-roms.cjs');
 
 function rom() {
@@ -36,8 +36,7 @@ function fixture(t, files = {}) {
     async openRead(file) {calls.push('open:' + file); return {handle: file, size: files[path.posix.basename(file)].length};},
     async read(file, offset, count) {calls.push('read:' + offset); return files[path.posix.basename(file.handle)].subarray(offset, offset + count);},
     async close(file) {calls.push('file-close:' + file.handle);}};
-  const options = {verifySource: async () => {}, attachGame: async () => attachment,
-    createStorage: async () => storage};
+  const options = {attachGame: async () => attachment, createStorage: async () => storage};
   return {directory, calls, session, attachment, storage, options};
 }
 
@@ -116,6 +115,48 @@ test('an attachment that cannot confirm cleanup blocks native mapping', async t 
   attachment.close = async () => {};
   await assert.rejects(readSDRoms(directory, options), error =>
     error.cleanupBlocked === true && /cleanup failed/.test(error.message));
+});
+
+test('native SD reader opens only the SD filesystem and releases its handle', async () => {
+  const calls = [];
+  const attachment = {
+    root: 7,
+    s: {
+      async ipc(label, handle, command) {
+        calls.push(['ipc', label, handle, command]);
+        return {result: 0, moves: [8], copies: []};
+      },
+      async close(handle) {calls.push(['close', handle]);},
+    },
+    domain: {oneHandle(reply) {return reply.moves[0];}},
+    filesystem: {
+      async listDirectory(_s, handle, folder) {
+        calls.push(['list', handle, folder]);
+        return [{name: 'roms', type: 0, size: '0'}];
+      },
+      async openFile(_s, handle, file) {
+        calls.push(['open', handle, file]);
+        return {result: 0, handle: 9};
+      },
+      async fileSize() {return 16n;},
+      async readFile(_s, handle, offset, count) {
+        calls.push(['read', handle, offset, count]);
+        return Buffer.alloc(count);
+      },
+    },
+  };
+  const storage = await createSDStorage(attachment);
+  assert.deepEqual(await storage.list('/sd'), [{name: 'roms', type: 'dir', size: 0}]);
+  const file = await storage.openRead('/sd/roms/a.nes');
+  assert.equal(file.size, 16);
+  assert.equal((await storage.read(file, 0, 16)).length, 16);
+  await storage.close(file);
+  await storage.release();
+  assert.deepEqual(calls, [
+    ['ipc', 'Open SD filesystem', 7, 18], ['list', 8, '/'],
+    ['open', 8, '/roms/a.nes'], ['read', 9, 0, 16], ['close', 9], ['close', 8],
+  ]);
+  await assert.rejects(storage.list('/user/roms'), /outside the SD filesystem/);
 });
 
 function packageFixture(t) {

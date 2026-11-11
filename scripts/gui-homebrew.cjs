@@ -112,6 +112,8 @@ async function patchedHostSource(root, directory) {
 }
 async function validateRun(root, candidate, verifySession) {
   const directory = await privatePath(candidate,true);
+  const civ = /\/civswitch-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(directory);
+  const artemis = /\/artemis-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(directory);
   const runs = await fs.realpath(path.join(root,'vendor/ns2jb/runs')).catch(error=>{
     if(error.code==='ENOENT')return null;throw error;
   });
@@ -124,13 +126,18 @@ async function validateRun(root, candidate, verifySession) {
     const result = await json(path.join(directory, 'result.json'));
     check(result.sourceSha256 === patched.digest, 'The held run does not match its patched host source.');
   }
+  if (civ) await require('./prepare-civswitch-savekit.cjs').verifyPreparedRun(null, directory);
+  if (artemis) await require('./prepare-artemis-fs.cjs').verifyPreparedRun(null, directory);
+  const target = artemis ? 'artemis-seedsow' : civ ? 'civ7' : 'switch2';
   check(proof.root === directory && proof.session === path.basename(directory) &&
     Number.isSafeInteger(connection.port) && connection.port >= 1 && connection.port <= 65535 &&
-    connection.addresses?.session === proof.session && connection.addresses?.target === 'switch2' &&
+    connection.addresses?.session === proof.session && connection.addresses?.target === target &&
     connection.addresses?.platform === 2, 'The held native connection belongs to another session.');
-  for (const name of ['scratch','main','sdk','backing','controller'])
+  for (const name of ['scratch','main','sdk',...(civ || artemis ? [] : ['backing','controller'])])
     check(Number.isSafeInteger(connection.addresses[name]) && connection.addresses[name] >= 4096 &&
       connection.addresses[name] < 2 ** 39, 'Invalid held native address: ' + name);
+  if (civ || artemis) check(connection.addresses.backing === 0 && connection.addresses.controller === 0,
+    'The filesystem bridge has unexpected reserved addresses.');
   return {directory,proof,connection,...(patched ? {trustedSource: {
     profileId: patched.profileId, directory: patched.directory, sourceSha256: patched.digest
   }} : {})};
@@ -337,14 +344,6 @@ async function preflightCustomHomebrew(root,folder,options={}) {
   if(await fs.lstat(gpuManifest).then(()=>true,error=>{
     if(error.code==='ENOENT')return false;throw error;
   }))return {...await preflightCustomApp(root,folder,options),kind:'gpu-app'};
-  const izManifest=path.join(folder,'module.json');
-  if(await fs.lstat(izManifest).then(()=>true,error=>{
-    if(error.code==='ENOENT')return false;throw error;
-  })){
-    const staged=await (options.stageIZModule||require('./stage-custom-izmodule.cjs').stage)(root,folder);
-    return {...staged,kind:'iz-module',moduleId:staged.id,
-      app:{id:staged.id,name:staged.name,version:staged.version,fingerprint:staged.sha256}};
-  }
   const nativeManifest=path.join(folder,'manifest.json');
   if(await fs.lstat(nativeManifest).then(()=>true,error=>{
     if(error.code==='ENOENT')return false;throw error;

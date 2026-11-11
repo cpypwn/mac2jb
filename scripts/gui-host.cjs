@@ -128,17 +128,14 @@ async function host(address) {
   // existing record, including a symlink or a record from another host.
   if (fs.existsSync(active) || (() => {try {fs.lstatSync(active); return true;} catch {return false;}})())
     throw Error('This session already has a pairing record. Stop it and start a fresh session.');
-  const izmysh = profile.engine === 'izmysh';
-  const engineFolder = izmysh ? path.join(root, profile.sourceDirectory) : folder;
-  current = spawn(process.execPath, izmysh ? [path.join(engineFolder, 'server/host.cjs'), address] : ['run.cjs', address], {
-    cwd: engineFolder, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
+  current = spawn(process.execPath, ['run.cjs', address], {
+    cwd: folder, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     // Use the selected host's matching bootstrap without changing its source.
     // GUI sessions finish after verification, regardless of inherited settings.
-    env: {...process.env, NS2_BASIC_ARITY: String(profile.startArgumentCount), NS2_RPC_MODE: '0',
-      ...(izmysh ? {IZ_SESSION_DIR: runs, HB_PORT: String(profile.startPort)} : {})}
+    env: {...process.env, NS2_BASIC_ARITY: String(profile.startArgumentCount), NS2_RPC_MODE: '0'}
   });
   const child = current;
-  let published = false, directory, publicationError, networkFailure, networkTimer, progressed = false, qualified = false;
+  let published = false, directory, publicationError, networkFailure, networkTimer, progressed = false;
   function output(line) {
     try {
     const clean = line.trim();
@@ -167,11 +164,6 @@ async function host(address) {
       emit('host-stage', {stage: 'connected', message: 'Switch connected — checking the application'});
     else if (/^[1-4]\/4 /.test(clean)) emit('host-stage', {
       stage: 'pipeline', completed: Number(clean[0])-1, total: 4, message: clean});
-    if (izmysh && clean === 'Qualified native session ready.') {
-      qualified = true;
-      emit('host-stage', {stage: 'verified', message: 'IZMYSH native session qualified; closing its RPC connection.'});
-      signalGroup(child, 'SIGTERM');
-    }
     if (!incompatibleLegacyStartHint(clean, profile.startArgumentCount)) emit('log', {message: line});
     } catch (error) {
       publicationError ||= error;
@@ -201,14 +193,7 @@ async function host(address) {
     return 1;
   }
   if (stopping) {emit('cancelled', {message: 'Session stopped. Restart the console before another exploit attempt.'}); return 130;}
-  const izmyshVerified = izmysh && qualified && result?.engine === 'izmysh' &&
-    result.qualification?.verified === true && result.qualification?.scratchRestored === true &&
-    result.qualification?.importRestored === true && typeof result.completed === 'string' && !result.error;
-  if (code === 0 && !signal && !publicationError && (izmyshVerified || verifiedResult(result))) {
-    if (izmyshVerified) {
-      emit('verified', {message: 'IZMYSH verified the native session and restored its scratch memory and import.'});
-      return 0;
-    }
+  if (code === 0 && !signal && !publicationError && verifiedResult(result)) {
     emit('verified', {message: 'FS execution verified; original instructions restored and scratch cleaned up.'}); return 0;
   }
   emit('failed', {message: result?.error || 'The host ended without a verified result. Restart the console before retrying.'});

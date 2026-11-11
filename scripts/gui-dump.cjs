@@ -45,6 +45,10 @@ function heldProof(value) {
 
 async function verifiedSession(directory) {
   const root = await ownedPath(directory, 'directory');
+  if (/\/civswitch-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(root))
+    await require('./prepare-civswitch-savekit.cjs').verifyPreparedRun(null, root);
+  if (/\/artemis-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-[A-Za-z0-9_-]+$/.test(root))
+    await require('./prepare-artemis-fs.cjs').verifyPreparedRun(null, root);
   const engine = await ownedPath(path.join(root, 'switch2'), 'directory');
   const result = await readJSON(await runFile(root, path.join(root, 'result.json')));
   const current = await readJSON(await runFile(root, path.join(engine, 'fs-execution-current.json')));

@@ -1,12 +1,10 @@
-// Game-mount helper derived from IZ2S-Platform/OunceCake (GPL-2.0).
-// See lib/game-files/COPYING and https://github.com/byizmysh/IZ2S-Platform
 const path = require('node:path');
 const { TextDecoder } = require('node:util');
 const { success, pathRequest, idBytes, resultError, cleanup, closeHandles, throwIfCancelled } = require('./protocol.cjs');
 const { discoverUpdates, discoverDlc, resolveProgramContent, resolveDlcContent, programMatchesApplication } = require('./content.cjs');
 const { createProgramMounts, prepareInstalledLicense } = require('./program.cjs');
 
-// ncm mounts + metadata used for getting the ftp server ready
+// ncm mounts + metadata used for getting the http server ready
 
 const MAX_CHUNK = 0x40000;
 const safeSize = (n) => { // lol, ai put this in. in what situation would this ever happen
@@ -20,12 +18,12 @@ function createGameFiles(attachment) {
 
   const send = async (label, handle, bytes) => success(await domain.send(s, label, handle, bytes), label);
 
-  async function open({ title, storage, section = 'romfs', update, dlc }) {
+  async function open({ title, storage, section = 'romfs', update, dlc, resolvedSource }) {
     let source;
     let mounted;
 
     try {
-      source = await (dlc ? resolveDlcContent : resolveProgramContent)({
+      source = resolvedSource || await (dlc ? resolveDlcContent : resolveProgramContent)({
         s,
         domain,
         service,
@@ -33,11 +31,18 @@ function createGameFiles(attachment) {
         storage: update?.storage ?? dlc?.storage ?? storage,
         update,
         dlc,
+        allowDlc: !update && !dlc,
       });
 
       const { contentPath, attributes } = source;
+      const isDlc = source.selection === 'dlc';
       const filename = Buffer.alloc(0x301);
       filename.write(contentPath);
+
+      // Hold one context across both base views.
+      if (!update && !isDlc && source.storage !== 2 && title.startsWith('04')) {
+        await prepareInstalledLicense({...attachment, title, source});
+      }
 
       if (update || dlc || section === 'exefs') {
         await s.write(s.base + 0x2000, filename);
@@ -59,23 +64,23 @@ function createGameFiles(attachment) {
       let handle;
 
       if (update) {
-        handle = await openUpdate({ title, storage, attributes, source, section, originalSource });
+        handle = await openUpdate({ title, storage: update?.storage ?? dlc?.storage ?? storage, attributes, source, section, originalSource });
       } else if (section === 'exefs') {
-        handle = await openCode({ title: source.runtimeProgramId, storage, attributes, source });
+        handle = await openCode({ title: source.runtimeProgramId, storage: source.storage, attributes, source });
       } else {
         // use type 1 for base romfs, type 6 for dlc
         await s.write(s.base + 0x2000, filename);
 
         const input = Buffer.alloc(8);
         input[0] = attributes;
-        input.writeUInt32LE(dlc ? 6 : 1, 4);
+        input.writeUInt32LE(isDlc ? 6 : 1, 4);
 
         try {
           handle = domain.oneHandle(
             await send('OpenDataStorageByPath', root, pathRequest(206, input, s.base + 0x2000)),
           );
         } catch (error) {
-          if (!dlc && error.nativeResult?.canonical === 0x7d202) error.code = 'GAME_ROMFS_ABSENT';
+          if (!isDlc && error.nativeResult?.canonical === 0x7d202) error.code = 'GAME_ROMFS_ABSENT';
 
           throw error;
         }
@@ -93,7 +98,7 @@ function createGameFiles(attachment) {
         mounted.size = safeSize(reply.data.readBigUInt64LE());
       }
 
-      if (!update && !dlc) originalSource = source;
+      if (!update && !isDlc) originalSource = source;
       return mounted;
     } catch (error) {
       if (source) error.source = source;
@@ -115,7 +120,7 @@ function createGameFiles(attachment) {
     try {
       for (;;) {
         if (shouldStop()) {
-          throw Object.assign(new Error('FTP preparation cancelled'), { code: 'FTP_CANCELLED' });
+          throw Object.assign(new Error('Server preparation cancelled'), { code: 'FTP_CANCELLED' });
         }
 
         const reply = success(
@@ -304,7 +309,7 @@ async function readRomfs(read, storageSize) {
         !size || ranges.every(([start, end]) => offset + size <= start || offset >= end),
         'file overlaps metadata',
       );
-      output.push({ path: dir.path.replace(/\/$/, '') + '/' + e.name, type: 'file', size, offset });
+      output.push({ path: dir.path.replace(/\/$/, '') + '/' + e.name, type: 'file', size, offset, recordOffset: h[7] + file });
       file = e.bytes.readUInt32LE(4);
     }
   }
@@ -312,4 +317,386 @@ async function readRomfs(read, storageSize) {
   return output;
 }
 
-module.exports = { createGameFiles, readRomfs };
+const MAGIC = Buffer.from('NS2FTPIX');
+const HEADER = 64;
+const STRIDE = 48;
+const checkIndex = (ok, why) => {
+  if (!ok) throw new Error('Invalid server index: ' + why);
+};
+
+function buildIndex(views) {
+  const nodes = [{ path: '/', name: '', parent: 0, type: 'directory', children: [] }];
+  const byPath = new Map([['/', 0]]);
+  const entries = new Set();
+
+  function addDirectory(filename) {
+    if (byPath.has(filename)) {
+      checkIndex(nodes[byPath.get(filename)].type === 'directory', 'file/directory collision');
+      return byPath.get(filename);
+    }
+
+    const parent = addDirectory(path.posix.dirname(filename));
+    const id = nodes.length;
+    const node = {
+      path: filename,
+      name: path.posix.basename(filename),
+      parent,
+      type: 'directory',
+      children: [],
+    };
+    nodes.push(node);
+    byPath.set(filename, id);
+    nodes[parent].children.push(id);
+    return id;
+  }
+
+  const strings = [];
+  const stringsByValue = new Map();
+  let stringBytes = 0;
+
+  function string(value) {
+    checkIndex(!/[\0\r\n]/.test(value), 'control character in a name');
+
+    if (stringsByValue.has(value)) return stringsByValue.get(value);
+
+    const bytes = Buffer.from(value + '\0');
+    const offset = stringBytes;
+    stringBytes += bytes.length;
+    strings.push(bytes);
+    stringsByValue.set(value, offset);
+    return offset;
+  }
+
+  for (const view of views) {
+    const prefix = view.path;
+
+    if (view.kind === 'deferred-storage') {
+      checkIndex(view.source.contentPath.startsWith('@'), 'deferred Data content path');
+    }
+
+    addDirectory(prefix);
+
+    for (const item of view.entries) {
+      const filename = prefix + item.path;
+      checkIndex(!entries.has(filename), 'duplicate path');
+      entries.add(filename);
+
+      if (view.kind === 'filesystem') checkIndex(Buffer.byteLength(item.path) <= 0x300, 'CodeFS path is too long');
+
+      checkIndex(Buffer.byteLength(filename) <= 1023 && !/[\r\n]/.test(filename), 'Server path length or character');
+
+      if (item.type === 'directory') {
+        addDirectory(filename);
+        continue;
+      }
+
+      checkIndex(!byPath.has(filename), 'file/directory collision');
+
+      const parent = addDirectory(path.posix.dirname(filename));
+      const id = nodes.length;
+      nodes.push({
+        path: filename,
+        name: path.posix.basename(filename),
+        parent,
+        type: 'file',
+        mount: view.mount,
+        offset: item.offset || 0,
+        size: item.size,
+        sourcePath:
+          view.kind === 'filesystem'
+            ? item.path
+            : view.kind === 'deferred-storage'
+              ? view.source.contentPath
+              : '',
+      });
+      byPath.set(filename, id);
+      nodes[parent].children.push(id);
+    }
+  }
+
+  for (const node of nodes) {
+    node.nameOffset = string(node.name);
+    node.sourceOffset = string(node.sourcePath || '');
+    node.children?.forEach((id, index) => {
+      nodes[id].next = node.children[index + 1] ?? NONE;
+    });
+  }
+
+  const stringOffset = HEADER + nodes.length * STRIDE;
+  const length = stringOffset + stringBytes;
+  checkIndex(length <= 0xffffffff, 'index exceeds format precision');
+
+  const bytes = Buffer.alloc(length);
+  MAGIC.copy(bytes);
+  bytes.writeUInt32LE(1, 8);
+  bytes.writeUInt32LE(STRIDE, 12);
+
+  for (const [at, value] of [
+    [16, nodes.length],
+    [24, HEADER],
+    [32, stringOffset],
+    [40, stringBytes],
+    [48, length],
+  ]) {
+    bytes.writeBigUInt64LE(BigInt(value), at);
+  }
+
+  nodes.forEach((node, id) => {
+    const at = HEADER + id * STRIDE;
+    bytes.writeUInt32LE(node.parent, at);
+    bytes.writeUInt32LE(node.children?.[0] ?? NONE, at + 4);
+    bytes.writeUInt32LE(node.next ?? NONE, at + 8);
+    bytes.writeUInt32LE(node.type === 'file' ? 1 : 0, at + 12);
+    bytes.writeUInt32LE(node.nameOffset, at + 16);
+    bytes.writeUInt32LE(Buffer.byteLength(node.name), at + 20);
+    bytes.writeUInt32LE(node.mount || 0, at + 24);
+    bytes.writeUInt32LE(node.sourceOffset, at + 28);
+    bytes.writeBigUInt64LE(BigInt(node.offset || 0), at + 32);
+    bytes.writeBigUInt64LE(BigInt(node.size || 0), at + 40);
+  });
+  Buffer.concat(strings, stringBytes).copy(bytes, stringOffset);
+  return bytes;
+}
+
+async function prepareGame({ attachment: a, title, baseOnly = false, shouldStop = () => false }) {
+  const views = [];
+  const sources = [];
+  const absentSources = [];
+  const prepared = new Set();
+  const files = createGameFiles(a);
+
+  const cancelled = () => throwIfCancelled(shouldStop);
+
+  async function open(options) {
+    cancelled();
+
+    try {
+      return await files.open({ title, ...options });
+    } catch (error) {
+      if (
+        error.nativeResult?.canonical !== 0x7d802 ||
+        prepared.has(error.source?.contentPath)
+      )
+        throw error;
+
+      prepared.add(error.source.contentPath);
+      let licensed;
+      try {
+        licensed = await prepareInstalledLicense({ ...a, title: error.source.applicationTitle || title, source: error.source });
+      } catch (failure) {
+        failure.source ||= error.source;
+        throw failure;
+      }
+      cancelled();
+      try {
+        return await files.open({ title, ...options });
+      } catch (retryError) {
+        if (!licensed && error.source.storage === 2 && retryError.nativeResult?.canonical === 0x7d802) {
+          const unavailable = new Error('Game card content requires rights unavailable in this held RPC session', { cause: retryError });
+          unavailable.code = 'GAME_CARD_RIGHTS_UNAVAILABLE';
+          unavailable.source = retryError.source || error.source;
+          throw unavailable;
+        }
+        throw retryError;
+      }
+    }
+  }
+
+  async function filesystemEntries(mount) {
+    const pending = ['/'];
+    const entries = [];
+
+    while (pending.length) {
+      const filename = pending.pop();
+      cancelled();
+
+      for (const item of await files.list(mount, filename, shouldStop)) {
+        const entry = {
+          path: filename.replace(/\/$/, '') + '/' + item.name,
+          type: item.type,
+          size: item.size,
+        };
+        entries.push(entry);
+
+        if (entry.type === 'directory') pending.push(entry.path);
+      }
+    }
+
+    return entries;
+  }
+
+  async function mountView(prefix, section, candidates, allowAbsent = false) {
+    if (prefix.includes("update")) {
+      console.log('Opening ' + prefix + '/' + section, ' (This takes a LOT of time! Don\'t assume we crashed!)');
+    } else {
+      console.log('Opening ' + prefix + '/' + section);
+    }
+    let mounted;
+    const failures = [];
+
+    for (const candidate of candidates) {
+      try {
+        mounted = await open({ section, ...candidate });
+        break;
+      } catch (error) {
+        if (!error.nativeResult || error.code === 'FTP_CANCELLED') throw error;
+
+        if (
+          allowAbsent &&
+          error.code === 'GAME_ROMFS_ABSENT' &&
+          error.source.metaType === 0x80 &&
+          !error.source.selection
+        ) {
+          absentSources.push(error.source);
+          return { source: error.source };
+        }
+
+        failures.push({ storage: candidate.storage, error });
+      }
+    }
+
+    if (!mounted) {
+      const names = { 2: 'Game card', 3: 'System', 4: 'Internal', 5: 'SD' };
+      const missing = new Set([0xe05, 0x21005, 0x20a05]);
+      const cause = failures.find(({ error }) =>
+        error.source || !missing.has(error.nativeResult.canonical))?.error || failures.at(-1)?.error;
+      const details = failures.map(({ storage, error }) =>
+        '  ' + (names[storage] || 'Storage ' + storage) + ': ' + error.message).join('\n');
+      throw new Error('Could not prepare ' + prefix + '/' + section + ':\n' +
+        (details || '  No installed content'), { cause });
+    }
+
+    const entries =
+      mounted.kind === 'storage'
+        ? await readRomfs((offset, length) => {
+            cancelled();
+            return files.read(mounted, offset, length);
+          }, mounted.size)
+        : await filesystemEntries(mounted);
+    const mount = sources.length;
+    const deferred = mounted.source.selection === 'dlc';
+
+    if (deferred) await files.close(mounted);
+
+    sources.push({
+      handle: deferred ? a.root : mounted.handle,
+      kind: deferred ? 2 : mounted.kind === 'storage' ? 0 : 1,
+      attributes: deferred ? mounted.source.attributes : undefined,
+      size: mounted.size || 0,
+      source: mounted.source,
+    });
+    views.push({
+      path: prefix + '/' + section,
+      mount,
+      kind: deferred ? 'deferred-storage' : mounted.kind,
+      entries,
+      source: mounted.source,
+    });
+    return mounted;
+  }
+
+  function groups(records) {
+    const grouped = new Map();
+
+    for (const record of records) {
+      const key = record.contentTitle + ':' + record.version;
+
+      if (!grouped.has(key)) grouped.set(key, []);
+
+      grouped.get(key).push(record);
+    }
+
+    return grouped.values();
+  }
+
+  cancelled();
+
+  const installed = [4, 5, 2].map((storage) => ({ storage }));
+  const base = await mountView('/base', 'romfs', installed, true);
+  const standaloneDlc = base.source.selection === 'dlc';
+  if (!standaloneDlc) {
+    await mountView(
+      '/base',
+      'exefs',
+      installed.filter((candidate) => candidate.storage === base.source.storage),
+    );
+  }
+  cancelled();
+
+  const updates = baseOnly || standaloneDlc ? [] : await discoverUpdates({ ...a, title });
+  cancelled();
+  const dlc = baseOnly || standaloneDlc ? [] : await discoverDlc({ ...a, title });
+
+  for (const group of groups(updates)) {
+    const prefix = '/updates/' + group[0].version;
+
+    const candidates = group.map((item) => ({
+      storage: item.storage,
+      update: { contentTitle: item.contentTitle, version: item.version },
+    }));
+    const update = await mountView(prefix, 'romfs', candidates);
+    await mountView(
+      prefix,
+      'exefs',
+      candidates.filter((candidate) => candidate.storage === update.source.storage),
+    );
+  }
+
+  for (const group of groups(dlc)) {
+    const first = group[0];
+    const prefix = '/dlc/' + first.contentTitle + '/' + first.version;
+    const candidates = group.map((item) => ({
+      storage: item.storage,
+      dlc: { contentTitle: item.contentTitle, version: item.version },
+    }));
+    await mountView(prefix, 'romfs', candidates);
+  }
+
+  const ncm = await a.service('ncm');
+  const pinned = new Set();
+  const selectedSources = [...sources.map((item) => item.source), ...absentSources];
+
+  for (const source of selectedSources) {
+    cancelled();
+
+    const contentTitle = source.contentTitle || title;
+    const id = source.storage + ':' + contentTitle;
+
+    if (pinned.has(id)) continue;
+
+    pinned.add(id);
+
+    const opened = await a.s.ipc('Server pin source database', ncm, 5, Buffer.from([source.storage]));
+
+    if (opened.result) throw resultError('Server pin source database', opened.result);
+
+    const database = a.domain.oneHandle(opened);
+
+    try {
+      const latest = await a.s.ipc('Server pin source version', database, 6, idBytes(contentTitle));
+
+      if (latest.result) throw resultError('Server pin source version', latest.result);
+
+      const key = latest.data.subarray(0, 16);
+
+      const input = Buffer.alloc(24);
+      input[0] = source.contentType;
+      key.copy(input, 8);
+
+      const content = await a.s.ipc('Server pin source content', database, 3, input);
+
+      if (content.result) throw resultError('Server pin source content', content.result);
+
+      for (const other of selectedSources.filter(
+        (item) => item.storage === source.storage && (item.contentTitle || title) === contentTitle,
+      )) {
+      }
+    } finally {
+      await a.s.close(database);
+    }
+  }
+
+  return { index: buildIndex(views), sources };
+}
+
+module.exports = { createGameFiles, prepareGame, readRomfs, buildIndex };

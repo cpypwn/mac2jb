@@ -4,7 +4,7 @@ const {promisify}=require('node:util');
 const {inflateSync}=require('node:zlib');
 const run=promisify(execFile);
 const ROOT=path.resolve(__dirname,'../apps'),MAX_APPS=32,SLOT_BYTES=131072,ATLAS_BYTES=1024*2048;
-const DEFAULT_ORDER=new Map(['stremio-experimental','izdoom','froggy-road','ouncecake','iz-exchange','ftpd-sb','cpu-gpu-probe','hello-world'].map((id,index)=>[id,index]));
+const DEFAULT_ORDER=new Map(['stremio-experimental','froggy-road','ouncecake','ftpd-sb','cpu-gpu-probe','hello-world'].map((id,index)=>[id,index]));
 const order=id=>DEFAULT_ORDER.get(id)??DEFAULT_ORDER.size;
 const check=(v,m)=>{if(!v)throw Error(m);};
 async function asset(root,name,max){
@@ -24,8 +24,7 @@ async function readApp(directory,{validate=true}={}){
  check(m.shaderEncoding===undefined||m.shaderEncoding==='deflate','Unsupported shader encoding');
  check(m.service===undefined||(m.id==='ouncecake'&&m.service==='ouncecake-v1'),
   'Unsupported host service');
- check(m.hostRuntime===undefined||(m.id==='iz-exchange'&&m.hostRuntime==='module:iz-exchange/runtime'),
-  'Unsupported host runtime');
+ check(m.hostRuntime===undefined,'Unsupported host runtime');
  require('../sdk/host/runtime.cjs').validateManifest(m.sdk);
  const files={},hash=crypto.createHash('sha256');hash.update(manifestAsset.bytes);
  if(m.computeSequence!==undefined){check(m.computeSequence&&Number.isInteger(m.computeSequence.repeat)&&m.computeSequence.repeat>=1&&m.computeSequence.repeat<=512,'Invalid compute sequence repeat');check(typeof m.computeSequence.begin==='string'&&typeof m.computeSequence.after==='string','Invalid compute sequence shaders');}

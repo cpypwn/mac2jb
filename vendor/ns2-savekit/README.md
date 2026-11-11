@@ -11,6 +11,10 @@ retargeted so the game resumes *our* Lua instead of its own script. that is the 
 launch" half (`payloads/`, `tools/artemis-save.py`); the save half works on any
 title you own.
 
+the kit can also install the pinned [Balatro Lua launcher](docs/BALATRO-LAUNCHER.md)
+for the Switch 1 edition on Switch 2. its release files are downloaded and
+verified when installed.
+
 the exploit is **not** here. nothing in this repo is exploit code, keys, or game
 content.
 
@@ -62,6 +66,7 @@ scripts and prints the exact command before each one.
 | all saves (a) | list every archive the console's save index knows, cartridge saves included, no titledb |
 | pull batch (p) | pull the next pending archives from that inventory (default 5) |
 | launcher / editor | Artemis only: install the payload set or the Seedsow Lua Editor save |
+| Balatro launcher | Switch 1 Balatro only: install the pinned Lua launcher, verify it, or restore gameplay using the installation receipt |
 
 writes are fenced:
 
@@ -69,7 +74,8 @@ writes are fenced:
   bytes against it before replacing anything;
 - the selected title and account must match the verified backup;
 - one open, one commit, then every file is read back and hashed;
-- paths must be `/name`; `..`, nested paths and absolute paths are rejected.
+- single-file root tools require `/name`; staged writes validate nested paths
+  and verify each written file and preserved backup file after commit.
 
 several save operations per boot usually work; restart the console only if one
 actually fails. the one thing that reliably breaks the next session is leaving a

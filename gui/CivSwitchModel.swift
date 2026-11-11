@@ -5,8 +5,8 @@ import Combine
     enum Phase { case idle, typing, verifying, installingTrigger, sendingDemo, sendingPayload, stopping, verified, failed, cancelled }
 
     @Published private(set) var phase: Phase = .idle
-    @Published private(set) var status = "Ready for CivSwitch"
-    @Published private(set) var detail = "Prepare the Civilization VII chat screen before starting"
+    @Published private(set) var status = "Ready to connect"
+    @Published private(set) var detail = "Open the saved CivSwitch loader in Civilization VII, then connect using the Switch IP address"
     @Published private(set) var progress: Double?
     @Published private(set) var log = ""
     @Published private(set) var diagnosticLogURL: URL?
@@ -55,7 +55,8 @@ import Combine
         }
         attempt = UUID(); self.runtimeRoot = runtimeRoot; self.consoleAddress = address
         transferCompleted = false; probeConfirmed = false; demoConfirmed = false; payloadConfirmed = false
-        triggerInstalled = false; backupFolder = nil; reportedFailure = nil; needsReset = false
+        triggerInstalled = false; backupFolder = nil
+        reportedFailure = nil; needsReset = false
         progress = 0; log = ""
         append("Starting CivSwitch transfer")
         phase = .typing
@@ -95,7 +96,9 @@ import Combine
         guard let runtimeRoot else { fail("Wait for the bundled runtime to finish preparing"); return }
         attempt = UUID(); self.runtimeRoot = runtimeRoot; self.consoleAddress = address
         transferCompleted = false; probeConfirmed = false; demoConfirmed = false; payloadConfirmed = false
-        triggerInstalled = false; backupFolder = nil; reportedFailure = nil; needsReset = false
+        triggerInstalled = false; backupFolder = nil
+        reportedFailure = nil; needsReset = false
+        log = ""
         phase = .verifying
         status = "Connecting to open CivSwitch loader"
         detail = "Checking the Remote JS Loader on port 9026"
@@ -161,11 +164,12 @@ import Combine
         guard !isRunning else { return }
         attempt = UUID()
         transferCompleted = false; probeConfirmed = false; demoConfirmed = false; payloadConfirmed = false
-        triggerInstalled = false; backupFolder = nil; reportedFailure = nil; needsReset = false
+        triggerInstalled = false; backupFolder = nil
+        reportedFailure = nil; needsReset = false
         runtimeRoot = nil; consoleAddress = ""
         phase = .idle
-        status = "Ready for CivSwitch"
-        detail = "Prepare the Civilization VII chat screen before starting"
+        status = "Ready to connect"
+        detail = "Open the saved CivSwitch loader in Civilization VII, then connect using the Switch IP address"
         progress = nil; log = ""
     }
 

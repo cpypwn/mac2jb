@@ -1,0 +1,19 @@
+{
+  "upstream": "https://gitee.com/mza1010/civswitch-kit",
+  "commit": "76c136e8968a624c4814c8a0ce05af73f0848cf9",
+  "license": "GPL-2.0",
+  "included": "Civ7 ns2jb stage-2 host source and console bridge only",
+  "excluded": "Switch 1 installer binary, save tools, reports, dumps and research probes",
+  "hardwareVerification": "Upstream reports hardware success; mac2jb integration has not been console-tested",
+  "portTreeSha256": "a4478da994213f31097fd95ee2420f1cbb81592c64b67f51802a0c82465439a8",
+  "portTreeHashFormat": "SHA-256 of each sorted relative path, NUL, file bytes, NUL",
+  "portFileCount": 123,
+  "sha256": {
+    "port/civ_bridge.js": "a4a37c957c6d4a85ac24b7d058b12f46ec3710658b920b04e0744060045fcc4c",
+    "port/engine/run.cjs": "3e98509b8d233b9f377835ab159b250597ed6400fae5805c8782d13a9f2a88c9",
+    "port/engine/shared/target.civ7.json": "8f23e916fbcaac0d8a2d08b4970eb80d55117d27fa1567ccc79ca3f66560bd9d",
+    "port/sdk-functions.civ7.json": "dbb8879c513cbd695104df5192ba894ed9e614fcabd89734f255bcd774a87abb",
+    "port/sdk-layout.civ7.json": "1c0bbeafde2e6848d90d7ccffa9a1278e2dc9b11c07e6bf92db43146542079c5",
+    "LICENSE": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+  }
+}
