@@ -225,7 +225,7 @@ this Mac-side path does not change the saved trigger. restore the original
 CivSwitch trigger first if CivHomebrew's saved trigger is installed. if
 acquisition fails, keep its run logs and restart the console before another
 FS attempt. MintBrew and native HBLauncher are not available through the
-CivSwitch filesystem host. Modloader requires the SmileBASIC/ns2jb path.
+CivSwitch filesystem host. the CivSwitch ns2jb-modloader port is experimental.
 
 ## bundled game saves
 
@@ -407,7 +407,7 @@ transfer; an unsupported folder is rejected while RPC remains held.
 
 ## modloader
 
-with a microSD card inserted and ns2jb holding a verified 4/4 RPC session,
+with a microSD card inserted and ns2jb or CivSwitch holding a verified 4/4 RPC session,
 choose **Modloader** and select a folder on the Mac containing `contents/`
 and, optionally, `exefs_patches/`. put RomFS or ExeFS files under
 `contents/<TITLE_ID>/romfs/` or `contents/<TITLE_ID>/exefs/`, where `TITLE_ID`
@@ -417,7 +417,8 @@ selected files to a session folder on the Switch SD card, verifies them, then
 installs the mods through held rpc. game files and mods are not bundled.
 
 wait for **READY**, then choose **Finish session** and let the host close.
-close SmileBASIC without restarting the Switch, then open the modded game.
+close SmileBASIC or Civilization VII without restarting the Switch, then open the modded game.
+the CivSwitch port is experimental and still needs a console mod install test.
 the installed overlay lasts until the console reboots. modloader uses this
 session as its final action; choose it before another homebrew app. it supports
 RomFS and ExeFS replacements, IPS patches and `.pchtxt` patches. runtime
