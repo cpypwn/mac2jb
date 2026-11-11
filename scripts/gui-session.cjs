@@ -701,7 +701,8 @@ async function main({root, address, emit, lines, verifiedResult, input = process
     async function runModloader(modsFolder) {
       let failedEvent, readyEvent;
       modloaderChild = spawn(process.execPath,
-        [path.join(root, 'scripts/gui-modloader.cjs'), directory, modsFolder], {
+        [path.join(root, 'scripts/gui-modloader.cjs'), directory,
+          ...(modsFolder ? [modsFolder] : [])], {
           cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe']
         });
       const child = modloaderChild, done = finished(child);
@@ -903,11 +904,9 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         return;
       }
       if (command.action === 'modloader-install') {
-        if (typeof command.modsFolder !== 'string' || !path.isAbsolute(command.modsFolder) ||
-            command.modsFolder.length > 4096 || /[\x00\r\n]/.test(command.modsFolder)) {
-          safeEmit('action-rejected', {action: command.action, message: 'Choose an unpacked mod folder.'});
-          return;
-        }
+        let modsFolder;
+        try {modsFolder = require('./gui-modloader.cjs').modsFolderFromCommand(command);}
+        catch (error) {safeEmit('action-rejected', {action: command.action, message: error.message}); return;}
         if (!selectedProfile(root).supportsModloader || !rpcHeldConfirmed ||
             homebrewAttempted || savekitSelected || savekitBusy || toolBusy ||
             savekitSaveTouched && !savekitFinishedForHomebrew  || helper ||
@@ -916,13 +915,13 @@ async function main({root, address, emit, lines, verifiedResult, input = process
             message: 'Modloader needs a free Kurumuz or Cellenseres held RPC session owned by this app.'});
           return;
         }
-        try {require('./gui-modloader.cjs').validateModsFolder(command.modsFolder);}
+        try {if (modsFolder) require('./gui-modloader.cjs').validateModsFolder(modsFolder);}
         catch (error) {
           safeEmit('action-rejected', {action: command.action, message: error.message});
           return;
         }
         modloaderBusy = true;
-        modloaderTask = runModloader(command.modsFolder).catch(error => {
+        modloaderTask = runModloader(modsFolder).catch(error => {
           modloaderBusy = false;
           homebrewAttempted = true;
           fail('Modloader stopped: ' + error.message);

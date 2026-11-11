@@ -107,7 +107,8 @@ function fixture(t, options = {}) {
   fs.writeFileSync(path.join(root,'scripts/gui-modloader.cjs'),[
     "const fs=require('fs'),path=require('path');const options="+JSON.stringify(options)+";",
     "exports.validateModsFolder=folder=>{if(folder!=='/tmp/mods')throw Error('Invalid mod root');return folder;};",
-    "if(require.main===module){const run=process.argv[2];fs.writeFileSync(path.join(run,'modloader-invoked'),'yes');",
+    "exports.modsFolderFromCommand=command=>{if(command.source==='sd')return null;if(command.source==='mac'||command.modsFolder)return command.modsFolder;throw Error('Invalid mod source');};",
+    "if(require.main===module){const run=process.argv[2];fs.writeFileSync(path.join(run,'modloader-invoked'),'yes');fs.writeFileSync(path.join(run,'modloader-source'),process.argv[3]||'sd');",
     "const emit=(type,fields={})=>console.log('MAC2JB_MODLOADER '+JSON.stringify({type,message:'test '+type,...fields}));",
     "if(options.modloaderRetrySafe){emit('failed',{retrySafe:true});process.exit(1);}",
     "emit('started');emit('progress');setTimeout(()=>{emit('ready',{path:path.join(run,'.mac2jb-modloader-test')});process.exit(0);},15);}",
@@ -223,12 +224,12 @@ test('held proof requires restoration, a live endpoint and deferred donor cleanu
 for(const hostId of ['kurumuz','cellenseres']) {
 test('Modloader waits for held '+hostId+' RPC, then leaves a verified game handoff for Finish',{timeout:10000},async t=>{
   const session=fixture(t,hostId==='kurumuz'?{}:{hostId});await session.wait('post-run-ready');
-  session.send({action:'modloader-install',modsFolder:'/tmp/mods'});
+  session.send({action:'modloader-install',source:'sd'});
   assert.match((await session.wait('action-rejected')).message,/free Kurumuz or Cellenseres held RPC/);
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
   session.send({action:'modloader-install',modsFolder:'/tmp/bad'});
   assert.match((await session.wait('action-rejected',2)).message,/Invalid mod root/);
-  session.send({action:'modloader-install',modsFolder:'/tmp/mods'});
+  session.send({action:'modloader-install',source:'sd'});
   await session.wait('modloader-started');await session.wait('modloader-progress');
   assert.match((await session.wait('modloader-ready')).message,/test ready/);
   session.send({action:'launch-mintbrew'});
@@ -237,6 +238,7 @@ test('Modloader waits for held '+hostId+' RPC, then leaves a verified game hando
   assert.equal(result.code,0,result.output+result.error);
   assert.match(session.events().find(event=>event.type==='verified').message,/without restarting the Switch/);
   assert.equal(fs.readFileSync(path.join(session.host,'runs/switch2-test/modloader-invoked'),'utf8'),'yes');
+  assert.equal(fs.readFileSync(path.join(session.host,'runs/switch2-test/modloader-source'),'utf8'),'sd');
 });
 test('Modloader preflight failure keeps held '+hostId+' RPC available for MintBrew',{timeout:10000},async t=>{
   const session=fixture(t,{...(hostId==='kurumuz'?{}:{hostId}),modloaderRetrySafe:true});await session.wait('post-run-ready');

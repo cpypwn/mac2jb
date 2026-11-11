@@ -262,6 +262,7 @@ private struct GUIEvent: Decodable {
     @Published private(set) var homebrewStopPending = false
     var homebrewTitle: String { homebrewApp.title }
     @Published private(set) var pendingHomebrewAction: String?
+    private var modloaderUsedMacFolder = false
     private var pendingCustomConsoleAddress: String?
     @Published var stremioAddonURL = ""
     @Published var stremioQuality: StremioQuality = .saved() {
@@ -808,6 +809,7 @@ private struct GUIEvent: Decodable {
         sdMessage = "Hold RPC to browse the Switch SD card read-only"
         homebrewMessage = ""; homebrewFolder = nil; homebrewApp = .mintBrew; pendingHomebrewAction = nil
         modloaderInstallReady = false
+        modloaderUsedMacFolder = false
         homebrewStopPending = false
         pendingCustomConsoleAddress = nil
         ounceCakeSession = OunceCakeSession(); selectedOunceCakeGame = ""
@@ -1154,15 +1156,20 @@ private struct GUIEvent: Decodable {
         presentPostRunState()
     }
 
-    func installModloader(modsFolder: URL) {
-        guard canLaunchModloader,
-              sendHostControl(["action": "modloader-install",
-                               "modsFolder": modsFolder.standardizedFileURL.path]) else { return }
+    func installModloader(modsFolder: URL? = nil) {
+        guard canLaunchModloader else { return }
+        var command: [String: Any] = ["action": "modloader-install",
+                                       "source": modsFolder == nil ? "sd" : "mac"]
+        if let modsFolder { command["modsFolder"] = modsFolder.standardizedFileURL.path }
+        guard sendHostControl(command) else { return }
+        modloaderUsedMacFolder = modsFolder != nil
         homebrewApp = .modloader
         pendingHomebrewAction = "modloader-install"
-        homebrewMessage = "Checking the selected mod files…"
+        homebrewMessage = modsFolder == nil ? "Checking mods on the Switch SD card…" : "Checking the selected Mac mods…"
         status = "Checking mod files"
-        detail = "Validating the selected folder before installing the modloader."
+        detail = modsFolder == nil
+            ? "Reading mods already on the Switch SD card before installing the modloader."
+            : "Validating the selected Mac folder before uploading its mods."
         progressLabel = homebrewMessage
     }
 
@@ -1488,7 +1495,7 @@ private struct GUIEvent: Decodable {
             case .launching:
                 phase = .launchingHomebrew; status = "Starting \(homebrewTitle)"
                 detail = homebrewApp == .modloader
-                    ? "Installing the selected mod files. Keep \(attachedFilesystemGameName) and mac2jb open until the loader reports ready."
+                    ? "Installing mods from \(modloaderUsedMacFolder ? "this Mac" : "the Switch SD card"). Keep \(attachedFilesystemGameName) and mac2jb open until the loader reports ready."
                     : homebrewApp == .mintBrew && !isAttachedRPCSession
                     ? "You can safely disconnect the Switch from this Mac’s USB port. \(sessionReminder)"
                     : "\(sessionReminder) The app is starting."
@@ -2059,12 +2066,12 @@ private struct GUIEvent: Decodable {
                   postRun.launchHomebrew() else { return }
             pendingHomebrewAction = nil
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
-            homebrewMessage = event.message ?? "Installing the selected mod files…"
+            homebrewMessage = event.message ?? "Installing mods from \(modloaderUsedMacFolder ? "this Mac" : "the Switch SD card")…"
             presentPostRunState()
         case "modloader-progress":
             guard role == "host", homebrewApp == .modloader,
                   postRun.stage == .held, postRun.homebrewStage == .launching else { return }
-            homebrewMessage = event.message ?? "Installing the selected mod files…"
+            homebrewMessage = event.message ?? "Installing mods from \(modloaderUsedMacFolder ? "this Mac" : "the Switch SD card")…"
             progressLabel = homebrewMessage
         case "modloader-ready":
             guard role == "host", homebrewApp == .modloader,
@@ -2079,8 +2086,10 @@ private struct GUIEvent: Decodable {
             guard role == "host", homebrewApp == .modloader else { return }
             if pendingHomebrewAction == "modloader-install" && event.retrySafe == true {
                 pendingHomebrewAction = nil
-                homebrewMessage = event.message ?? "The mod folder could not be used. Choose another folder."
-                status = "Choose another mod folder"
+                homebrewMessage = event.message ?? (modloaderUsedMacFolder
+                    ? "The Mac mod folder could not be used. Choose another folder."
+                    : "No usable mods were found on the Switch SD card.")
+                status = modloaderUsedMacFolder ? "Choose another mod folder" : "Check the Switch SD card"
                 detail = homebrewMessage
                 progressLabel = "RPC verified · choose another option"
                 return
@@ -2232,10 +2241,14 @@ private struct GUIEvent: Decodable {
                 pendingHomebrewAction = nil
                 pendingCustomConsoleAddress = nil
                 homebrewMessage = event.message ?? (action == "modloader-install"
-                    ? "The selected mod folder is invalid. Choose another folder."
+                    ? modloaderUsedMacFolder
+                      ? "The selected Mac mod folder is invalid. Choose another folder."
+                      : "The Switch SD card mods could not be read."
                     : "The selected app folder is invalid. Choose another folder.")
                 presentPostRunState()
-                status = action == "modloader-install" ? "Choose another mod folder" : "Choose another app folder"
+                status = action == "modloader-install"
+                    ? modloaderUsedMacFolder ? "Choose another mod folder" : "Check the Switch SD card"
+                    : "Choose another app folder"
                 detail = homebrewMessage
                 return
             }

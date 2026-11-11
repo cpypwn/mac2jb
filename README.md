@@ -48,7 +48,7 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. download `mac2jb-v0.8.0-macos-arm64.zip`, extract it and open `mac2jb.app`.
+1. download `mac2jb-v0.8.1-macos-arm64.zip`, extract it and open `mac2jb.app`.
 2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
 3. click install & load driver… and approve the administrator prompt.
 4. if prompted, open system settings → privacy & security and allow the driver.
@@ -408,13 +408,14 @@ transfer; an unsupported folder is rejected while RPC remains held.
 ## modloader
 
 with a microSD card inserted and ns2jb or CivSwitch holding a verified 4/4 RPC session,
-choose **Modloader** and select a folder on the Mac containing `contents/`
-and, optionally, `exefs_patches/`. put RomFS or ExeFS files under
-`contents/<TITLE_ID>/romfs/` or `contents/<TITLE_ID>/exefs/`, where `TITLE_ID`
-is the game's 16-digit title ID. a folder copied from an Atmosphere mod layout
-works if those paths are preserved. mac2jb checks the layout, uploads the
-selected files to a session folder on the Switch SD card, verifies them, then
-installs the mods through held rpc. game files and mods are not bundled.
+put mods on the Switch SD card under `SD:/ns2jb-modloader/contents/<TITLE_ID>/romfs/`
+or `SD:/ns2jb-modloader/contents/<TITLE_ID>/exefs/`, where `TITLE_ID` is the
+game's 16-digit title ID. global patches can go under
+`SD:/ns2jb-modloader/exefs_patches/`. choose **Install modloader** to load all
+supported game folders and patches from the SD card in one session. mac2jb
+also offers **Upload Mac mods and install…** for an unpacked Mac folder with
+`contents/` and optionally `exefs_patches/`; it verifies the upload before
+installing. game files and mods are not bundled.
 
 wait for **READY**, then choose **Finish session** and let the host close.
 close SmileBASIC or Civilization VII without restarting the Switch, then open the modded game.

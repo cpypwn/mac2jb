@@ -57,7 +57,6 @@ struct ContentView: View {
     @State private var selectedLuaEditorSave: URL?
     @State private var luaEditorSelectionMessage: String?
     @State private var nativeSDRomFolder = "/sd/roms/nes"
-    @State private var modloaderFolder: URL?
 
     private var canConfigure: Bool {
         [.ready, .failed, .cancelled].contains(model.phase) &&
@@ -2273,26 +2272,16 @@ struct ContentView: View {
 
     private var modloaderRow: some View {
         homebrewRow(icon: "puzzlepiece.extension.fill", title: "Modloader",
-                    description: "Load game mods for this boot",
+                    description: "Load all mods on the Switch SD card for this boot",
                     actionTitle: model.modloaderInstallReady ? "Ready" :
                         model.pendingHomebrewAction == "modloader-install" ? "Checking…" :
                         model.homebrewApp == .modloader && model.postRun.homebrewStage == .failed ? "Unavailable" :
                         model.homebrewApp == .modloader && model.postRun.homebrewAttempted ? "Installing…" : "Install modloader",
-                    enabled: model.canLaunchModloader && modloaderFolder != nil,
-                    action: {
-                        if let modloaderFolder { model.installModloader(modsFolder: modloaderFolder) }
-                    }) {
-            HStack(spacing: 8) {
-                Button("Choose mods folder…") { chooseModloaderFolder() }
-                    .disabled(model.postRun.homebrewAttempted || model.pendingHomebrewAction != nil || model.phase == .installingSave)
-                if let modloaderFolder {
-                    Text(modloaderFolder.lastPathComponent)
-                        .lineLimit(1).truncationMode(.middle)
-                        .help(modloaderFolder.path)
-                }
-            }.font(.system(size: 11))
-            Text("Select a folder with contents or exefs_patches directly inside it")
-                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+                    enabled: model.canLaunchModloader,
+                    action: { model.installModloader() }) {
+            Button("Upload Mac mods and install…") { chooseModloaderFolder() }
+                .font(.system(size: 11))
+                .disabled(!model.canLaunchModloader)
             if model.homebrewApp == .modloader && !model.homebrewMessage.isEmpty {
                 Text(model.modloaderInstallReady ? "Installed for this boot" : model.homebrewMessage)
                     .font(.system(size: 10))
@@ -2311,12 +2300,12 @@ struct ContentView: View {
 
     private func chooseModloaderFolder() {
         let picker = NSOpenPanel()
-        picker.title = "Choose a modloader folder"
+        picker.title = "Choose a folder with contents or exefs_patches"
         picker.canChooseDirectories = true
         picker.canChooseFiles = false
         picker.allowsMultipleSelection = false
         picker.begin { response in
-            if response == .OK { modloaderFolder = picker.url }
+            if response == .OK, let folder = picker.url { model.installModloader(modsFolder: folder) }
         }
     }
 

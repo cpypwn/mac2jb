@@ -363,7 +363,8 @@ async function main(options = {}) {
       return;
     }
     modloaderChild = spawn(process.execPath,
-      [path.join(root, 'scripts/gui-modloader.cjs'), context.directory, modsFolder], {
+      [path.join(root, 'scripts/gui-modloader.cjs'), context.directory,
+        ...(modsFolder ? [modsFolder] : [])], {
         cwd: root, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
         env: {...process.env, MAC2JB_ATTACHED_RUN_MANIFEST: context.manifestPath}
       });
@@ -785,13 +786,17 @@ async function main(options = {}) {
           message:'Modloader needs a free, verified CivSwitch filesystem session.'});
         return;
       }
-      try {validateModloaderFolder(command.modsFolder);}
+      let modsFolder;
+      try {
+        modsFolder = require('./gui-modloader.cjs').modsFolderFromCommand(command);
+        if (modsFolder) validateModloaderFolder(modsFolder);
+      }
       catch (error) {
         safeEmit('action-rejected', {action:command.action, message:error.message});
         return;
       }
       modloaderBusy = true;
-      modloaderTask = installModloader(command.modsFolder).catch(error => {
+      modloaderTask = installModloader(modsFolder).catch(error => {
         if (finishing || closed) return;
         fail('Modloader stopped: ' + error.message, Boolean(modloaderStarted || modloaderChild));
         safeEmit('modloader-failed', {path:context.directory, cleanupBlocked,

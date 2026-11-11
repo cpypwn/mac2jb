@@ -195,12 +195,13 @@ test('CivSwitch FS attachment installs modloader as the final action for this bo
     child.close();
   }});
   await session.attach();
-  session.send({action:'modloader-install',modsFolder:'/Users/test/mods'});
+  session.send({action:'modloader-install',source:'sd'});
   assert.match((await session.wait('modloader-started')).message,/preflight passed/);
   await session.wait('modloader-progress');
   assert.equal((await session.wait('modloader-ready')).path,directory);
   assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','modloader']]);
   const launch=session.calls.find(row=>row[0]==='spawn'&&row[2][0].endsWith('gui-modloader.cjs'));
+  assert.deepEqual(launch[2], [launch[2][0], directory]);
   assert.equal(launch[3].env.MAC2JB_ATTACHED_RUN_MANIFEST,session.context.manifestPath);
   session.send({action:'start-savekit'});
   assert.match((await session.wait('action-rejected')).message,/final action/);

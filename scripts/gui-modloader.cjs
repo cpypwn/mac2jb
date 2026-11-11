@@ -51,6 +51,19 @@ function validateModsFolder(directory) {
   return absolute;
 }
 
+function modsFolderFromCommand(command) {
+  const source = command.source ?? (command.modsFolder === undefined ? 'sd' : 'mac');
+  check(source === 'sd' || source === 'mac', 'Choose a supported mod source.');
+  if (source === 'sd') {
+    check(command.modsFolder === undefined, 'SD card mode does not use a Mac mod folder.');
+    return null;
+  }
+  check(typeof command.modsFolder === 'string' && path.isAbsolute(command.modsFolder) &&
+    command.modsFolder.length <= 4096 && !/[\x00\r\n]/.test(command.modsFolder),
+  'Choose an unpacked mod folder.');
+  return command.modsFolder;
+}
+
 function copyRegularTree(source, destination) {
   const info = fs.lstatSync(source);
   check(!info.isSymbolicLink(), 'A selected file changed to a symlink: ' + source);
@@ -84,7 +97,7 @@ function copyRegularTree(source, destination) {
 }
 
 function stage(run, modsFolder, sourceRoot = path.resolve(__dirname, '../integrations/ns2jb-modloader')) {
-  const session = ownedDirectory(run), mods = validateModsFolder(modsFolder);
+  const session = ownedDirectory(run), mods = modsFolder == null ? null : validateModsFolder(modsFolder);
   const staging = fs.mkdtempSync(path.join(session, '.mac2jb-modloader-'));
   fs.chmodSync(staging, 0o700);
   try {
@@ -94,16 +107,21 @@ function stage(run, modsFolder, sourceRoot = path.resolve(__dirname, '../integra
     fs.mkdirSync(stagedOuncecake, {recursive: true, mode: 0o700});
     copyRegularTree(path.join(ouncecake, 'engine'), path.join(stagedOuncecake, 'engine'));
     copyRegularTree(path.join(ouncecake, 'LICENSE'), path.join(stagedOuncecake, 'LICENSE'));
-    for (const name of modEntries) if (present(path.join(mods, name)))
+    for (const name of modEntries) if (mods && present(path.join(mods, name)))
       copyRegularTree(path.join(mods, name), path.join(staging, name));
-    const staged = collectMods(staging);
-    check(staged.games.length + staged.patches.length > 0, 'No loadable mod files were staged.');
+    const staged = mods ? collectMods(staging) : {games: [], patches: []};
+    if (mods) check(staged.games.length + staged.patches.length > 0, 'No loadable mod files were staged.');
     require(path.join(staging, 'lib/native/artifacts.cjs')).artifacts();
     return {staging, games: staged.games.map(game => game.titleId), patches: staged.patches.length};
   } catch (error) {
     fs.rmSync(staging, {recursive: true, force: true});
     throw error;
   }
+}
+
+function installArguments(staging, run, modSource) {
+  return [path.join(staging, 'install.cjs'), '--run-dir', run,
+    ...(modSource ? ['--mod-source', modSource] : [])];
 }
 
 function boundedLine(line) {
@@ -146,18 +164,22 @@ async function install(run, modsFolder) {
         .captureNative(result.directory, path.join(staged.staging, 'preflight'));
       fs.rmSync(path.join(staged.staging, 'preflight'), {recursive: true, force: true});
     }
-    emit('started', {message: 'Uploading selected mods to the Switch SD card'});
-    uploadStarted = true;
-    uploaded = await require('./gui-modloader-sd.cjs').uploadSelectedMods(result.directory, staged.staging);
+    if (modsFolder == null) {
+      emit('started', {message: 'Reading mods from the Switch SD card'});
+    } else {
+      emit('started', {message: 'Uploading selected mods to the Switch SD card'});
+      uploadStarted = true;
+      uploaded = await require('./gui-modloader-sd.cjs').uploadSelectedMods(result.directory, staged.staging);
+    }
   } catch (error) {
     if (staged) fs.rmSync(staged.staging, {recursive: true, force: true});
     error.retrySafe = !captureStarted && !uploadStarted && error.retrySafe !== false;
     throw error;
   }
-  emit('progress', {message: 'Verified ' + uploaded.files + ' SD mod file(s) for ' +
+  if (uploaded) emit('progress', {message: 'Verified ' + uploaded.files + ' SD mod file(s) for ' +
     staged.games.length + ' game mod set(s) and ' + staged.patches + ' global patch(es)'});
-  const child = spawn(process.execPath, [path.join(staged.staging, 'install.cjs'), '--run-dir',
-    result.directory, '--mod-source', uploaded.source], {
+  const child = spawn(process.execPath,
+    installArguments(staged.staging, result.directory, uploaded?.source), {
     cwd: staged.staging, stdio: ['ignore', 'pipe', 'pipe'],
     env: {...process.env, ...(target === 'civ7' ? {NS2_TARGET: 'civ7', NS2_TARGET_ROOT: result.directory} : {})}
   });
@@ -193,7 +215,7 @@ async function install(run, modsFolder) {
   emit('ready', {path: staged.staging, message: target === 'civ7' ? civInstallMessage : installMessage});
 }
 
-module.exports = {validateModsFolder, copyRegularTree, stage, install, installMessage,
+module.exports = {validateModsFolder, modsFolderFromCommand, copyRegularTree, stage, install, installArguments, installMessage,
   civInstallMessage, modloaderHost};
 if (require.main === module) {
   install(process.argv[2], process.argv[3]).catch(error => {

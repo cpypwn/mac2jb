@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {validateModsFolder, stage, modloaderHost} = require('./gui-modloader.cjs');
+const {validateModsFolder, modsFolderFromCommand, stage, installArguments, modloaderHost} = require('./gui-modloader.cjs');
 const {modSourceForRun, stagedEntries, createSdTransport, uploadSelectedMods} =
   require('./gui-modloader-sd.cjs');
 
@@ -34,6 +34,33 @@ test('stages only a validated unpacked mod tree beside the held run', t => {
     'function');
   assert.equal(fs.existsSync(path.join(result.staging, 'state')), false);
   assert.equal(path.dirname(result.staging), run);
+});
+
+test('SD install stages the runtime without uploading Mac mods or overriding the SD root', t => {
+  const {run} = fixture(t);
+  assert.equal(modsFolderFromCommand({source: 'sd'}), null);
+  const staged = stage(run, null);
+  assert.deepEqual(staged.games, []);
+  assert.equal(staged.patches, 0);
+  assert.equal(fs.existsSync(path.join(staged.staging, 'install.cjs')), true);
+  assert.equal(fs.existsSync(path.join(staged.staging, 'contents')), false);
+  assert.equal(fs.existsSync(path.join(staged.staging, 'exefs_patches')), false);
+  assert.deepEqual(installArguments(staged.staging, run),
+    [path.join(staged.staging, 'install.cjs'), '--run-dir', run]);
+  assert.equal(require('../integrations/ns2jb-modloader/install.cjs').options([]).modSource,
+    '/ns2jb-modloader');
+  assert.throws(() => modsFolderFromCommand({source: 'sd', modsFolder: '/tmp/mods'}),
+    /does not use a Mac mod folder/);
+});
+
+test('Mac upload remains an explicit secondary mod source', t => {
+  const {run, mods} = fixture(t);
+  assert.equal(modsFolderFromCommand({source: 'mac', modsFolder: mods}), mods);
+  const staged = stage(run, mods);
+  const source = '/ns2jb-modloader/switch2-test/upload';
+  assert.deepEqual(installArguments(staged.staging, run, source),
+    [path.join(staged.staging, 'install.cjs'), '--run-dir', run, '--mod-source', source]);
+  assert.throws(() => modsFolderFromCommand({source: 'mac'}), /unpacked mod folder/);
 });
 
 test('uploads selected mods to a private SD session and verifies readback', async t => {
