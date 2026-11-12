@@ -125,7 +125,17 @@ if CommandLine.arguments.contains("--self-test") {
     }
 }
 
+private final class Mac2jbAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+func quitMac2jb() {
+    for window in NSApp.windows { window.preventsApplicationTerminationWhenModal = false }
+    NSApp.terminate(nil)
+}
+
 struct Mac2jbApp: App {
+    @NSApplicationDelegateAdaptor(Mac2jbAppDelegate.self) private var appDelegate
     @StateObject private var model = SessionModel()
     @StateObject private var updater = AppUpdater()
     var body: some Scene {
@@ -139,6 +149,10 @@ struct Mac2jbApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit mac2jb") { quitMac2jb() }
+                    .keyboardShortcut("q")
+            }
             CommandGroup(after: .appInfo) {
                 Button("Setup Guide…") {
                     NSWorkspace.shared.open(URL(string: "https://github.com/cpypwn/mac2jb#prerequisites")!)

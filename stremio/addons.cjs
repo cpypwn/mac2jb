@@ -99,7 +99,14 @@ function normalizeManifest(raw) {
   });
   const catalogs = (raw.catalogs || []).slice(0, 64).flatMap(catalog => {
     if (!catalog || !types.includes(catalog.type) || typeof catalog.id !== 'string' || !catalog.id || catalog.id.length > 256) return [];
-    const extra = Array.isArray(catalog.extra) ? catalog.extra.slice(0, 32).filter(item => item && typeof item.name === 'string') : [];
+    const extra = Array.isArray(catalog.extra) ? catalog.extra.slice(0, 32).flatMap(item => {
+      if (!item || typeof item.name !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(item.name)) return [];
+      const options = Array.isArray(item.options) ? [...new Set(item.options.filter(value => typeof value === 'string')
+        .map(value => clean(value, 120)).filter(Boolean))].slice(0, 100) : undefined;
+      return [{name: item.name, isRequired: item.isRequired === true,
+        ...(options ? {options} : {}), ...(Number.isSafeInteger(item.optionsLimit) && item.optionsLimit > 0 ?
+          {optionsLimit: Math.min(item.optionsLimit, 100)} : {})}];
+    }) : [];
     return [{id: catalog.id, type: catalog.type, name: clean(catalog.name) || clean(catalog.id), extra}];
   });
   return {id: clean(raw.id), name: clean(raw.name) || clean(raw.id), types, resources, catalogs};
@@ -217,10 +224,18 @@ class AddonClient {
   }
   async catalog(catalog, extras = {}) {
     if (!this.supports('catalog', catalog.type, catalog.id)) throw Error('This addon does not expose this catalog.');
-    for (const extra of catalog.extra || [])
-      if (extra.isRequired && extras[extra.name] === undefined) throw Error('This catalog requires filters that are not available in this alpha.');
     const permitted = new Set((catalog.extra || []).map(extra => extra.name));
     const filtered = Object.fromEntries(Object.entries(extras).filter(([name]) => permitted.has(name)));
+    for (const extra of catalog.extra || []) {
+      const value = filtered[extra.name];
+      if (extra.isRequired && (value === undefined || value === '')) throw Error(`Choose a ${extra.name} filter first.`);
+      if (value === undefined) continue;
+      if (typeof value !== 'string' || !value || value.length > 256 || /[\x00-\x1f\x7f]/.test(value))
+        throw Error(`The ${extra.name} filter is invalid.`);
+      if (extra.options?.length && !extra.options.includes(value)) throw Error(`Choose a listed ${extra.name} filter.`);
+      if (extra.name === 'skip' && (!/^(0|[1-9]\d*)$/.test(value) || Number(value) > 100000 || Number(value) % 100 !== 0))
+        throw Error('Choose a valid catalog page.');
+    }
     const data = await requestJSON(this.resourceURL('catalog', catalog.type, catalog.id, filtered), this.options);
     if (!Array.isArray(data.metas)) throw Error('The addon did not return a catalog list.');
     return data.metas.slice(0, 500).map(meta => normalizeMeta(meta, catalog.type)).filter(Boolean);

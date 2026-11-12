@@ -8,6 +8,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const {spawn} = require('node:child_process');
+const {createOverlay, buildLauncherPackage} = require('./civhomebrew-catalog-overlay.cjs');
 
 const PREFIX = 'MAC2JB_CIVHOMEBREW ';
 const COMMIT = 'ebb3857ebd2c80e4978ab7934651f2bcbefa78b7';
@@ -77,6 +78,40 @@ async function verifySource(directory, metadata) {
   return directory;
 }
 
+async function removeGeneratedBytecode(root) {
+  async function visit(directory) {
+    for (const entry of await fsp.readdir(directory, {withFileTypes: true})) {
+      const location = path.join(directory, entry.name);
+      if (entry.name === '__pycache__') {
+        const info = await fsp.lstat(location);
+        if (!info.isDirectory() || info.isSymbolicLink()) continue;
+        const children = await fsp.readdir(location);
+        if (!children.length) { await fsp.rmdir(location); continue; }
+        const generated = await Promise.all(children.map(async name => {
+          const file = path.join(location, name);
+          const stat = await fsp.lstat(file);
+          return name.endsWith('.pyc') && stat.isFile() && !stat.isSymbolicLink() ? file : null;
+        }));
+        if (generated.some(file => file === null)) continue;
+        for (const file of generated) await fsp.unlink(file);
+        await fsp.rmdir(location);
+      } else if (entry.isDirectory()) {
+        await visit(location);
+      }
+    }
+  }
+  await visit(root);
+}
+
+async function verifyCachedSource(directory, metadata) {
+  try { return await verifySource(directory, metadata); }
+  catch (error) {
+    if (!error.message.startsWith('CivHomebrew source cache changed;')) throw error;
+    await removeGeneratedBytecode(directory);
+    return verifySource(directory, metadata);
+  }
+}
+
 async function sourceStatus(runtimeRoot, options = {}) {
   const metadata = sourceMetadata(runtimeRoot, options);
   const directory = sourceLocation(metadata, options);
@@ -86,8 +121,13 @@ async function sourceStatus(runtimeRoot, options = {}) {
     if (error.code === 'ENOENT') return {available: false, version: metadata.version, commit: metadata.commit};
     throw error;
   }
-  await verifySource(directory, metadata);
-  return {available: true, path: directory, version: metadata.version, commit: metadata.commit};
+  try {
+    await verifyCachedSource(directory, metadata);
+    return {available: true, path: directory, version: metadata.version, commit: metadata.commit};
+  } catch (error) {
+    if (!error.message.startsWith('CivHomebrew source cache changed;')) throw error;
+    return {available: false, repairable: true, version: metadata.version, commit: metadata.commit};
+  }
 }
 
 function fetchArchive(url, progress = () => {}) {
@@ -200,8 +240,15 @@ async function prepareSource(runtimeRoot, options = {}) {
   const destination = sourceLocation(metadata, options);
   try {
     await fsp.lstat(destination);
-    await verifySource(destination, metadata);
-    return {path: destination, cached: true, metadata};
+    try {
+      await verifyCachedSource(destination, metadata);
+      return {path: destination, cached: true, metadata};
+    } catch (error) {
+      if (!error.message.startsWith('CivHomebrew source cache changed;')) throw error;
+      const quarantine = destination + '.changed-' + crypto.randomUUID();
+      await fsp.rename(destination, quarantine);
+      (options.emit || emit)('source-repair', {message: 'Refreshing the pinned CivHomebrew source cache'});
+    }
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
@@ -290,6 +337,64 @@ async function probeCompanion(address, options = {}) {
     throw Error('CivHomebrew companion status was invalid');
   }
   return status.state;
+}
+
+async function refreshRunningLauncher(runtimeRoot, address, options = {}) {
+  const report = options.emit || emit;
+  let state = options.initialState || await probeCompanion(address, options);
+  if (state.mode !== 'launcher' || state.busy || !state.launcher) {
+    return state;
+  }
+  const prepared = await prepareSource(runtimeRoot, {...options, emit: report});
+  const built = options.testLauncherPackage
+    ? {package: options.testLauncherPackage, cleanup: async () => {}}
+    : await buildLauncherPackage(prepared.path);
+  try {
+    report('refresh-start', {message: 'Updating CivHomebrew on the Switch'});
+    await companionRequest(address, {op: 'update', package: built.package}, options);
+  } finally {
+    await built.cleanup();
+  }
+  const deadline = Date.now() + (options.refreshTimeout || 20000);
+  await new Promise(resolve => setTimeout(resolve, options.refreshInitialDelay ?? 800));
+  while (Date.now() < deadline) {
+    try {
+      state = await probeCompanion(address, {...options, timeout: Math.min(options.timeout || 10000, 2000)});
+      if (state.mode === 'launcher' && !state.busy && state.launcher) {
+        report('refresh-ready', {message: 'CivHomebrew updated on the Switch'});
+        return state;
+      }
+    } catch (error) {
+      if (error.message.includes('did not identify a compatible CivHomebrew core')) throw error;
+    }
+    await new Promise(resolve => setTimeout(resolve, options.refreshPollInterval || 200));
+  }
+  throw Error('CivHomebrew did not confirm the updated launcher. Return to its launcher and connect again');
+}
+
+async function stopCompanion(address, options = {}) {
+  const state = await probeCompanion(address, options);
+  if (state.mode === 'app') {
+    return {blocked: true,
+      message: 'Close the foreground app on your Switch and return to CivHomebrew, then press Stop again'};
+  }
+  if (state.busy) {
+    return {blocked: true,
+      message: 'CivHomebrew is changing apps. Wait for its launcher, then press Stop again'};
+  }
+  await companionRequest(address, {op: 'shutdown'}, options);
+  const deadline = Date.now() + (options.stopTimeout || 5000);
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, options.stopInterval || 200));
+    try {
+      const reply = await companionRequest(address, {op: 'status'}, {...options, timeout: 1000});
+      if (reply.state?.closed === true) return {stopped: true};
+    } catch (error) {
+      if (error.code === 'ECONNREFUSED') return {stopped: true};
+      throw error;
+    }
+  }
+  throw Error('CivHomebrew did not confirm shutdown. Check the Switch before retrying');
 }
 
 function spawnPython(runtimeRoot, source, script, args, options = {}) {
@@ -404,7 +509,7 @@ async function main(args = process.argv.slice(2), options = {}) {
   const [action, rootArg, address] = args;
   if (!['--self-test', 'status', 'prepare', 'probe', 'launch', 'install', 'restore', 'shutdown'].includes(action) ||
       !rootArg || (['--self-test', 'status', 'prepare'].includes(action) ? args.length !== 2 :
-        args.length !== 3 || !validAddress(address))) {
+        args.length !== 3 || !(validAddress(address) || options.allowLoopback && address === '127.0.0.1'))) {
     throw Error('usage: gui-civhomebrew.cjs --self-test|status|prepare RUNTIME_ROOT or probe|launch|install|restore|shutdown RUNTIME_ROOT SWITCH_IPV4');
   }
   const runtimeRoot = path.resolve(rootArg);
@@ -421,22 +526,41 @@ async function main(args = process.argv.slice(2), options = {}) {
     return status;
   }
   if (action === 'probe') {
-    const state = await probeCompanion(address, options);
+    const initial = await probeCompanion(address, options);
+    let state = initial, refreshError = null;
+    if (initial.mode === 'launcher' && !initial.busy && initial.launcher) {
+      try {
+        state = await refreshRunningLauncher(runtimeRoot, address, {...options, initialState: initial});
+      } catch (error) {
+        refreshError = error;
+        state = await probeCompanion(address, options).catch(() => initial);
+      }
+    }
     report('probe-ready', {mode: state.mode, launcher: state.launcher, ftp: state.ftp});
+    if (state.mode !== 'launcher' || state.busy || !state.launcher) {
+      report('refresh-deferred', {message: 'Return to the CivHomebrew launcher, then connect again to update it'});
+    } else if (refreshError) {
+      report('refresh-failed', {message: 'CivHomebrew is connected, but its UI update failed: ' + refreshError.message});
+    }
     return state;
   }
   if (action === 'shutdown') {
-    await probeCompanion(address, options);
-    await companionRequest(address, {op: 'shutdown'}, options);
-    report('stopped', {message: 'CivHomebrew shutdown requested'});
-    return {stopped: true};
+    const result = await stopCompanion(address, options);
+    report(result.blocked ? 'blocked' : 'stopped', {message: result.message || 'CivHomebrew closed'});
+    return result;
   }
   const prepared = await prepareSource(runtimeRoot, {...options, emit: report});
   report('source-ready', {path: prepared.path, cached: prepared.cached,
     version: prepared.metadata.version, commit: prepared.metadata.commit});
   if (action === 'prepare') return prepared;
-  if (action === 'launch') return launchTemporary(runtimeRoot, address, prepared.path, options);
-  return finiteAction(action, runtimeRoot, address, prepared.path, options);
+  if (action === 'restore') return finiteAction(action, runtimeRoot, address, prepared.path, options);
+  const overlay = await createOverlay(prepared.path);
+  try {
+    if (action === 'launch') return await launchTemporary(runtimeRoot, address, overlay.path, options);
+    return await finiteAction(action, runtimeRoot, address, overlay.path, options);
+  } finally {
+    await overlay.cleanup();
+  }
 }
 
 if (require.main === module) main().catch(error => {
@@ -445,4 +569,5 @@ if (require.main === module) main().catch(error => {
 });
 
 module.exports = {main, sourceMetadata, sourceStatus, sourceDigest, verifySource, prepareSource,
-  pythonEnvironment, verifyRuntime, validAddress, companionRequest, probeCompanion, fetchArchive, launchTemporary};
+  pythonEnvironment, verifyRuntime, validAddress, companionRequest, probeCompanion, refreshRunningLauncher, stopCompanion,
+  fetchArchive, launchTemporary};

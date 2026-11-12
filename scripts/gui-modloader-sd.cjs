@@ -16,7 +16,7 @@ function modSourceForRun(run, staging) {
   check(path.dirname(staging) === path.resolve(run), 'The staged mods do not belong to this session');
   const match = /^\.mac2jb-modloader-([A-Za-z0-9_-]{1,64})$/.exec(path.basename(staging));
   check(match, 'Invalid staged mod attempt name');
-  return '/ns2jb-modloader/' + session + '/' + match[1];
+  return '/ns2jb-modloader';
 }
 
 function stagedEntries(staging, source) {
@@ -94,6 +94,10 @@ async function createSdTransport(run, connect = attachGame) {
       try {
         fd = fs.openSync(local, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
         check(fs.fstatSync(fd).size === size, 'Staged mod changed during SD transfer: ' + local);
+        const resize = Buffer.alloc(8);
+        resize.writeBigUInt64LE(BigInt(size));
+        check(!(await s.ipc('Resize selected SD mod', handle, 3, resize)).result,
+          'Cannot resize SD mod file: ' + remote);
         const buffer = Buffer.alloc(chunkSize);
         for (let offset = 0; offset < size;) {
           const count = fs.readSync(fd, buffer, 0, Math.min(buffer.length, size - offset), offset);
@@ -120,8 +124,7 @@ async function createSdTransport(run, connect = attachGame) {
       check(!opened.result, 'Cannot verify SD mod: ' + remote);
       const handle = opened.handle;
       try {
-        check(await filesystem.fileSize(s, handle) === BigInt(size),
-          'Existing SD mod size differs: ' + remote);
+        if (await filesystem.fileSize(s, handle) !== BigInt(size)) return null;
         const hash = crypto.createHash('sha256');
         for (let offset = 0; offset < size; offset += chunkSize) {
           const count = Math.min(chunkSize, size - offset);
@@ -145,9 +148,7 @@ async function uploadSelectedMods(run, staging, transportFactory = createSdTrans
   const transport = await transportFactory(run);
   let files = 0;
   try {
-    for (const entry of [{remote: '/ns2jb-modloader', type: 'directory'},
-      {remote: path.posix.dirname(source), type: 'directory'},
-      {remote: source, type: 'directory'}, ...entries]) {
+    for (const entry of [{remote: source, type: 'directory'}, ...entries]) {
       const type = await transport.type(entry.remote);
       if (entry.type === 'directory') {
         if (type === 'missing') await transport.mkdir(entry.remote);
@@ -157,8 +158,8 @@ async function uploadSelectedMods(run, staging, transportFactory = createSdTrans
       check(type === 'missing' || type === 'file',
         'SD mod path is not a file: ' + entry.remote);
       const expected = await hashFile(entry.local);
-      if (type === 'missing') {
-        await transport.create(entry.remote, entry.size);
+      if (type === 'missing') await transport.create(entry.remote, entry.size);
+      if (type === 'missing' || await transport.digest(entry.remote, entry.size) !== expected) {
         await transport.write(entry.remote, entry.local, entry.size);
       }
       check(await transport.digest(entry.remote, entry.size) === expected,

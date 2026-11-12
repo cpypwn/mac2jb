@@ -32,6 +32,8 @@ class Controller {
     this.abort = new AbortController(); this.closed = false;
     this.addons = new AddonCollection({addonUrls, ...networkOptions, signal: this.abort.signal, onLog: value => this._log(value)});
     this.catalogs = []; this.catalogIndex = 0; this.catalogItems = [];
+    this.catalogFilters = new Map(); this.filterChoice = null; this.filterInput = null;
+    this.heroBackdrops = new Map(); this.heroBackdropPending = new Set(); this.heroBackdropTimer = null;
     this.libraryItems = library.normalizeLibrary(libraryItems); this.libraryItem = null;
     this.meta = null; this.video = null; this.streams = [];
     this.view = 'catalog'; this.selected = 0; this.catalogSelected = 0;
@@ -54,10 +56,34 @@ class Controller {
   _log(message) { if (this.closed) return; try { this.onLog(redactText(message)); } catch {} }
   _emit() {
     if (this.closed) return;
+    this._queueHeroBackdrop();
     try {
       const promise = this.onChange(this.getMenuModel());
       if (promise?.catch) promise.catch(() => this._log('The menu update callback failed.'));
     } catch { this._log('The menu update callback failed.'); }
+  }
+
+  _queueHeroBackdrop() {
+    clearTimeout(this.heroBackdropTimer);
+    this.heroBackdropTimer = null;
+    if (this.view !== 'catalog') return;
+    const item = this.catalogItems[this.selected];
+    if (!item?.id || !item.type || presentationURL(item.background)) return;
+    const key = `${item.type}\0${item.id}`;
+    if (this.heroBackdrops.has(key) || this.heroBackdropPending.has(key)) return;
+    this.heroBackdropTimer = setTimeout(async () => {
+      this.heroBackdropTimer = null;
+      if (this.closed || this.view !== 'catalog' || this.catalogItems[this.selected]?.id !== item.id) return;
+      this.heroBackdropPending.add(key);
+      let background;
+      try { background = presentationURL((await this.addons.meta(item.type, item.id,
+        this.catalogs[this.catalogIndex]?.client))?.background); } catch {}
+      this.heroBackdropPending.delete(key);
+      if (this.closed) return;
+      this.heroBackdrops.set(key, background || null);
+      if (this.heroBackdrops.size > 64) this.heroBackdrops.delete(this.heroBackdrops.keys().next().value);
+      if (this.view === 'catalog' && this.catalogItems[this.selected]?.id === item.id) this._emit();
+    }, 180);
   }
   async _operation(label, action) {
     if (this.busy || this.closed) return false;
@@ -96,13 +122,64 @@ class Controller {
       .map(library.libraryMeta).filter(Boolean);
   }
 
-  async _loadCatalog(index) {
+  _catalogLabel(index) {
+    const catalog = this.catalogs[index];
+    if (!catalog) return '';
+    const matches = this.catalogs.filter(entry => entry.name.toLowerCase() === catalog.name.toLowerCase());
+    if (matches.length < 2) return catalog.name;
+    let label = `${catalog.addonName} · ${catalog.name}`;
+    const sameAddon = matches.filter(entry => entry.addonName === catalog.addonName);
+    if (sameAddon.length > 1) {
+      const sameID = sameAddon.filter(entry => entry.id === catalog.id);
+      const qualifier = sameID.length > 1 ?
+        [catalog.type, catalog.id, index + 1].filter(Boolean).join(' · ') :
+        catalog.id || catalog.type || index + 1;
+      label = `${catalog.addonName} · ${catalog.name} (${qualifier})`;
+    }
+    return label;
+  }
+
+  _activeFilters(index = this.catalogIndex) {
+    return this.catalogFilters.get(index) || {};
+  }
+
+  _filterExtras(index = this.catalogIndex) {
+    return this.catalogs[index]?.extra || [];
+  }
+
+  _openCatalogFilters(index = this.catalogIndex) {
+    this.catalogIndex = index; this.view = 'catalogFilters'; this.selected = 0;
+    this.focusArea = 'content'; this.mainFocus = 'content'; this.tabSelected = index;
+    this.section = 'home'; this.libraryEmpty = false; this.filterChoice = null; this.filterInput = null;
+    this.meta = null; this.video = null; this.streams = []; this.libraryItem = null;
+  }
+
+  setCatalogFilter(name, value) {
+    if (this.closed || this.busy || this.view !== 'catalogFilters' || typeof name !== 'string' ||
+        value !== null && (typeof value !== 'string' || value.length > 256 || /[\x00-\x1f\x7f]/.test(value))) return false;
+    const extra = this._filterExtras().find(entry => entry.name === name);
+    if (!extra || extra.options?.length || extra.name === 'skip') return false;
+    if (value === null) { this.filterInput = null; this._emit(); return true; }
+    const next = {...this._activeFilters()};
+    if (value.trim()) next[name] = value.trim();
+    else if (extra.isRequired) { this.notice = `Enter a ${name} filter first.`; this._emit(); return false; }
+    else delete next[name];
+    this.catalogFilters.set(this.catalogIndex, next); this.filterInput = null; this.notice = ''; this._emit();
+    return true;
+  }
+
+  async _loadCatalog(index, {showFilters = false} = {}) {
     if (!this.catalogs.length) { this.notice = 'No catalogs are available. Add an addon or sign in to Stremio.'; return; }
     const normalized = (index + this.catalogs.length) % this.catalogs.length;
     const catalog = this.catalogs[normalized];
-    const items = catalog.kind ? this._libraryRows(catalog.kind) : await catalog.client.catalog(catalog);
+    const extras = this._activeFilters(normalized);
+    if (!catalog.kind && (showFilters || this._filterExtras(normalized).some(extra => extra.isRequired && !extras[extra.name]))) {
+      this._openCatalogFilters(normalized); return;
+    }
+    const items = catalog.kind ? this._libraryRows(catalog.kind) : await catalog.client.catalog(catalog, extras);
     this.catalogIndex = normalized; this.catalogItems = items;
     this.view = 'catalog'; this.selected = 0; this.catalogSelected = 0;
+    this.filterChoice = null; this.filterInput = null;
     this.focusArea = 'content'; this.mainFocus = 'content'; this.tabSelected = normalized;
     this.section = catalog.kind ? 'library' : 'home'; this.libraryEmpty = false;
     this.meta = null; this.video = null; this.streams = []; this.libraryItem = null;
@@ -193,7 +270,24 @@ class Controller {
   }
 
   _rows() {
-    if (this.view === 'catalogs') return this.catalogs.map(catalog => ({label: catalog.name, detail: catalog.addonName}));
+    if (this.view === 'catalogs') return this.catalogs.map((catalog, index) => ({label: this._catalogLabel(index), detail: catalog.addonName}));
+    if (this.view === 'catalogFilters') return [...this._filterExtras().map(extra => {
+      const value = this._activeFilters()[extra.name];
+      return {label: extra.name === 'skip' ? 'Page' : extra.name === 'search' ? 'Search' :
+        extra.name.charAt(0).toUpperCase() + extra.name.slice(1),
+      detail: value === undefined ? extra.isRequired ? 'Required' : 'Any' : extra.name === 'skip' ?
+        `${Number(value) / 100 + 1}` : value,
+      kind: 'filter', filterName: extra.name, requiresText: !extra.options?.length && extra.name !== 'skip',
+      required: extra.isRequired, value: value || ''};
+    }), {label: 'Show results', detail: this._filterExtras().every(extra => !extra.isRequired || this._activeFilters()[extra.name]) ?
+      'Open catalog' : 'Set required filters first', kind: 'submit'}];
+    if (this.view === 'filterChoices') {
+      const extra = this._filterExtras().find(entry => entry.name === this.filterChoice);
+      if (!extra) return [];
+      const choices = extra.name === 'skip' ? Array.from({length: 11}, (_, index) => String(index * 100)) : extra.options || [];
+      return [...(!extra.isRequired ? [{label: 'Any', value: ''}] : []), ...choices.map(value => ({label: extra.name === 'skip' ?
+        `Page ${Number(value) / 100 + 1}` : value, value}))];
+    }
     if (this.view === 'catalog') return this.catalogItems.map(meta => ({label: meta.name,
       detail: [meta.releaseInfo, meta.type].filter(Boolean).join(' · ')}));
     if (this.view === 'details') return this._detailsActions();
@@ -220,10 +314,12 @@ class Controller {
     return {index, id: presentationID(meta.id), title: clean(meta.name), type: clean(meta.type, 64),
       subtitle: [clean(meta.releaseInfo, 48), clean(meta.type, 64)].filter(Boolean).join(' · '),
       releaseInfo: clean(meta.releaseInfo, 48), poster: presentationURL(meta.poster),
+      background: presentationURL(meta.background) || (hero ?
+        this.heroBackdrops.get(`${meta.type}\0${meta.id}`) || undefined : undefined),
+      logo: presentationURL(meta.logo),
       posterShape: ['poster', 'square', 'landscape'].includes(meta.posterShape) ? meta.posterShape : 'poster',
       description: clean(meta.description, hero ? 600 : 180),
-      ...(hero ? {background: presentationURL(meta.background), logo: presentationURL(meta.logo),
-        genres: (Array.isArray(meta.genres) ? meta.genres : []).slice(0, 8).map(genre => clean(genre, 48)).filter(Boolean),
+      ...(hero ? {genres: (Array.isArray(meta.genres) ? meta.genres : []).slice(0, 8).map(genre => clean(genre, 48)).filter(Boolean),
         runtime: clean(meta.runtime, 48), rating: clean(meta.rating, 16)} : {}),
       selected, inLibrary: Boolean(item && !item.removed && !item.temp), canResume: Boolean(progress), progress};
   }
@@ -233,7 +329,9 @@ class Controller {
     const tabIndex = this.view === 'catalogs' ? selected : this.focusArea === 'tabs' ? clamp(this.tabSelected, this.catalogs.length) : this.catalogIndex;
     const tabStart = Math.max(0, Math.min(tabIndex - 3, this.catalogs.length - TAB_PAGE_SIZE));
     const section = catalog?.kind ? 'Library' : 'Discover';
-    const breadcrumb = this.view === 'catalogs' ? ['Catalogs'] : [section, catalog?.name].filter(Boolean);
+    const breadcrumb = this.view === 'catalogs' ? ['Catalogs'] : [section, this._catalogLabel(this.catalogIndex)].filter(Boolean);
+    if (this.view === 'catalogFilters') breadcrumb.push('Filters');
+    if (this.view === 'filterChoices') breadcrumb.push('Filters', this.filterChoice);
     if (this.meta && this.view !== 'catalog' && this.view !== 'catalogs') breadcrumb.push(this.meta.name);
     if (this.view === 'seasons') breadcrumb.push('Seasons');
     if (['episodes', 'sources', 'playing'].includes(this.view) && this.meta?.type === 'series' && this.selectedSeason !== undefined) {
@@ -257,10 +355,10 @@ class Controller {
     });
     const heroMeta = this.view === 'catalog' ? this.catalogItems[selected] : this.view === 'catalogs' ? null : this.meta;
     return {brand: 'Stremio', breadcrumb,
-      catalog: catalog ? {index: this.libraryEmpty ? -1 : this.catalogIndex, name: clean(catalog.name, 120), addonName: clean(catalog.addonName, 120),
+      catalog: catalog ? {index: this.libraryEmpty ? -1 : this.catalogIndex, name: clean(this.libraryEmpty ? catalog.name : this._catalogLabel(this.catalogIndex), 120), addonName: clean(catalog.addonName, 120),
         kind: catalog.kind || 'addon', type: catalog.type || ''} : null,
       tabs: this.catalogs.slice(tabStart, tabStart + TAB_PAGE_SIZE).map((entry, localIndex) => ({index: tabStart + localIndex,
-        id: presentationID(entry.kind || entry.id || String(tabStart + localIndex)), label: clean(entry.name, 120), detail: clean(entry.addonName, 120),
+        id: presentationID(entry.kind || entry.id || String(tabStart + localIndex)), label: clean(this._catalogLabel(tabStart + localIndex), 120), detail: clean(entry.addonName, 120),
         kind: entry.kind || 'addon', active: !this.libraryEmpty && tabStart + localIndex === this.catalogIndex,
         selected: tabStart + localIndex === tabIndex})),
       tabOffset: tabStart, tabCount: this.catalogs.length,
@@ -278,9 +376,11 @@ class Controller {
     const start = pageStart(selected, this.view === 'catalog' ? CATALOG_PAGE_SIZE : LIST_PAGE_SIZE);
     let title = 'Stremio compatible · alpha', subtitle = '';
     if (this.view === 'catalogs') subtitle = 'Choose a catalog';
+    if (this.view === 'catalogFilters') subtitle = `Choose filters for ${this._catalogLabel(this.catalogIndex)}`;
+    if (this.view === 'filterChoices') subtitle = `Choose ${this.filterChoice}`;
     if (this.view === 'catalog') {
       const catalog = this.libraryEmpty ? {name: 'My Library', addonName: 'Stremio account'} : this.catalogs[this.catalogIndex];
-      subtitle = catalog ? `${catalog.addonName} · ${catalog.name}` : 'Catalogs';
+      subtitle = catalog ? this._catalogLabel(this.catalogIndex) : 'Catalogs';
     }
     if (this.view === 'details' || this.view === 'episodes' || this.view === 'seasons') {
       title = this.meta?.name || title;
@@ -297,12 +397,15 @@ class Controller {
       ...this._presentation(rows, selected, start), selected: selected - start, offset: start, count: rows.length,
       selectedIndex: selected,
       selectedSeason: this.selectedSeason ?? null,
+      filterInput: this.filterInput,
       description: this.view === 'details' ? this.meta?.description || '' : '',
       message: this.busy ? this.loading : this.notice, busy: this.busy, isPlaying: this.view === 'playing',
       playbackOverlay: this.view === 'playing' ? this._overlayModel() : null,
       footer: this.view === 'playing' ? 'A Select / Pause  X / + Controls  L / R Episodes  Hold ZL / ZR or left stick Seek  B Hide / Stop' :
         this.focusArea === 'sidebar' ? '↑/↓ Menu  A Open  → Return  B Return' : this.focusArea === 'tabs' ? '←/→ Catalogs  A Open  ↓ Titles  B Menu' :
-        this.view === 'catalog' ? '←/→ Titles  ↑ Catalogs  L/R Tabs  A Open  B Menu  X Refresh  Y Next catalog' : '↑/↓ Browse  L/R Tabs  A Open  B Back  ← Menu  X Refresh'};
+        this.view === 'catalog' ? `←/→ Titles  ↑ Catalogs  L/R Tabs  A Open  B Menu  X ${this._filterExtras().length ? 'Filters' : 'Refresh'}  Y Next catalog` :
+        this.view === 'catalogFilters' || this.view === 'filterChoices' ? '↑/↓ Filters  A Select  B Back  L/R Tabs' :
+          '↑/↓ Browse  L/R Tabs  A Open  B Back  ← Menu  X Refresh'};
     model.navigation = buildNavigation(model, {focusArea: this.focusArea, sidebarIndex: this.sidebarSelected,
       tabIndex: this.tabSelected, section: this.section});
     return model;
@@ -310,6 +413,32 @@ class Controller {
 
   async _select() {
     if (this.view === 'catalogs') { await this._loadCatalog(this.selected); return; }
+    if (this.view === 'catalogFilters') {
+      const row = this._rows()[this.selected];
+      if (row?.kind === 'submit') {
+        const missing = this._filterExtras().find(extra => extra.isRequired && !this._activeFilters()[extra.name]);
+        if (missing) { this.notice = `Choose a ${missing.name} filter first.`; return; }
+        await this._loadCatalog(this.catalogIndex); return;
+      }
+      if (row?.kind !== 'filter') return;
+      if (row.requiresText) {
+        this.filterInput = {name: row.filterName, label: row.label, value: row.value, required: row.required};
+        return;
+      }
+      this.filterChoice = row.filterName; this.view = 'filterChoices'; this.selected = 0;
+      return;
+    }
+    if (this.view === 'filterChoices') {
+      const row = this._rows()[this.selected];
+      if (!row) return;
+      const next = {...this._activeFilters()};
+      if (row.value) next[this.filterChoice] = row.value;
+      else delete next[this.filterChoice];
+      this.catalogFilters.set(this.catalogIndex, next);
+      const name = this.filterChoice; this.filterChoice = null; this.view = 'catalogFilters';
+      this.selected = Math.max(0, this._filterExtras().findIndex(extra => extra.name === name));
+      return;
+    }
     if (this.view === 'catalog') {
       const item = this.catalogItems[this.selected];
       if (item) { this.catalogSelected = this.selected; await this._openMeta(item); }
@@ -438,6 +567,8 @@ class Controller {
 
   async _back() {
     if (this.focusArea === 'sidebar') { this._leaveSidebar(); return; }
+    if (this.view === 'filterChoices') { this.view = 'catalogFilters'; this.filterChoice = null; this.selected = 0; return; }
+    if (this.view === 'catalogFilters') { this.filterInput = null; this.view = 'catalogs'; this.selected = this.catalogIndex; return; }
     if (this.view === 'catalog' || this.view === 'catalogs') { this._openSidebar(); return; }
     this.focusArea = 'content';
     if (this.view === 'sources') {
@@ -460,7 +591,9 @@ class Controller {
 
   async _refresh() {
     if (this.libraryEmpty && this.view === 'catalog') await this._sidebarAction('library');
-    else if (this.view === 'catalog' || this.view === 'catalogs') await this._loadCatalog(this.catalogIndex);
+    else if (this.view === 'catalog' && this._filterExtras().length) this._openCatalogFilters();
+    else if (this.view === 'filterChoices') { this.view = 'catalogFilters'; this.filterChoice = null; }
+    else if (this.view === 'catalog' || this.view === 'catalogs' || this.view === 'catalogFilters') await this._loadCatalog(this.catalogIndex);
     else if (this.view === 'sources') await this._openStreams(this.video);
     else if (this.view === 'details' || this.view === 'seasons' || this.view === 'episodes') await this._openMeta(this.meta);
   }
@@ -872,7 +1005,7 @@ class Controller {
 
   setPlaybackInfo(update) { this.updatePlayback(update); }
 
-  close() { this.closed = true; this._cancelSeek(); this.playGeneration++; this.abort.abort(); }
+  close() { this.closed = true; clearTimeout(this.heroBackdropTimer); this._cancelSeek(); this.playGeneration++; this.abort.abort(); }
 
   renderMenu(options) { return renderMenu(this.getMenuModel(), options); }
 }

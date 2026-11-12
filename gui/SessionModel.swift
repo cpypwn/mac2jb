@@ -1165,11 +1165,11 @@ private struct GUIEvent: Decodable {
         modloaderUsedMacFolder = modsFolder != nil
         homebrewApp = .modloader
         pendingHomebrewAction = "modloader-install"
-        homebrewMessage = modsFolder == nil ? "Checking mods on the Switch SD card…" : "Checking the selected Mac mods…"
+        homebrewMessage = modsFolder == nil ? "Checking mods on the Switch SD card…" : "Checking the selected mods folder…"
         status = "Checking mod files"
         detail = modsFolder == nil
             ? "Reading mods already on the Switch SD card before installing the modloader."
-            : "Validating the selected Mac folder before uploading its mods."
+            : "Checking the selected folder before copying mods to the Switch SD card."
         progressLabel = homebrewMessage
     }
 
@@ -1495,7 +1495,7 @@ private struct GUIEvent: Decodable {
             case .launching:
                 phase = .launchingHomebrew; status = "Starting \(homebrewTitle)"
                 detail = homebrewApp == .modloader
-                    ? "Installing mods from \(modloaderUsedMacFolder ? "this Mac" : "the Switch SD card"). Keep \(attachedFilesystemGameName) and mac2jb open until the loader reports ready."
+                    ? "\(modloaderUsedMacFolder ? "Writing selected mods to the Switch SD card, then installing the modloader" : "Installing the modloader using mods on the Switch SD card"). Keep \(attachedFilesystemGameName) and mac2jb open until the loader reports ready."
                     : homebrewApp == .mintBrew && !isAttachedRPCSession
                     ? "You can safely disconnect the Switch from this Mac’s USB port. \(sessionReminder)"
                     : "\(sessionReminder) The app is starting."
@@ -2066,12 +2066,16 @@ private struct GUIEvent: Decodable {
                   postRun.launchHomebrew() else { return }
             pendingHomebrewAction = nil
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
-            homebrewMessage = event.message ?? "Installing mods from \(modloaderUsedMacFolder ? "this Mac" : "the Switch SD card")…"
+            homebrewMessage = event.message ?? (modloaderUsedMacFolder
+                ? "Writing selected mods to the Switch SD card, then installing the modloader…"
+                : "Installing the modloader using mods on the Switch SD card…")
             presentPostRunState()
         case "modloader-progress":
             guard role == "host", homebrewApp == .modloader,
                   postRun.stage == .held, postRun.homebrewStage == .launching else { return }
-            homebrewMessage = event.message ?? "Installing mods from \(modloaderUsedMacFolder ? "this Mac" : "the Switch SD card")…"
+            homebrewMessage = event.message ?? (modloaderUsedMacFolder
+                ? "Writing selected mods to the Switch SD card, then installing the modloader…"
+                : "Installing the modloader using mods on the Switch SD card…")
             progressLabel = homebrewMessage
         case "modloader-ready":
             guard role == "host", homebrewApp == .modloader,
@@ -2087,7 +2091,7 @@ private struct GUIEvent: Decodable {
             if pendingHomebrewAction == "modloader-install" && event.retrySafe == true {
                 pendingHomebrewAction = nil
                 homebrewMessage = event.message ?? (modloaderUsedMacFolder
-                    ? "The Mac mod folder could not be used. Choose another folder."
+                    ? "The selected mods folder could not be used. Choose another folder."
                     : "No usable mods were found on the Switch SD card.")
                 status = modloaderUsedMacFolder ? "Choose another mod folder" : "Check the Switch SD card"
                 detail = homebrewMessage
@@ -2242,7 +2246,7 @@ private struct GUIEvent: Decodable {
                 pendingCustomConsoleAddress = nil
                 homebrewMessage = event.message ?? (action == "modloader-install"
                     ? modloaderUsedMacFolder
-                      ? "The selected Mac mod folder is invalid. Choose another folder."
+                      ? "The selected mods folder is invalid. Choose another folder."
                       : "The Switch SD card mods could not be read."
                     : "The selected app folder is invalid. Choose another folder.")
                 presentPostRunState()

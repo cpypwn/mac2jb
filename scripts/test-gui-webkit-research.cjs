@@ -59,13 +59,30 @@ test('server wrapper reports readiness and terminates its Python child', async t
   {stdio: ['ignore', 'pipe', 'pipe']});
   t.after(() => {if (child.exitCode === null) child.kill('SIGTERM');});
   let output = '';
+  let errors = '';
+  child.stderr.on('data', bytes => { errors += bytes.toString(); });
   await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(Error('WebKit adapter did not report readiness.')), 3000);
+    let settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off('error', onError);
+      child.off('close', onClose);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onError = error => finish(error);
+    const onClose = (code, signal) => finish(Error(
+      `WebKit adapter exited before readiness (${code ?? signal}): ${errors.trim() || output.trim()}`));
+    const timer = setTimeout(() => finish(Error(
+      `WebKit adapter did not report readiness: ${errors.trim() || output.trim()}`)), 15000);
     child.stdout.on('data', bytes => {
       output += bytes.toString();
-      if (output.includes('"type":"ready"')) {clearTimeout(timer); resolve();}
+      if (output.includes('"type":"ready"')) finish();
     });
-    child.once('error', error => {clearTimeout(timer); reject(error);});
+    child.once('error', onError);
+    child.once('close', onClose);
   });
   assert.match(output, /http:\/\/127\.0\.0\.1:8765\//);
   child.kill('SIGTERM');

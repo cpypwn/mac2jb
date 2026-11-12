@@ -36,7 +36,7 @@ test('stages only a validated unpacked mod tree beside the held run', t => {
   assert.equal(path.dirname(result.staging), run);
 });
 
-test('SD install stages the runtime without uploading Mac mods or overriding the SD root', t => {
+test('SD install stages the runtime without uploading selected mods or overriding the SD root', t => {
   const {run} = fixture(t);
   assert.equal(modsFolderFromCommand({source: 'sd'}), null);
   const staged = stage(run, null);
@@ -47,32 +47,44 @@ test('SD install stages the runtime without uploading Mac mods or overriding the
   assert.equal(fs.existsSync(path.join(staged.staging, 'exefs_patches')), false);
   assert.deepEqual(installArguments(staged.staging, run),
     [path.join(staged.staging, 'install.cjs'), '--run-dir', run]);
-  assert.equal(require('../integrations/ns2jb-modloader/install.cjs').options([]).modSource,
-    '/ns2jb-modloader');
+  const installOptions = require('../integrations/ns2jb-modloader/install.cjs').options;
+  assert.equal(installOptions([]).modSource, '/ns2jb-modloader');
+  assert.deepEqual(installOptions(installArguments(staged.staging, run).slice(1)).titles, []);
   assert.throws(() => modsFolderFromCommand({source: 'sd', modsFolder: '/tmp/mods'}),
-    /does not use a Mac mod folder/);
+    /does not require a mods folder/);
 });
 
-test('Mac upload remains an explicit secondary mod source', t => {
+test('selected-folder upload uses the default canonical SD mod source', t => {
   const {run, mods} = fixture(t);
   assert.equal(modsFolderFromCommand({source: 'mac', modsFolder: mods}), mods);
   const staged = stage(run, mods);
-  const source = '/ns2jb-modloader/switch2-test/upload';
-  assert.deepEqual(installArguments(staged.staging, run, source),
-    [path.join(staged.staging, 'install.cjs'), '--run-dir', run, '--mod-source', source]);
+  const args = installArguments(staged.staging, run, '/ns2jb-modloader');
+  assert.deepEqual(args,
+    [path.join(staged.staging, 'install.cjs'), '--run-dir', run]);
+  const selected = require('../integrations/ns2jb-modloader/install.cjs').options(args.slice(1));
+  assert.equal(selected.modSource, '/ns2jb-modloader');
+  assert.deepEqual(selected.titles, []);
   assert.throws(() => modsFolderFromCommand({source: 'mac'}), /unpacked mod folder/);
 });
 
-test('uploads selected mods to a private SD session and verifies readback', async t => {
+test('merges selected contents and global patches into the canonical SD tree, skipping identical files', async t => {
   const {run, mods} = fixture(t);
+  const patches = path.join(mods, 'exefs_patches');
+  fs.mkdirSync(patches);
+  fs.writeFileSync(path.join(patches, 'aabb.ips'), 'PATCH\0\0\0EOF');
   const staged = stage(run, mods);
   const source = modSourceForRun(run, staged.staging);
-  assert.match(source, /^\/ns2jb-modloader\/switch2-test\/[A-Za-z0-9_-]+$/);
+  assert.equal(source, '/ns2jb-modloader');
   const rows = stagedEntries(staged.staging, source);
   assert.deepEqual(rows.filter(row => row.type === 'file').map(row => row.remote),
-    [source + '/contents/0400f5802371e000/romfs/test.bin']);
-  const directories = new Set(), files = new Map(), createdDirectories = [];
-  let created = 0, written = 0, closed = 0;
+    [source + '/contents/0400f5802371e000/romfs/test.bin',
+      source + '/exefs_patches/aabb.ips']);
+  const unrelated = source + '/contents/0100000000000000/romfs/other.bin';
+  const unrelatedBytes = Buffer.from('already installed');
+  const directories = new Set([source, source + '/contents',
+    source + '/contents/0100000000000000', source + '/contents/0100000000000000/romfs']);
+  const files = new Map([[unrelated, unrelatedBytes]]), createdDirectories = [];
+  let created = 0, written = 0, digested = 0, closed = 0;
   const factory = async selectedRun => {
     assert.equal(selectedRun, run);
     return {
@@ -93,22 +105,80 @@ test('uploads selected mods to a private SD session and verifies readback', asyn
       },
       digest: async (remote, size) => {
         assert.equal(files.get(remote)?.length, size);
+        digested++;
         return crypto.createHash('sha256').update(files.get(remote)).digest('hex');
       },
       close: async () => {closed++;}
     };
   };
-  assert.deepEqual(await uploadSelectedMods(run, staged.staging, factory), {source, files: 1});
-  assert.deepEqual(createdDirectories.slice(0, 3),
-    ['/ns2jb-modloader', '/ns2jb-modloader/switch2-test', source]);
-  assert.deepEqual(await uploadSelectedMods(run, staged.staging, factory), {source, files: 1});
-  assert.equal(created, 1);
-  assert.equal(written, 1);
+  assert.deepEqual(await uploadSelectedMods(run, staged.staging, factory), {source, files: 2});
+  assert.deepEqual(new Set(createdDirectories),
+    new Set([source + '/contents/0400f5802371e000',
+      source + '/contents/0400f5802371e000/romfs', source + '/exefs_patches']));
+  assert.deepEqual(await uploadSelectedMods(run, staged.staging, factory), {source, files: 2});
+  assert.equal(created, 2);
+  assert.equal(written, 2);
+  assert.ok(digested >= 4, 'Both uploads hash-check every selected SD file');
   assert.equal(closed, 2);
-  files.set(rows.find(row => row.type === 'file').remote, Buffer.from('bad data'));
-  await assert.rejects(uploadSelectedMods(run, staged.staging, factory), /readback hash differs/);
-  assert.equal(written, 1);
-  assert.equal(closed, 3);
+  assert.deepEqual(files.get(unrelated), unrelatedBytes);
+  assert.equal(files.size, 3);
+  assert.ok([...directories].every(remote => !remote.includes('/switch2-test/')));
+});
+
+test('replaces a changed same-path SD mod and verifies the new bytes without removing other mods', async t => {
+  const {run, mods} = fixture(t);
+  const staged = stage(run, mods), source = '/ns2jb-modloader';
+  const remote = source + '/contents/0400f5802371e000/romfs/test.bin';
+  const unrelated = source + '/contents/0100000000000000/romfs/other.bin';
+  const expected = fs.readFileSync(path.join(staged.staging, 'contents',
+    '0400f5802371e000', 'romfs', 'test.bin'));
+  const directories = new Set([source, source + '/contents',
+    source + '/contents/0400f5802371e000',
+    source + '/contents/0400f5802371e000/romfs']);
+  const files = new Map([[remote, Buffer.from('older and longer mod data')],
+    [unrelated, Buffer.from('leave this installed')]]);
+  const unrelatedBytes = Buffer.from(files.get(unrelated));
+  let writes = 0, digests = 0, closed = 0;
+  const factory = async () => ({
+    type: async target => directories.has(target) ? 'directory' : files.has(target) ? 'file' : 'missing',
+    mkdir: async target => {directories.add(target);},
+    create: async (target, size) => {files.set(target, Buffer.alloc(size));},
+    write: async (target, local, size) => {
+      const bytes = fs.readFileSync(local);
+      assert.equal(bytes.length, size);
+      files.set(target, bytes);
+      writes++;
+    },
+    digest: async (target, size) => {
+      digests++;
+      const bytes = files.get(target);
+      if (bytes?.length !== size) return null;
+      return crypto.createHash('sha256').update(bytes).digest('hex');
+    },
+    close: async () => {closed++;}
+  });
+  assert.deepEqual(await uploadSelectedMods(run, staged.staging, factory), {source, files: 1});
+  assert.deepEqual(files.get(remote), expected);
+  assert.deepEqual(files.get(unrelated), unrelatedBytes);
+  assert.equal(writes, 1);
+  assert.ok(digests >= 2, 'The existing and replacement bytes were checked');
+  assert.equal(closed, 1);
+});
+
+test('rejects a failed SD readback after writing a selected mod', async t => {
+  const {run, mods} = fixture(t);
+  const staged = stage(run, mods);
+  let writes = 0, closed = 0;
+  await assert.rejects(uploadSelectedMods(run, staged.staging, async () => ({
+    type: async () => 'missing',
+    mkdir: async () => {},
+    create: async () => {},
+    write: async () => {writes++;},
+    digest: async () => 'incorrect-readback-hash',
+    close: async () => {closed++;}
+  })), /readback hash differs/);
+  assert.equal(writes, 1);
+  assert.equal(closed, 1);
 });
 
 test('rejects unsafe session names and changed staged files before SD access', async t => {
@@ -139,15 +209,20 @@ test('does not replay an interrupted SD write', async t => {
   assert.equal(closed, 1);
 });
 
-test('SD transport writes 256 KiB chunks, flushes, and reads every byte back', async t => {
+test('SD transport resizes an existing mod, writes 256 KiB chunks, and reads every byte back', async t => {
   const {run, mods} = fixture(t);
   const local = path.join(mods, 'contents', '0400f5802371e000', 'romfs', 'test.bin');
   const bytes = crypto.randomBytes(0x80011);
   fs.writeFileSync(local, bytes);
   const staged = stage(run, mods);
-  const memory = new Map(), directories = new Set(), files = new Map();
+  const source = '/ns2jb-modloader';
+  const remote = source + '/contents/0400f5802371e000/romfs/test.bin';
+  const memory = new Map();
+  const directories = new Set([source, source + '/contents',
+    source + '/contents/0400f5802371e000', source + '/contents/0400f5802371e000/romfs']);
+  const files = new Map([[remote, Buffer.alloc(bytes.length + 0x1000, 0x42)]]);
   const writes = [];
-  let flushed = 0, closed = 0;
+  let created = 0, resized = 0, flushed = 0, closed = 0;
   const base = 0x100000;
   const fake = {
     root: 'root',
@@ -165,6 +240,11 @@ test('SD transport writes 256 KiB chunks, flushes, and reads every byte back', a
           assert.equal(chunk.length, size);
           chunk.copy(files.get(remote), offset);
           writes.push(size);
+          return {result: 0};
+        }
+        if (command === 3) {
+          files.set(remote, Buffer.alloc(Number(input.readBigUInt64LE(0))));
+          resized++;
           return {result: 0};
         }
         if (command === 2) {flushed++; return {result: 0};}
@@ -188,6 +268,7 @@ test('SD transport writes 256 KiB chunks, flushes, and reads every byte back', a
         }
         if (command === 2) {directories.add(remote); return {result: 0};}
         if (command === 0) {
+          created++;
           files.set(remote, Buffer.alloc(Number(packet.readBigUInt64LE(40))));
           return {result: 0};
         }
@@ -207,9 +288,11 @@ test('SD transport writes 256 KiB chunks, flushes, and reads every byte back', a
     selectedRun => createSdTransport(selectedRun, async () => fake));
   assert.equal(upload.files, 1);
   assert.deepEqual(writes, [0x40000, 0x40000, 0x11]);
+  assert.equal(created, 0);
+  assert.equal(resized, 1);
   assert.equal(flushed, 1);
   assert.equal(closed, 1);
-  assert.deepEqual(files.get(upload.source + '/contents/0400f5802371e000/romfs/test.bin'), bytes);
+  assert.deepEqual(files.get(remote), bytes);
 });
 
 test('refuses a linked top-level contents folder', t => {

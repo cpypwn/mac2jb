@@ -84,6 +84,71 @@ test('catalog, series episodes and sources lead to actual playback callbacks and
   assert.ok(logs.every(message => !/ADDONSECRET|STREAMSECRET|HEADERSECRET/.test(message)));
 });
 
+test('duplicate catalog tabs name their providers and required filters open usable choice and text views', async () => {
+  const requests = [];
+  const controller = createController();
+  const client = {catalog: async (catalog, extras) => {
+    requests.push({id: catalog.id, extras}); return [{id: `${catalog.id}:1`, type: 'movie', name: 'Result'}];
+  }};
+  const catalogs = [
+    {id: 'new-a', name: 'New', type: 'movie', addonName: 'Cinema', client,
+      extra: [{name: 'search', isRequired: true}, {name: 'genre', isRequired: true, options: ['Action', 'Drama']}, {name: 'skip'}]},
+    {id: 'new-b', name: 'New', type: 'movie', addonName: 'Discover', client, extra: []},
+    {id: 'popular', name: 'Popular', type: 'movie', addonName: 'Cinema', client, extra: []}
+  ];
+  controller.addons = {init: async () => {}, catalogs: () => catalogs, errors: []};
+  assert.equal(await controller.init(), true);
+  let model = controller.getMenuModel();
+  assert.equal(model.view, 'catalogFilters');
+  assert.equal(requests.length, 0);
+  assert.deepEqual(model.tabs.map(tab => tab.label), ['Cinema · New', 'Discover · New', 'Popular']);
+  assert.equal(model.rows[0].requiresText, true);
+  assert.equal(await controller.handleButton('a'), true);
+  model = controller.getMenuModel();
+  assert.deepEqual(model.filterInput, {name: 'search', label: 'Search', value: '', required: true});
+  assert.equal(controller.setCatalogFilter('search', null), true);
+  assert.equal(controller.getMenuModel().filterInput, null);
+  await controller.handleButton('a');
+  assert.equal(controller.setCatalogFilter('search', 'Alien'), true);
+  assert.equal(controller.getMenuModel().filterInput, null);
+  assert.equal(await controller.handleButton('down'), true);
+  assert.equal(await controller.handleButton('a'), true);
+  model = controller.getMenuModel();
+  assert.equal(model.view, 'filterChoices');
+  assert.deepEqual(model.rows.map(row => row.label), ['Action', 'Drama']);
+  assert.equal(await controller.handleButton('down'), true);
+  assert.equal(await controller.handleButton('a'), true);
+  assert.equal(controller.getMenuModel().rows[1].detail, 'Drama');
+  await controller.handleButton('down'); await controller.handleButton('a');
+  assert.equal(controller.getMenuModel().view, 'filterChoices');
+  assert.equal(controller.getMenuModel().rows[2].label, 'Page 2');
+  await controller.handleButton('down'); await controller.handleButton('down'); await controller.handleButton('a');
+  assert.equal(controller.getMenuModel().rows[2].detail, '2');
+  await controller.handleButton('down'); await controller.handleButton('a');
+  model = controller.getMenuModel();
+  assert.equal(model.view, 'catalog'); assert.equal(model.cards[0].title, 'Result');
+  assert.deepEqual(requests, [{id: 'new-a', extras: {search: 'Alien', genre: 'Drama', skip: '100'}}]);
+  await controller.handleButton('x');
+  assert.equal(controller.getMenuModel().view, 'catalogFilters');
+  await controller.handleButton('r');
+  assert.equal(controller.getMenuModel().catalog.name, 'Discover · New');
+  assert.equal(requests.length, 2);
+  controller.close();
+});
+
+test('same-provider catalog names remain distinct when their types match', async () => {
+  const controller = createController();
+  const client = {catalog: async () => []};
+  controller.addons = {init: async () => {}, catalogs: () => [
+    {id: 'new-a', name: 'New', type: 'movie', addonName: 'Cinema', client, extra: []},
+    {id: 'new-b', name: 'New', type: 'movie', addonName: 'Cinema', client, extra: []}
+  ], errors: []};
+  assert.equal(await controller.init(), true);
+  assert.deepEqual(controller.getMenuModel().tabs.map(tab => tab.label),
+    ['Cinema · New (new-a)', 'Cinema · New (new-b)']);
+  controller.close();
+});
+
 test('network failure stays visible and stale playback start cannot override an asynchronous failure', async t => {
   let finishPlay, started;
   const entered = new Promise(resolve => {started = resolve;});
@@ -164,7 +229,7 @@ function visualMeta(index) {
       {id: `show:${index}:1:2`, title: 'Second episode', season: 1, episode: 2, released: '2026-10-08'}]};
 }
 
-async function visualFixture({libraryItems = [], callbacks = {}} = {}) {
+async function visualFixture({libraryItems = [], callbacks = {}, catalogBackdrops = true} = {}) {
   const requests = [], calls = [];
   const controller = createController({addonUrls: ['https://addon.example.invalid/manifest.json'], libraryItems,
     callbacks: {play: async source => {calls.push(source);}, stop: async () => {}, ...callbacks}, fetchImpl: async url => {
@@ -173,7 +238,11 @@ async function visualFixture({libraryItems = [], callbacks = {}} = {}) {
       if (pathname === '/manifest.json') payload = {id: 'fixture', name: 'Fixture addon', types: ['series'],
         resources: ['catalog', 'meta', 'stream'], catalogs: Array.from({length: 13}, (_, index) =>
           ({id: `top-${index}`, name: `Catalog ${index}`, type: 'series'}))};
-      else if (pathname.startsWith('/catalog/')) payload = {metas: Array.from({length: 11}, (_, index) => visualMeta(index))};
+      else if (pathname.startsWith('/catalog/')) payload = {metas: Array.from({length: 11}, (_, index) => {
+        const meta = visualMeta(index);
+        if (!catalogBackdrops) delete meta.background;
+        return meta;
+      })};
       else if (pathname.startsWith('/meta/')) payload = {meta: visualMeta(Number(decodeURIComponent(pathname.split('/')[3]).match(/^show:(\d+)/)[1]))};
       else if (pathname.startsWith('/stream/')) payload = {streams: [{name: 'Torrent fixture', infoHash: 'unsupported'},
         {name: 'Direct fixture', url: 'https://media.example.invalid/video.m3u8?token=STREAMSECRET',
@@ -185,11 +254,28 @@ async function visualFixture({libraryItems = [], callbacks = {}} = {}) {
   return {controller, requests, calls};
 }
 
+test('catalog fetches the selected title backdrop from full metadata without using its poster', async t => {
+  const {controller, requests} = await visualFixture({catalogBackdrops: false});
+  t.after(() => controller.close());
+  assert.equal(controller.getMenuModel().hero.background, undefined);
+  await controller.handleButton('right');
+  await controller.handleButton('right');
+  await new Promise(resolve => setTimeout(resolve, 260));
+  assert.deepEqual(requests.filter(pathname => pathname.startsWith('/meta/')),
+    ['/meta/series/show%3A2.json']);
+  const hero = controller.getMenuModel().hero;
+  assert.equal(hero.id, 'show:2');
+  assert.equal(hero.poster, 'https://images.example.invalid/poster-2.jpg');
+  assert.equal(hero.background, 'https://images.example.invalid/background.jpg');
+});
+
 test('visual presentation keeps poster selection, bounded catalog tabs and existing navigation aligned', async t => {
   const {controller, requests} = await visualFixture(); t.after(() => controller.close());
   let model = controller.getMenuModel();
   assert.equal(model.brand, 'Stremio'); assert.equal(model.view, 'catalog');
   assert.equal(model.cards.length, 4); assert.equal(model.cards[0].poster, 'https://images.example.invalid/poster-0.jpg');
+  assert.equal(model.cards[0].background, 'https://images.example.invalid/background.jpg');
+  assert.equal(model.cards[0].logo, 'https://images.example.invalid/logo.png');
   assert.deepEqual(model.breadcrumb, ['Discover', 'Catalog 0']);
   assert.equal(model.hero.title, 'Show 0'); assert.equal(model.hero.rating, '8.2');
   assert.deepEqual(model.hero.genres, ['Drama', 'Mystery']); assert.equal(model.hero.runtime, '45 min');

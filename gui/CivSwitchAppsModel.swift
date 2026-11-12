@@ -6,6 +6,7 @@ import Foundation
     @Published private(set) var launcherRunning = false
     @Published private(set) var companionReady = false
     @Published private(set) var status = ""
+    @Published private(set) var issue = ""
     @Published private(set) var log = ""
 
     var isActive: Bool { busy || launcherRunning }
@@ -16,6 +17,7 @@ import Foundation
     private var launcherAttempt = UUID()
     private var actionName = ""
     private var currentAction = ""
+    private var launcherEverReady = false
 
     func connect(address: String, runtimeRoot: URL?) {
         guard !busy, !launcherRunning else { return }
@@ -25,12 +27,18 @@ import Foundation
 
     func open(address: String, runtimeRoot: URL?) {
         guard !busy, !launcherRunning, let runtimeRoot else { return }
-        guard Self.validIPv4(address) else { status = "Enter the Switch IPv4 address"; return }
+        issue = ""
+        guard Self.validIPv4(address) else {
+            status = "Enter the Switch IPv4 address"
+            issue = status
+            return
+        }
         let script = runtimeRoot.appendingPathComponent("scripts/gui-civhomebrew.cjs")
         let node = runtimeRoot.appendingPathComponent("node")
         guard FileManager.default.fileExists(atPath: script.path),
               FileManager.default.isExecutableFile(atPath: node.path) else {
             status = "CivHomebrew is missing from this app"
+            issue = status
             return
         }
         let task = Process()
@@ -44,6 +52,7 @@ import Foundation
         let current = UUID()
         launcherAttempt = current
         launcherRunning = true
+        launcherEverReady = false
         companionReady = false
         status = "Opening CivHomebrew"
         append("Opening CivHomebrew")
@@ -51,6 +60,7 @@ import Foundation
         catch {
             launcherRunning = false
             status = "Could not open CivHomebrew: \(error.localizedDescription)"
+            issue = status
             append(status)
             return
         }
@@ -61,8 +71,14 @@ import Foundation
             guard let self, self.launcherAttempt == current else { return }
             self.launcherProcess = nil
             self.launcherRunning = false
+            self.launcherEverReady = false
             self.companionReady = false
-            self.status = code == 0 ? "CivHomebrew closed" : "CivHomebrew stopped before completing"
+            if code == 0 {
+                self.status = "CivHomebrew closed"
+            } else {
+                if self.issue.isEmpty { self.issue = "CivHomebrew stopped before completing" }
+                self.status = self.issue
+            }
             self.append(self.status)
         }
     }
@@ -76,7 +92,7 @@ import Foundation
     }
 
     func stop(address: String, runtimeRoot: URL?) {
-        if launcherRunning && !companionReady {
+        if launcherRunning && !launcherEverReady {
             status = "Stopping CivHomebrew startup"
             launcherProcess?.terminate()
             return
@@ -92,27 +108,60 @@ import Foundation
         run("launch", script: "scripts/gui-civswitch-moonlight.cjs", address: address, runtimeRoot: runtimeRoot)
     }
 
-    private func run(_ action: String, script name: String, address: String, runtimeRoot: URL?) {
+    func installSW2NES(address: String, runtimeRoot: URL?) {
+        run("install", script: "scripts/gui-civswitch-sw2nes.cjs", address: address, runtimeRoot: runtimeRoot)
+    }
+
+    func launchSW2NES(address: String, runtimeRoot: URL?) {
+        run("launch", script: "scripts/gui-civswitch-sw2nes.cjs", address: address, runtimeRoot: runtimeRoot)
+    }
+
+    func installJellyfin(address: String, runtimeRoot: URL?) {
+        run("install", script: "scripts/gui-civswitch-jellyfin.cjs", address: address, runtimeRoot: runtimeRoot)
+    }
+
+    func launchJellyfin(address: String, runtimeRoot: URL?) {
+        run("launch", script: "scripts/gui-civswitch-jellyfin.cjs", address: address, runtimeRoot: runtimeRoot)
+    }
+
+    func installPackage(_ file: URL, address: String, runtimeRoot: URL?) {
+        guard companionReady else { status = "Connect to CivHomebrew before installing an app"; return }
+        run("install", script: "scripts/gui-civswitch-package.cjs", address: address,
+            runtimeRoot: runtimeRoot, extraArguments: [file.path])
+    }
+
+    private func run(_ action: String, script name: String, address: String,
+                     runtimeRoot: URL?, extraArguments: [String] = []) {
         guard !busy, let runtimeRoot else { return }
-        guard Self.validIPv4(address) else { status = "Enter the Switch IPv4 address"; return }
+        issue = ""
+        guard Self.validIPv4(address) else {
+            status = "Enter the Switch IPv4 address"
+            issue = status
+            return
+        }
         let node = runtimeRoot.appendingPathComponent("node")
         let script = runtimeRoot.appendingPathComponent(name)
         guard FileManager.default.isExecutableFile(atPath: node.path),
               FileManager.default.fileExists(atPath: script.path) else {
             status = "The CivSwitch app helper is missing from this build"
+            issue = status
             return
         }
         let task = Process()
         let stream = Pipe()
         task.executableURL = node
-        task.arguments = [script.path, action, runtimeRoot.path, address]
+        task.arguments = [script.path, action, runtimeRoot.path, address] + extraArguments
         task.currentDirectoryURL = runtimeRoot
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = stream
         task.standardError = stream
         let current = UUID()
         actionAttempt = current
-        actionName = name.contains("moonlight") ? "Moonlight" : "CivHomebrew"
+        if name.contains("moonlight") { actionName = "Moonlight" }
+        else if name.contains("sw2nes") { actionName = "SW2NES" }
+        else if name.contains("jellyfin") { actionName = "Jellyfin" }
+        else if name.contains("package") { actionName = "CivHomebrew package" }
+        else { actionName = "CivHomebrew" }
         currentAction = action
         busy = true
         status = "\(actionName): \(action)"
@@ -121,11 +170,19 @@ import Foundation
         catch {
             busy = false
             status = "Could not start \(actionName): \(error.localizedDescription)"
+            issue = status
             append(status)
             return
         }
         actionProcess = task
-        let prefix = name.contains("moonlight") ? "MAC2JB_CIV_MOONLIGHT " : "MAC2JB_CIVHOMEBREW "
+        let prefix: String
+        switch actionName {
+        case "Moonlight": prefix = "MAC2JB_CIV_MOONLIGHT "
+        case "SW2NES": prefix = "MAC2JB_CIV_SW2NES "
+        case "Jellyfin": prefix = "MAC2JB_CIV_JELLYFIN "
+        case "CivHomebrew package": prefix = "MAC2JB_CIV_PACKAGE "
+        default: prefix = "MAC2JB_CIVHOMEBREW "
+        }
         read(task, stream: stream, prefix: prefix) { [weak self] line, event in
             self?.receive(line, event: event, fromLaunch: false, attempt: current)
         } onFinish: { [weak self] code in
@@ -135,9 +192,11 @@ import Foundation
             if code != 0 && action == "probe" { self.companionReady = false }
             if code != 0 && self.status.hasSuffix(": \(action)") {
                 self.status = "\(self.actionName) \(action) failed"
+                self.issue = self.status
                 self.append(self.status)
             } else if self.status.hasSuffix(": \(action)") {
                 self.status = "\(self.actionName) \(action) complete"
+                self.issue = ""
             }
         }
     }
@@ -176,21 +235,40 @@ import Foundation
         switch type {
         case "ready", "probe-ready":
             companionReady = true
+            if fromLaunch { launcherEverReady = true }
+            issue = ""
             status = "CivHomebrew ready"
         case "installed":
-            if actionName == "Moonlight" { status = "Moonlight installed in CivHomebrew" }
-            else { status = "CivHomebrew boot trigger installed"; companionReady = false }
+            issue = ""
+            if actionName == "CivHomebrew" {
+                status = "CivHomebrew boot trigger installed"
+                companionReady = false
+            } else if actionName == "CivHomebrew package" {
+                status = message ?? "App installed in CivHomebrew"
+            } else {
+                status = "\(actionName) installed in CivHomebrew"
+            }
         case "launched":
-            status = "Moonlight is opening on your Switch"
+            issue = ""
+            status = "\(actionName) is opening on your Switch"
         case "restored":
+            issue = ""
             status = "Original CivSwitch boot trigger restored"
             companionReady = false
         case "stopped":
+            issue = ""
             status = "CivHomebrew closed"
             companionReady = false
+        case "blocked":
+            status = message ?? "Return to the CivHomebrew launcher on your Switch, then press Stop again"
+            companionReady = true
+        case "refresh-deferred", "refresh-failed":
+            status = message ?? "CivHomebrew needs an update"
+            issue = status
         case "error", "failed":
             if fromLaunch || currentAction == "probe" { companionReady = false }
             status = message ?? "CivHomebrew needs attention"
+            issue = status
         default:
             if let message { status = message }
         }

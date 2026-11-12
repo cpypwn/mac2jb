@@ -19,17 +19,17 @@ async function fixture(t) {
 
 test('manifest pins the official macOS universal release and SHA-256', async () => {
   const manifest = await manifestFor(root);
-  assert.equal(manifest.release, 'V1.0.2');
-  assert.equal(manifest.archiveBytes, 63936976);
+  assert.equal(manifest.release, 'V1.0.3');
+  assert.equal(manifest.archiveBytes, 63966246);
   assert.equal(manifest.archiveSha256,
-    '4cdd2e39d6e42aa123da1c8c666766db2326a4eb1f2621f6d7de9e68e775a349');
+    'b61fecfad224d2f0b6a040c23663e5f6915eb500be9fc36016e3ffcb0aa66e52');
 });
 
 test('the bundled NXConvert matches the pinned release and runs without a download', async t => {
   const manifest = await manifestFor(root);
-  const binary = path.join(root, 'tools/nxformat/1.0.2/bin/nxconvert');
+  const binary = path.join(root, 'tools/nxformat/1.0.3/bin/nxconvert');
   assert.equal(await availableBinary(root, manifest), binary);
-  assert.equal((await fsp.stat(binary)).size, 20900768);
+  assert.equal((await fsp.stat(binary)).size, 20898144);
   const folder = await fixture(t);
   const archive = path.join(folder, 'game.nx');
   await fsp.writeFile(archive, 'test archive');

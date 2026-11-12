@@ -45,6 +45,28 @@ test('real HTTP addon routes honor resources, prefixes, encoding, query and stre
   assert.ok(logs.every(message => !/ADDONSECRET|STREAMSECRET|HEADERSECRET/.test(message)));
 });
 
+test('required search, genre and skip extras reach catalog routes with validated values', async t => {
+  const seen = [];
+  const base = await server(t, (request, response) => {
+    const pathname = new URL(request.url, 'http://fixture').pathname;
+    response.setHeader('content-type', 'application/json');
+    if (pathname === '/manifest.json') response.end(JSON.stringify({id: 'filters', name: 'Filter addon', types: ['movie'],
+      resources: ['catalog'], catalogs: [{id: 'new', type: 'movie', name: 'New', extra: [
+        {name: 'search', isRequired: true}, {name: 'genre', isRequired: true, options: ['Drama', 'Comedy']},
+        {name: 'skip'}]}]}));
+    else { seen.push(pathname); response.end(JSON.stringify({metas: [{id: 'movie:1', type: 'movie', name: 'One'}]})); }
+  });
+  const client = await new AddonClient(`${base}/manifest.json`).init();
+  const catalog = client.manifest.catalogs[0];
+  await assert.rejects(client.catalog(catalog), /Choose a search filter first/);
+  await assert.rejects(client.catalog(catalog, {search: 'Alien'}), /Choose a genre filter first/);
+  await assert.rejects(client.catalog(catalog, {search: 'Alien', genre: 'Unknown'}), /listed genre/);
+  await assert.rejects(client.catalog(catalog, {search: 'Alien', genre: 'Drama', skip: '27'}), /valid catalog page/);
+  assert.equal((await client.catalog(catalog, {search: 'Alien & eggs', genre: 'Drama', skip: '100', ignored: 'secret'}))[0].name, 'One');
+  assert.match(seen[0], /search=Alien%20%26%20eggs&genre=Drama&skip=100\.json$/);
+  assert.doesNotMatch(seen[0], /ignored|secret/);
+});
+
 test('timeouts, size bounds, invalid JSON and redirect loops fail explicitly without URLs', async t => {
   const base = await server(t, (request, response) => {
     if (request.url === '/slow') setTimeout(() => response.end('{}'), 150).unref();

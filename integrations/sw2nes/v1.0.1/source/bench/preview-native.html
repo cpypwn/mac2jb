@@ -1,0 +1,25 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SW2NES native-mock preview</title>
+<style>html,body{margin:0;background:#000;width:100%;height:100%;overflow:hidden}</style></head>
+<body>
+<script src="native-mock.js"></script>
+<script>
+// Same package evaluation as preview.html, but with a fake CivSwitch loader scope.
+Promise.all([fetch("test.nes").then(function (r) { return r.arrayBuffer(); }), fetch("../dist/sw2nes.civapp").then(function (r) { return r.json(); })])
+.then(function (v) {
+  __mock.dirs.add("save:/nes"); __mock.dirs.add("save:/civhomebrew");
+  __mock.files.set("save:/nes/Diamond Chase.nes", new Uint8Array(v[0]));
+  // ?migrate: seed a data folder under the app's former name, to test the one-time copy.
+  if (location.search.indexOf("migrate") >= 0) {
+    var old = "save:/civhomebrew/data/civ" + "nes", enc = new TextEncoder();
+    __mock.dirs.add("save:/civhomebrew/data"); __mock.dirs.add(old);
+    __mock.files.set(old + "/settings.json", enc.encode(JSON.stringify({ v: 6, crt: 1, statsLevel: 2, favourites: ["Diamond Chase.nes"] })));
+    __mock.files.set(old + "/Diamond Chase.state", new Uint8Array([1, 2, 3, 4]));
+  }
+  __mock.files.set("save:/nes/readme.txt", new Uint8Array(4));
+  var source = v[1].scripts.map(function (s) { return s.source; }).join("\n;\n");
+  window.__previewResult = (0, eval)(source);
+  window.__previewResult.then(function () { document.title = "CLOSED"; }, function (e) { document.title = "FAILED " + e.message; });
+}).catch(function (e) { document.title = "FAILED " + e.message; });
+</script>
+</body></html>

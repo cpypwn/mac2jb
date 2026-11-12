@@ -1,0 +1,15 @@
+{
+  "repository": "https://github.com/Rodpad/SW2NES",
+  "tag": "v1.0.1",
+  "commit": "974f5b47a6364b995c12f27d318477680aca5038",
+  "asset": "https://github.com/Rodpad/SW2NES/releases/download/v1.0.1/sw2nes.civapp",
+  "assetSize": 833006,
+  "assetSha256": "dce4bb277c798baeb6e3ceb92c21ce5a565bd37556a0eb87a171b29715f6286e",
+  "packageId": "sw2nes",
+  "packageRelease": "1.0.1",
+  "license": "GPL-2.0",
+  "bundledPackage": "integrations/sw2nes/v1.0.1/sw2nes.civapp",
+  "bundledLicense": "integrations/sw2nes/v1.0.1/LICENSE",
+  "bundledSource": "integrations/sw2nes/v1.0.1/source",
+  "installation": "CivHomebrew companion protocol 1 on TCP 9027"
+}

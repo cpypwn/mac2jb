@@ -1,0 +1,22 @@
+<!doctype html><html><head><meta charset="utf-8"><title>core-alloc</title></head><body>
+<script>
+// Allocation per emulated frame of the core alone (no frontend, no native layer).
+// Usage: core-alloc.html?rt=../dist/runtime/quicknes.js&rom=smb-local.nes&ratio=1.0016
+(async function () {
+  var q = new URLSearchParams(location.search), rt = q.get("rt"), rom = q.get("rom");
+  var src = await (await fetch(rt)).text(); var factory = (0, eval)(src + "\n;QuickNESCore");
+  if (typeof factory !== "function") factory = window.Module || window.QuickNES;
+  var c = await factory(); var bytes = new Uint8Array(await (await fetch(rom)).arrayBuffer());
+  c.HEAPU8.set(bytes, c._nes_rom_alloc(bytes.length)); c._nes_load(); c._nes_set_audio_ratio(+(q.get("ratio") || 1));
+  var input = JSON.parse(q.get("input")), out = {};
+  function pad(f) { var p = 0; input.forEach(function (r) { if (f >= r[0] && f < r[1]) p |= r[2]; }); return p; }
+  function window_(name, a, b) {
+    var alloc = 0, gcs = 0, last = performance.memory.usedJSHeapSize;
+    for (var f = a; f < b; f++) { c._nes_frame(pad(f), 0, 1); c._nes_audio_take(); var m = performance.memory.usedJSHeapSize; if (m < last) gcs++; else alloc += m - last; last = m; }
+    out[name] = { frames: b - a, kbPerFrame: +(alloc / 1024 / (b - a)).toFixed(1), gcs: gcs };
+  }
+  for (var f = 0; f < 300; f++) { c._nes_frame(pad(f), 0, 1); c._nes_audio_take(); }
+  window_("standing", 300, 420); window_("walking", 420, 900);
+  document.title = "DONE " + JSON.stringify(out);
+})().catch(function (e) { document.title = "FAILED " + e.message; });
+</script></body></html>

@@ -54,7 +54,12 @@ fi
 "$NODE_BINARY" --test scripts/test-gui-nup.cjs
 "$NODE_BINARY" --test scripts/test-gui-nxformat.cjs
 "$NODE_BINARY" --test scripts/test-gui-civhomebrew.cjs
+"$NODE_BINARY" --test scripts/test-civhomebrew-catalog.cjs
 "$NODE_BINARY" --test scripts/test-gui-civswitch-moonlight.cjs
+"$NODE_BINARY" --test scripts/test-gui-civswitch-sw2nes.cjs
+"$NODE_BINARY" --test scripts/test-gui-civswitch-jellyfin.cjs
+"$NODE_BINARY" --test scripts/test-gui-civswitch-package.cjs
+"$NODE_BINARY" --test integrations/civ-stremio/test.cjs
 if ! NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh --check >/dev/null; then
   NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh
 fi
@@ -175,6 +180,9 @@ python3 scripts/package-gui-payload.py stage "$ROOT" "$PAYLOAD" "$NODE_BINARY"
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-dnswitch.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-webkit-research.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-bundled-browser-probes.cjs" --self-test
+"$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-sw2nes.cjs" --self-test "$PAYLOAD"
+"$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-jellyfin.cjs" --self-test "$PAYLOAD"
+"$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-package.cjs" --self-test "$PAYLOAD"
 "$NODE_BINARY" "$PAYLOAD/scripts/check-webkit-research.cjs"
 "$NODE_BINARY" "$PAYLOAD/integrations/civswitch/verify.cjs" --runtime
 if [ -f "$PAYLOAD/integrations/civswitch/send-hello.cjs" ]; then
@@ -205,10 +213,14 @@ python3 scripts/package-gui-payload.py archive "$PAYLOAD" "$BUILD" "$SOURCE_ARCH
 
 xcrun clang -target arm64-apple-macos14.0 -O2 -c gui/EmbeddedPayload.c -o "$BUILD/EmbeddedPayload.o"
 mkdir -p "$STAGE/mac2jb.app/Contents/MacOS" "$STAGE/mac2jb.app/Contents/Resources"
+GUI_SOURCES=()
+for source in gui/*.swift; do
+  [[ "$source" == gui/CivStremioModel.swift ]] || GUI_SOURCES+=("$source")
+done
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 -O \
   -module-cache-path "$BUILD/module-cache" \
   -framework SwiftUI -framework AppKit -framework CryptoKit \
-  gui/*.swift "$BUILD/PayloadMetadata.swift" "$BUILD/EmbeddedPayload.o" \
+  "${GUI_SOURCES[@]}" "$BUILD/PayloadMetadata.swift" "$BUILD/EmbeddedPayload.o" \
   -Xlinker -sectcreate -Xlinker __DATA -Xlinker __mac2jb -Xlinker "$BUILD/runtime.tar.gz" \
   -o "$STAGE/mac2jb.app/Contents/MacOS/mac2jb"
 cp gui/Info.plist "$STAGE/mac2jb.app/Contents/Info.plist"

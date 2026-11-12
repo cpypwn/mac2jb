@@ -55,7 +55,7 @@ function modsFolderFromCommand(command) {
   const source = command.source ?? (command.modsFolder === undefined ? 'sd' : 'mac');
   check(source === 'sd' || source === 'mac', 'Choose a supported mod source.');
   if (source === 'sd') {
-    check(command.modsFolder === undefined, 'SD card mode does not use a Mac mod folder.');
+    check(command.modsFolder === undefined, 'This option does not require a mods folder.');
     return null;
   }
   check(typeof command.modsFolder === 'string' && path.isAbsolute(command.modsFolder) &&
@@ -121,7 +121,7 @@ function stage(run, modsFolder, sourceRoot = path.resolve(__dirname, '../integra
 
 function installArguments(staging, run, modSource) {
   return [path.join(staging, 'install.cjs'), '--run-dir', run,
-    ...(modSource ? ['--mod-source', modSource] : [])];
+    ...(modSource && modSource !== '/ns2jb-modloader' ? ['--mod-source', modSource] : [])];
 }
 
 function boundedLine(line) {

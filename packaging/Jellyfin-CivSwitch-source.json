@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/THZoria/jellyfin",
+  "commit": "26da7a92f95512167cae8cae209da745a8984831",
+  "version": "0.0.1",
+  "buildCommand": "python3 tools/build.py",
+  "packageId": "jellyfin-civswitch",
+  "packageName": "Jellyfin",
+  "packageAuthor": "SaoriYuki",
+  "packageSize": 172610,
+  "packageSha256": "347f8acb536a3ad521c554d9fafa7680be5f49b7de0a8867a05389aafd5b7e46",
+  "bundledPackage": "integrations/jellyfin/0.0.1/jellyfin-civswitch.civapp",
+  "bundledNotices": [
+    "integrations/jellyfin/0.0.1/THIRD_PARTY.md",
+    "integrations/jellyfin/0.0.1/BRANDING.md"
+  ]
+}

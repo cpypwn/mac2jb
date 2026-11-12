@@ -48,7 +48,7 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. download `mac2jb-v0.8.1-macos-arm64.zip`, extract it and open `mac2jb.app`.
+1. download `mac2jb-v0.8.2-macos-arm64.zip`, extract it and open `mac2jb.app`.
 2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
 3. click install & load driver… and approve the administrator prompt.
 4. if prompted, open system settings → privacy & security and allow the driver.
@@ -152,6 +152,9 @@ this build does not reconnect that session.
 [CivSwitch](https://github.com/Gezine/CivSwitch) uses Civilization VII's chat
 entry point. upstream supports the physical Switch 1 edition cartridge at
 version 1.0.0 and reports tests on Switch 2 firmware 20.4.0 and 23.0.1.
+mac2jb offers two paths: **FS jailbreak** reaches 4/4 and opens held RPC for
+SaveKit, OunceCake and modloader; **Userland** runs CivHomebrew and JavaScript
+through the open Remote JS loader without those FS tools.
 
 if the boot trigger is already saved, open Civilization VII and choose
 **Load Game**. once the loader says **Awaiting payload**, click
@@ -179,30 +182,44 @@ for first-time setup, choose the keyboard transfer option in CivSwitch setup:
    `~/Library/Application Support/mac2jb/CivSwitch/Backups`.
 5. restart Civilization VII and choose **Load Game** for later sessions.
 
-to use the JavaScript loader without starting filesystem acquisition,
-**Connect to open loader** attaches to an existing session. after verification,
-**Send JavaScript…** sends a `.js` file directly to port 9026. **Install boot
-trigger** also works on that connection after backing up the game's
-single-player saves.
+### Userland
 
-**Open CivHomebrew** sends its pinned v0.4.3 launcher through a verified
-CivSwitch loader. **Connect to running CivHomebrew** in the CivHomebrew card
-attaches to its companion when the launcher was started from a saved
-boot trigger. **Install CivHomebrew boot trigger** verifies and keeps the
+**Start CivHomebrew in open loader** checks the open loader and starts the app
+library. **Connect to running CivHomebrew** attaches when it was started from a
+saved trigger. for direct JavaScript without starting FS acquisition,
+**Connect to open loader** verifies the existing session. **Send JavaScript…**
+then sends a `.js` file to port 9026. **Install boot trigger** also works on
+that connection after backing up the game's single-player saves.
+
+the pinned v0.4.3 CivHomebrew launcher is sent through the verified loader.
+**Install CivHomebrew boot trigger** verifies and keeps the
 original trigger backup before replacing it; **Restore original CivSwitch
 trigger** puts that backup back. both actions need the open loader. source is
 downloaded and checked when first used.
-**Install Moonlight** adds the pinned v0.1.3 app to a running CivHomebrew
-launcher. **Open Moonlight** starts it from the Mac; Sunshine must run on the
-streaming computer, which may be another computer on the same network. the
-Moonlight package is downloaded and verified when installed. these paths need
-console testing in mac2jb.
+when CivHomebrew is ready, **Install bundled homebrew…** offers Moonlight,
+SW2NES and Jellyfin. installed apps appear in the CivHomebrew library
+on the Switch. Moonlight needs Sunshine on a computer on the same network;
+its pinned package is downloaded and verified during installation. SW2NES
+v1.0.1 is bundled; add your own `.nes` ROMs to `Root/nes` with CivHomebrew FTP.
+Jellyfin needs a reachable server address. ROMs are not included.
+
+on the Switch, open **CivHomebrew → Options → Browse apps** to see packages in
+the public [civapp-db](https://github.com/cpypwn/civapp-db) catalog. select an
+app and press A to install it, update it, or reinstall the same release.
+CivHomebrew checks the download size, SHA-256, app ID and release before
+installation. it checks for newer releases when you open Browse apps; updates
+are not installed automatically. use Left/Right to change catalogs, Y to add
+another public HTTPS catalog or GitHub repository, and X to remove a source you
+added. the default source stays available.
+
+**Install .civapp…** lets you choose a compatible CivHomebrew package from
+this Mac while CivHomebrew is open. the package remains in its app library.
 
 the ordinary CivSwitch loader is separate from ns2jb's held rpc session.
 MintBrew and native HBLauncher still require ns2jb. CivSwitch filesystem access
 can start a separate held host for save installers, SaveKit and OunceCake.
 
-### CivSwitch fs access
+### FS jailbreak
 
 this path has reached 4/4 verification on a Switch. it uses the physical
 Civilization VII cartridge and the open CivSwitch JavaScript loader described
@@ -225,7 +242,7 @@ this Mac-side path does not change the saved trigger. restore the original
 CivSwitch trigger first if CivHomebrew's saved trigger is installed. if
 acquisition fails, keep its run logs and restart the console before another
 FS attempt. MintBrew and native HBLauncher are not available through the
-CivSwitch filesystem host. the CivSwitch ns2jb-modloader port is experimental.
+CivSwitch filesystem host. modloader is available after 4/4 verification.
 
 ## bundled game saves
 
@@ -345,7 +362,7 @@ check and does not run arbitrary CPU application code. the CHIP-8 test emulator
 runs its original moving-sprite program on the gpu: use the D-pad to move, A to
 recenter, and B or Minus to return. it does not load external ROMs. its 60 Hz
 timers use the verified console CPU clock through the CPU-to-GPU mailbox, with
-a GPU frame fallback. console behavior still needs testing.
+a GPU frame fallback.
 
 the earlier GPU MintNES and MintFTP prototypes remain in the source tree.
 neither is included in the MintBrew app list. a separate native MintNES test
@@ -411,15 +428,18 @@ with a microSD card inserted and ns2jb or CivSwitch holding a verified 4/4 RPC s
 put mods on the Switch SD card under `SD:/ns2jb-modloader/contents/<TITLE_ID>/romfs/`
 or `SD:/ns2jb-modloader/contents/<TITLE_ID>/exefs/`, where `TITLE_ID` is the
 game's 16-digit title ID. global patches can go under
-`SD:/ns2jb-modloader/exefs_patches/`. choose **Install modloader** to load all
-supported game folders and patches from the SD card in one session. mac2jb
-also offers **Upload Mac mods and install…** for an unpacked Mac folder with
-`contents/` and optionally `exefs_patches/`; it verifies the upload before
-installing. game files and mods are not bundled.
+`SD:/ns2jb-modloader/exefs_patches/`. choose **Install modloader** to run all
+compatible mods already on the SD card in one session. if you would like to
+add more mods to your SD card, choose **Write mods to SD card, then install modloader…**
+and select an unpacked folder with `contents/` and/or `exefs_patches/`.
+mac2jb copies the mods to the Switch SD card, verifies the files, then starts
+the modloader using all compatible mods now on the card. files already there
+with the same contents are skipped; files with the same path and different
+contents are replaced. other mods stay in place. game files and mods are not
+bundled.
 
 wait for **READY**, then choose **Finish session** and let the host close.
 close SmileBASIC or Civilization VII without restarting the Switch, then open the modded game.
-the CivSwitch port is experimental and still needs a console mod install test.
 the installed overlay lasts until the console reboots. modloader uses this
 session as its final action; choose it before another homebrew app. it supports
 RomFS and ExeFS replacements, IPS patches and `.pchtxt` patches. runtime
@@ -478,7 +498,7 @@ saving the bootstrap does not preserve a live jailbreak connection.
   key.
 - NXFormat converts an already-decrypted game folder or `.nup` into a verified
   `.nx` archive on this Mac. its developer panel can also inspect, list and
-  verify `.nx` archives. NXConvert 1.0.2 is bundled and verified before use;
+  verify `.nx` archives. NXConvert 1.0.3 is bundled and verified before use;
   it works offline and does not need rpc.
 - NUP can pack an extracted game dump into a compressed `.nup` file, inspect
   and verify a NUP, list its files, or extract it. click **Get pinned NUP source**
@@ -514,6 +534,8 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 
 - [Gezine](https://github.com/Gezine) — [CivSwitch](https://github.com/Gezine/CivSwitch), the Civilization VII chat entry point, payload and USB macro adapted for the Mac flow.
 - [XITRIX](https://github.com/XITRIX) — [CivHomebrew](https://github.com/XITRIX/CivHomebrew) and [Moonlight-CivSwitch](https://github.com/XITRIX/Moonlight-CivSwitch), the CivSwitch launcher and Sunshine client fetched on request.
+- [Rodpad](https://github.com/Rodpad) — [SW2NES](https://github.com/Rodpad/SW2NES), the bundled CivHomebrew NES emulator.
+- [THZoria](https://github.com/THZoria) and [SaoriYuki](https://github.com/THZoria/jellyfin) — the bundled CivHomebrew Jellyfin client.
 - [pepsipu](https://gitlab.com/pepsipu) — [ns2jb](https://gitlab.com/pepsipu/ns2jb), the original Switch 2 exploit and filesystem research.
 - [kurumuz](https://gitlab.com/kurumuz) — [ns2jb](https://gitlab.com/kurumuz/ns2jb), compatibility updates, microSD Express update support and demo support.
 - [BermTheSequel](https://gitlab.com/BermTheSequel) — [ns2jb2](https://gitlab.com/BermTheSequel/ns2jb2), demo support.

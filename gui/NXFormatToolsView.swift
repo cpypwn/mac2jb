@@ -67,7 +67,7 @@ import UniformTypeIdentifiers
         busy = true
         if !quiet {
             output = ""
-            status = name == "prepare" ? "Getting NXConvert 1.0.2" :
+            status = name == "prepare" ? "Getting NXConvert 1.0.3" :
                 name == "pack" ? "Packing and verifying NX" : "Running NX \(name)"
         }
         stream.fileHandleForReading.readabilityHandler = { [weak self] handle in
@@ -104,7 +104,7 @@ import UniformTypeIdentifiers
         if code == 0 {
             if action == "prepare" || action == "status" { ready = true }
             status = action == "status" || action == "prepare" ?
-                "NXConvert 1.0.2 is ready" : action == "pack" ? "NX archive verified" : "NX \(action) complete"
+                "NXConvert 1.0.3 is ready" : action == "pack" ? "NX archive verified" : "NX \(action) complete"
         } else if action == "status" {
             ready = false
             status = ""
@@ -125,7 +125,7 @@ struct NXFormatToolsView: View {
                 .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
             HStack(spacing: 10) {
                 if !tool.ready {
-                    Button("Get NXConvert 1.0.2") { tool.prepare(runtimeRoot: runtimeRoot) }
+                    Button("Get NXConvert 1.0.3") { tool.prepare(runtimeRoot: runtimeRoot) }
                         .disabled(tool.busy || runtimeRoot == nil)
                 }
                 Button("Open NXFormat source") {

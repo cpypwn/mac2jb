@@ -82,7 +82,7 @@ struct BundledRuntime {
                          "--no-same-owner", "--no-same-permissions"])
             try manager.removeItem(at: archive)
             let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid",
-                                       "tools/nxformat/1.0.2/bin/nxconvert",
+                                       "tools/nxformat/1.0.3/bin/nxconvert",
                                        "homebrew/bin/spirv-val", "homebrew/bin/glslangValidator", "homebrew/python/bin/python3",
                                        "homebrew/python/bin/python3.13"])
             if let walker = manager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
@@ -131,10 +131,18 @@ struct BundledRuntime {
                          "scripts/gui-dnswitch.cjs", "scripts/gui-webkit-research.cjs",
                          "scripts/gui-bundled-browser-probes.cjs", "integrations/browser-probes/manifest.json",
                          "scripts/gui-nxformat.cjs", "packaging/NXFormat-source.json",
-                         "tools/nxformat/1.0.2/bin/nxconvert", "tools/nxformat/1.0.2/LICENSE",
+                         "tools/nxformat/1.0.3/bin/nxconvert", "tools/nxformat/1.0.3/LICENSE",
                          "scripts/gui-nup.cjs", "packaging/NUP-source.json",
-                         "scripts/gui-civhomebrew.cjs", "packaging/CivHomebrew-source.json",
+                         "scripts/gui-civhomebrew.cjs", "scripts/civhomebrew-catalog-overlay.cjs",
+                         "integrations/civhomebrew-catalog/catalog.js", "integrations/civhomebrew-catalog/catalog-ui.js",
+                         "packaging/CivHomebrew-source.json",
                          "scripts/gui-civswitch-moonlight.cjs", "packaging/Moonlight-CivSwitch-source.json",
+                         "scripts/gui-civswitch-sw2nes.cjs", "packaging/SW2NES-source.json",
+                         "integrations/sw2nes/v1.0.1/sw2nes.civapp", "integrations/sw2nes/v1.0.1/LICENSE",
+                         "scripts/gui-civswitch-jellyfin.cjs", "packaging/Jellyfin-CivSwitch-source.json",
+                         "scripts/gui-civswitch-package.cjs",
+                         "integrations/jellyfin/0.0.1/jellyfin-civswitch.civapp",
+                         "integrations/jellyfin/0.0.1/THIRD_PARTY.md", "integrations/jellyfin/0.0.1/BRANDING.md",
                          "integrations/nup-support/site-packages/zstandard/backend_c.cpython-313-darwin.so",
                          "integrations/nup-support/site-packages/zstandard-0.25.0.dist-info/licenses/LICENSE",
                          "integrations/browser-probes/index.html", "integrations/browser-probes/probes.js",

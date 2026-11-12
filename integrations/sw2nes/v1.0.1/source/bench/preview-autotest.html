@@ -1,0 +1,22 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>SW2NES native-mock preview</title>
+<style>html,body{margin:0;background:#000;width:100%;height:100%;overflow:hidden}</style></head>
+<body>
+<script src="native-mock.js"></script>
+<script>
+// Same package evaluation as preview.html, but with a fake CivSwitch loader scope.
+Promise.all([fetch("test.nes").then(function (r) { return r.arrayBuffer(); }), fetch("../dist/sw2nes.civapp").then(function (r) { return r.json(); })])
+.then(function (v) {
+  __mock.dirs.add("save:/nes"); __mock.dirs.add("save:/civhomebrew");
+  __mock.files.set("save:/nes/Diamond Chase.nes", new Uint8Array(v[0]));
+  __mock.files.set("save:/nes/sw2nes-autotest.json", new TextEncoder().encode(JSON.stringify({roms:(location.search.indexOf("probe")>=0?[{rom:"Diamond Chase.nes",probe:{from:2,to:4,secs:1}}]:location.search.indexOf("mixed")>=0?[{rom:"Diamond Chase.nes",textureFormat:86},"Diamond Chase.nes"]:["Diamond Chase.nes","Missing.nes"]),seconds:6,start:[1,2],hold:true,textureFormat:(location.search.indexOf("f16")>=0?85:28),probeGpu:true})));
+  // #plan=<json>: custom plan; ROMs listed in "extra" are fetched from bench/ first.
+  if (location.hash.indexOf("#plan=") === 0) { window.__customPlan = JSON.parse(decodeURIComponent(location.hash.slice(6))); __mock.files.set("save:/nes/sw2nes-autotest.json", new TextEncoder().encode(JSON.stringify(window.__customPlan))); }
+  return Promise.all(((window.__customPlan && window.__customPlan.extra) || []).map(function (n) { return fetch(n).then(function (r) { return r.arrayBuffer(); }).then(function (b) { __mock.files.set("save:/nes/" + n, new Uint8Array(b)); }); })).then(function () { return v; });
+}).then(function (v) {
+  var source = v[1].scripts.map(function (s) { return s.source; }).join("\n;\n");
+  window.__previewResult = (0, eval)(source);
+  window.__previewResult.then(function () { document.title = "CLOSED"; }, function (e) { document.title = "FAILED " + e.message; });
+}).catch(function (e) { document.title = "FAILED " + e.message; });
+</script>
+</body></html>

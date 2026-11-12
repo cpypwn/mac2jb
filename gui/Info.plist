@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.8.1</string>
+	<string>0.8.2</string>
 	<key>CFBundleVersion</key>
-	<string>540</string>
+	<string>541</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>MAC2JBTestBuild</key>

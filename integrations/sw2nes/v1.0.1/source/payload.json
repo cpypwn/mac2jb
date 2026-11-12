@@ -1,0 +1,22 @@
+{
+  "id": "sw2nes",
+  "name": "SW2NES",
+  "author": "Rodpad",
+  "release": "1.0.1",
+  "description": "NES emulator for Nintendo Switch 2. Upload .nes files over FTP to Root/nes, then pick a game. L + R opens the in-game menu: save states, picture and audio settings, cheats and more.",
+  "api": 1,
+  "scripts": [
+    "app/notices.js",
+    "dist/runtime/quicknes.js",
+    "app/native.js",
+    "app/sw2nes.js"
+  ],
+  "icon": "app/icon.png",
+  "extensions": {
+    "updates": {
+      "schema": 1,
+      "releasesUrl": "https://github.com/Rodpad/SW2NES/releases/latest",
+      "asset": "sw2nes.civapp"
+    }
+  }
+}

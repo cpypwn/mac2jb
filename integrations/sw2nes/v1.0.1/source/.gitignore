@@ -1,0 +1,12 @@
+# Build output and packages (published as GitHub Release assets instead)
+build/
+dist/
+# Local archive of every build, console logs, test scratch
+versions/
+logs/
+undefined/
+__pycache__/
+.DS_Store
+# Never commit game ROMs
+*.nes
+*.fds

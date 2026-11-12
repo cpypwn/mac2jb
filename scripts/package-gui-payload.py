@@ -64,10 +64,15 @@ RUNTIME_FILES = (
     'scripts/gui-host.cjs', 'scripts/usb-controllers.cjs', 'scripts/gui-dnswitch.cjs',
     'scripts/gui-webkit-research.cjs', 'scripts/gui-bundled-browser-probes.cjs',
     'scripts/gui-nxformat.cjs', 'packaging/NXFormat-source.json',
-    'tools/nxformat/1.0.2/bin/nxconvert', 'tools/nxformat/1.0.2/LICENSE',
+    'tools/nxformat/1.0.3/bin/nxconvert', 'tools/nxformat/1.0.3/LICENSE',
     'scripts/gui-nup.cjs', 'packaging/NUP-source.json',
-    'scripts/gui-civhomebrew.cjs', 'packaging/CivHomebrew-source.json',
+    'scripts/gui-civhomebrew.cjs', 'scripts/civhomebrew-catalog-overlay.cjs',
+    'integrations/civhomebrew-catalog/catalog.js', 'integrations/civhomebrew-catalog/catalog-ui.js',
+    'packaging/CivHomebrew-source.json',
     'scripts/gui-civswitch-moonlight.cjs', 'packaging/Moonlight-CivSwitch-source.json',
+    'scripts/gui-civswitch-sw2nes.cjs', 'packaging/SW2NES-source.json',
+    'scripts/gui-civswitch-jellyfin.cjs', 'packaging/Jellyfin-CivSwitch-source.json',
+    'scripts/gui-civswitch-package.cjs',
     'scripts/check-webkit-research.cjs',
     'packaging/switch2-browser-research-provenance.json',
     'scripts/dnswitch-launch.applescript', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
@@ -132,11 +137,13 @@ EXECUTABLES = {
     'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard', 'mac2jb-civswitch-hid',
     'homebrew/bin/spirv-val', 'homebrew/bin/glslangValidator',
     'homebrew/python/bin/python3', 'homebrew/python/bin/python3.13',
-    'tools/nxformat/1.0.2/bin/nxconvert',
+    'tools/nxformat/1.0.3/bin/nxconvert',
 }
 
 REMOVED_COMPONENTS = (
     'gui/CivSwitchControlCenterModel.swift',
+    'gui/CivStremioModel.swift',
+    'integrations/civ-stremio',
     'vendor/CivSwitch-ControlCenter',
     'integrations/civswitch-control-center',
     'vendor/IZ2S-Platform', 'vendor/IZDOOM', 'vendor/BlitBun',
@@ -294,7 +301,7 @@ def archive(payload, build, source_archive):
                     entry.uid = entry.gid = 0
                     entry.uname = entry.gname = ''
                     entry.mtime = 0
-                    entry.mode = 0o755 if relative == 'tools/nxformat/1.0.2/bin/nxconvert' else (
+                    entry.mode = 0o755 if relative == 'tools/nxformat/1.0.3/bin/nxconvert' else (
                         0o700 if item.is_dir() or relative in EXECUTABLES else 0o600
                     )
                     if item.is_file():
