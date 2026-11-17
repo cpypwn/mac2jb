@@ -155,3 +155,7 @@ jobs:
           "build/mac2jb.app/Contents/MacOS/mac2jb" --self-test
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' gui/Info.plist)"
           python3 scripts/audit-release.py ".build-gui/mac2jb-${VERSION}-source.zip"
+          if [ "$(/usr/libexec/PlistBuddy -c 'Print :MAC2JBTestBuild' gui/Info.plist)" = false ]; then
+            python3 scripts/prepare-gui-release-assets.py build/mac2jb.app build
+            (cd build && shasum -a 256 -c "mac2jb-v${VERSION}-sha256sums")
+          fi

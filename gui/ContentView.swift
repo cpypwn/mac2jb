@@ -607,21 +607,26 @@ struct ContentView: View {
                    compact: true,
                    close: { showOfflineEthernetSetup = false }) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Mac Ethernet adapter")
-                    .font(.system(size: 12, weight: .semibold))
-                HStack(spacing: 12) {
-                    Picker("Mac Ethernet adapter", selection: $offlineEthernet.selectedInterface) {
-                        ForEach(offlineEthernet.adapters) { adapter in
-                            Text("\(adapter.label) · \(adapter.interface)").tag(adapter.interface)
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Mac Ethernet adapter")
+                            .font(.system(size: 12, weight: .semibold))
+                        Picker("Mac Ethernet adapter", selection: $offlineEthernet.selectedInterface) {
+                            ForEach(offlineEthernet.adapters) { adapter in
+                                Text("\(adapter.label) · \(adapter.interface)").tag(adapter.interface)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(width: 270, alignment: .leading)
+                        .disabled(offlineEthernet.active || offlineEthernet.needsRestore)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 270, alignment: .leading)
-                    .disabled(offlineEthernet.active || offlineEthernet.needsRestore)
+                    .fixedSize(horizontal: true, vertical: false)
                     Button("Refresh") { offlineEthernet.refreshAdapters() }
                         .disabled(offlineEthernet.active)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
+                .fixedSize(horizontal: true, vertical: false)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 10) {
                     Button("Start offline Ethernet") { offlineEthernet.start() }
