@@ -49,3 +49,5 @@ mac2jb-active-connect.txt
 *.kate-swp
 
 /runs/
+/integrations/**/engine/runs/
+/integrations/**/engine/dumps/

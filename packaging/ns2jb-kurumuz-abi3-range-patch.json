@@ -11,5 +11,10 @@
   "target": "transferred SmileBASIC current-process handle only",
   "maximumPagesPerRequest": 16384,
   "payloadSha256": "5d71430cd8ded9db849232c04649948c437a296f44385b2dded36938d0427bd2",
-  "sourceSha256": "61a2b211e0be030a0c8a42637254a2c10946b1fe1ce634e8a87eee516b8fa958"
+  "sourceSha256": "770d62cfc1260a00d0b0e9ee55538fc619c4ed7bae883cc0dbd1a8c07f984173",
+  "hostStageTimeoutPatch": [
+    "engine/shared/stages.cjs",
+    "engine/switch2/acquire.cjs",
+    "engine/switch2/retained/find-metadata.cjs"
+  ]
 }

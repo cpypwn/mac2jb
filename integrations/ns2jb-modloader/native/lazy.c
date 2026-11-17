@@ -44,7 +44,12 @@ void *lfs_system_allocate(uint64_t size){
  struct system_block *b=memory;b->size=bytes;b->reserved=0;return b+1;
 }
 void lfs_system_free(void *memory){
- if(memory){struct system_block *b=(struct system_block *)memory-1;struct lfs_lazy_config *c=lfs_lazy_config();uint64_t trace=lfs_trace_begin(LFS_T_FREE,b,0,0,b->size);uint32_t result=c->free_block(c->memory_manager,b,b->size);lfs_trace_end(trace,result,0,0,0);}
+ if(!memory)return;
+ struct system_block *b=(struct system_block *)memory-1;struct lfs_lazy_config *c=lfs_lazy_config();
+ uint64_t trace=lfs_trace_begin(LFS_T_FREE,b,0,0,b->size);
+ c->free_block(c->memory_manager,b,b->size);
+ /* Block-free returns no status; record normal completion. */
+ lfs_trace_end(trace,0,0,0,0);
 }
 void *lfs_arena_allocate(struct lfs_arena **arena,uint64_t size){
  if(!size||size>UINT64_MAX-0x10000)return 0;size=(size+15)&~UINT64_C(15);

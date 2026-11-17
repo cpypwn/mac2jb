@@ -12,7 +12,7 @@ const vendor = path.join(root, 'vendor/CivSwitch/installer-creator');
 const backupPayload = path.join(__dirname, 'backup-single.js');
 const expected = Object.freeze({
   core: '1fe1aaa68dc8c0534d79d65b1dd545f66c6b3fb3d547f01c967cdc5f70e7bdf4',
-  installer: 'fa4241b5cc8e4d98b5c85ae51d87d920c03fe3712bcef48b31aaef3c021815ca',
+  installer: 'e04dcc41c1ad85d5a9c138edd93bd2f7eb752fda872a258c1e1906eb1136c349',
   template: '32fa8a0d6dd0a480d8e541e63ea44c4619bc6f7be4282cfc3cb6a4f6d305dfae',
   compressor: '4d99e332009015cf54a692d4cc7d073981798a56ee7bc73a6b054be178918594',
   packageLock: 'd5fe301a4bb169c24075652f9c01097521874bd17192ae7a3ae6c31545be51e2'

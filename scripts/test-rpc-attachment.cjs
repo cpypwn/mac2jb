@@ -11,7 +11,7 @@ const {discover} = require('./gui-discover-rpc.cjs');
 const {validateRun} = require('./gui-homebrew.cjs');
 const {verifiedSession} = require('./gui-dump.cjs');
 const {profileById} = require('./host-profiles.cjs');
-const {expectedPatchedSource} = require('./prepare-seedsow-host.cjs');
+const {expectedPatchedSource, overlayPath} = require('./prepare-seedsow-host.cjs');
 const repository = path.resolve(__dirname, '..');
 const write = async (file, value) => {
   await fs.mkdir(path.dirname(file), {recursive:true, mode:0o700});
@@ -32,8 +32,9 @@ async function fixture(t, hostId = 'BermTheSequel', patched = false, sessionLayo
     await fs.cp(path.join(source, 'engine', name), path.join(directory, name), {recursive:true});
   if (patched) {
     await fs.cp(path.join(repository, 'vendor/ns2-savekit'), path.join(root, 'vendor/ns2-savekit'), {recursive:true});
-    for (const name of ['shared/ipc.cjs','switch2/ro/ncm.cjs','switch2/app/mounted-save.cjs'])
-      await fs.copyFile(path.join(root, 'vendor/ns2-savekit/overlay/engine', name), path.join(directory, name));
+    for (const name of ['shared/ipc.cjs','switch2/ro/ncm.cjs',
+      'switch2/app/filesystem.cjs','switch2/app/mounted-save.cjs'])
+      await fs.copyFile(overlayPath(root, hostId, path.join('engine', name)), path.join(directory, name));
   }
   const session = path.basename(directory), engine = path.join(directory, 'switch2');
   const proofFile = path.join(engine, 'process', session+'-fs-proof.json');

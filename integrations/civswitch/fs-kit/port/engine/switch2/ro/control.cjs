@@ -55,7 +55,8 @@ async function dispatch(context, request) {
     state.calls.push(entry); await save();
     return entry;
   }
-  if (command.startsWith('code-') || command.startsWith('file-') || command.startsWith('donor-'))
+  if (command.startsWith('code-') || command.startsWith('file-') ||
+    command.startsWith('donor-') || command.startsWith('sd-'))
     return require("./files.cjs").dispatch(context, request, state, domain);
   if (command === 'ncm-list-system')
     return require("./ncm.cjs").listSystem(context, request, state);
@@ -143,7 +144,10 @@ async function dispatch(context, request) {
   }
   if (command === 'ipc') {
     const handle = Number(request.handle), id = Number(request.id);
-    check(s.handles.has(handle) && Number.isInteger(id) && id >= 0 && id <= 0xffffffff,
+    // any:true allows a borrowed handle the application already owns (mounts.json
+    // session values) so we can test anchors the retained state does not track.
+    check((request.any === true || s.handles.has(handle)) &&
+      Number.isInteger(id) && id >= 0 && id <= 0xffffffff,
       'IPC requires a retained handle and valid command');
     check(typeof request.hex === 'string' && /^(?:[0-9a-fA-F]{2})*$/.test(request.hex) &&
       request.hex.length <= 384, 'IPC input must be at most 192 hex-encoded bytes');

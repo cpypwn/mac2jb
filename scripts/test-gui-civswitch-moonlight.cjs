@@ -12,7 +12,7 @@ const moonlight = require('./gui-civswitch-moonlight.cjs');
 
 function fixture() {
   const item = {format: 'civswitch-app', version: 1, id: 'moonlight-civswitch', name: 'Moonlight',
-    metadata: {release: '0.1.3', api: 1}, scripts: [{name: 'app.js', source: 'log("Moonlight")'}], icon: ''};
+    metadata: {release: '0.1.4', api: 1}, scripts: [{name: 'app.js', source: 'log("Moonlight")'}], icon: ''};
   const bytes = Buffer.from(JSON.stringify(item) + '\n');
   const pin = {...moonlight.source, assetSize: bytes.length,
     assetSha256: crypto.createHash('sha256').update(bytes).digest('hex')};
@@ -60,7 +60,7 @@ function standardReply(request, overrides = {}) {
 }
 
 test('release pin and package identity are fixed', () => {
-  assert.equal(moonlight.verifyPin().packageRelease, '0.1.3');
+  assert.equal(moonlight.verifyPin().packageRelease, '0.1.4');
   const {bytes, pin} = fixture();
   assert.equal(moonlight.inspectPackage(bytes, pin).id, 'moonlight-civswitch');
   assert.throws(() => moonlight.inspectPackage(Buffer.from('wrong'), pin), /size/);

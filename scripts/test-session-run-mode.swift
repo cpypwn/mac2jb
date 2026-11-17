@@ -15,6 +15,11 @@ import Foundation
         precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--savekit-tools"])
         precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "astral") == ["host", address, "--post-run-options", "--savekit-tools"])
         precondition(SessionRunMode.savekitTools.postRunAction?.keepRPC == true)
+        precondition(SessionRunMode.hostOnly.hostArguments(address: address, host: "kurumuz", stageTimeoutMinutes: 10) ==
+            ["host", address, "--host-stage-timeout-minutes", "10"])
+        precondition(SessionRunMode.heldRPC.hostArguments(address: address, host: "kurumuz", stageTimeoutMinutes: 30) ==
+            ["host", address, "--post-run-options", "--host-stage-timeout-minutes", "30"])
+        precondition(SessionRunMode.hostOnly.hostArguments(address: address, host: "kurumuz", stageTimeoutMinutes: 0) == nil)
 
         var bootstrap = WorkflowProgress()
         bootstrap.begin(fullInstall: true)

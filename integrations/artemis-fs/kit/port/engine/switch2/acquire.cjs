@@ -6,6 +6,7 @@ const { a } = require('../shared/rpc.cjs');
 const { request } = require('./tools/endpoint.cjs');
 const { verifyProof } = require('./memory/verify-proof.cjs');
 const { save, read } = require('./ro/runtime.cjs');
+const { configuredTimeout } = require('../shared/stages.cjs');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // The acquisition owns native allocations until retire() completes.
@@ -43,7 +44,7 @@ async function start() {
       await done;
     };
     try {
-      const deadline = Date.now() + 10 * 60 * 1000;
+      const deadline = Date.now() + configuredTimeout();
       let report, recorded = false;
       for (; ;) {
         if (reportFile) {

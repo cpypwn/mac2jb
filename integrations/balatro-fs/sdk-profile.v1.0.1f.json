@@ -1,0 +1,219 @@
+{
+  "gameProfile": "balatro-physical-base-v1.0.1f",
+  "runtimeVersion": "1.0.1f-FULL",
+  "sdkCode": {
+    "size": 6160384,
+    "sha256": "47cbfaea43e00261b05dc2327299637890727b476eeac7f42aaba397b108d5f9",
+    "offlineCrc32": "0xac8a9d29"
+  },
+  "symbolSource": "captured SDK MOD0 dynsym/dynstr from the same live build",
+  "symbols": {
+    "nn::fs::OpenFile": {
+      "offset": 671808,
+      "bytes": "ff8301d1fd7b02a9f85f03a9f65704a9"
+    },
+    "nn::fs::CreateFile": {
+      "offset": 682784,
+      "bytes": "ff8301d1fd7b02a9f85f03a9f65704a9"
+    },
+    "nn::fs::GetFreeSpaceSize": {
+      "offset": 671088,
+      "bytes": "ff4301d1fd7b01a9f71300f9f65703a9"
+    },
+    "nn::fs::GetTotalSpaceSize": {
+      "offset": 683216,
+      "bytes": "ff0301d1fd7b01a9f51300f9f44f03a9"
+    },
+    "nn::fs::detail::MountTable::Find": {
+      "offset": 658384,
+      "bytes": "fd7bbca9f85f01a9f65702a9f44f03a9"
+    },
+    "nn::fs::detail::GetFileSystemProxyServiceObject": {
+      "offset": 760688,
+      "bytes": "fd7bbea9f44f01a9fd030091c96400b0"
+    },
+    "nn::os::CreateThread": {
+      "offset": 1242848,
+      "bytes": "c86000f0e703062a08c543f9e603052a"
+    },
+    "nn::os::GetCurrentThread": {
+      "offset": 1243664,
+      "bytes": "68d03bd500fd40f9c0035fd600000000"
+    },
+    "nn::os::GetThreadPriority": {
+      "offset": 1243776,
+      "bytes": "0088c079c0035fd60000000000000000"
+    },
+    "nn::os::GetSystemTick": {
+      "offset": 1244160,
+      "bytes": "20e03bd5c0035fd60000000000000000"
+    },
+    "nn::os::GetSystemTickFrequency": {
+      "offset": 1244208,
+      "bytes": "00009f528024a072c0035fd600000000"
+    },
+    "nn::os::SleepThread": {
+      "offset": 1243840,
+      "bytes": "38741214000000000000000000000000"
+    },
+    "nn::os::InitializeLightEvent": {
+      "offset": 1224320,
+      "bytes": "280080525f04007108040039e8179f1a"
+    },
+    "nn::os::SignalLightEvent": {
+      "offset": 1224384,
+      "bytes": "ff0301d1fd7b01a9f65702a9f44f03a9"
+    },
+    "nn::os::FinalizeLightEvent": {
+      "offset": 1224368,
+      "bytes": "1f040039c0035fd6"
+    },
+    "nn::os::WaitLightEvent": {
+      "offset": 1224736,
+      "bytes": "ff0301d1fd7b01a9f65702a9f44f03a9"
+    },
+    "nn::os::TryWaitLightEvent": {
+      "offset": 1225088,
+      "bytes": "08444038680100341f2003d51f2003d5"
+    },
+    "nn::os::QueryMemoryInfo": {
+      "offset": 1253536,
+      "bytes": "ac6b1214000000000000000000000000"
+    },
+    "nn::os::AllocateMemoryBlock": {
+      "offset": 1255536,
+      "bytes": "c8600090e20301aa08c543f9e10300aa"
+    },
+    "nn::os::FreeMemoryBlock": {
+      "offset": 1255568,
+      "bytes": "fd7bbfa9fd030091c86000902900008b"
+    },
+    "nn::sm::GetServiceHandle": {
+      "offset": 1339088,
+      "bytes": "fd7bbea9f44f01a9fd030091f30300aa"
+    },
+    "nn::crypto::GenerateSha256Hash": {
+      "offset": 17824,
+      "bytes": "ffc302d1fd7b08a9f65709a9f44f0aa9"
+    },
+    "nnutilZlib_crc32": {
+      "offset": 461568,
+      "bytes": "e203022aaf581514"
+    },
+    "svcQueryMemory": {
+      "offset": 1437896,
+      "bytes": "e10f1ff8c10000d4e20340f9410000b9"
+    },
+    "svcCreateThread": {
+      "offset": 1437928,
+      "bytes": "e00f1ff8010100d4e20340f9410000b9"
+    },
+    "svcStartThread": {
+      "offset": 1437952,
+      "bytes": "210100d4c0035fd6410100d4c0035fd6"
+    },
+    "svcExitThread": {
+      "offset": 1437960,
+      "bytes": "410100d4c0035fd6610100d4c0035fd6"
+    },
+    "svcGetThreadPriority": {
+      "offset": 1437976,
+      "bytes": "e00f1ff8810100d4e20340f9410000b9"
+    },
+    "svcGetThreadCoreMask": {
+      "offset": 1438008,
+      "bytes": "e007bfa9c10100d4e30340f9610000b9"
+    },
+    "svcSetThreadCoreMask": {
+      "offset": 1438040,
+      "bytes": "e10100d4c0035fd6010200d4c0035fd6"
+    },
+    "svcGetCurrentProcessorNumber": {
+      "offset": 1438048,
+      "bytes": "010200d4c0035fd6210200d4c0035fd6"
+    },
+    "svcCloseHandle": {
+      "offset": 1438112,
+      "bytes": "c10200d4c0035fd6e10200d4c0035fd6"
+    },
+    "svcWaitSynchronization": {
+      "offset": 1438128,
+      "bytes": "e00f1ff8010300d4e20340f9410000b9"
+    },
+    "svcCancelSynchronization": {
+      "offset": 1438152,
+      "bytes": "210300d4c0035fd6410300d4c0035fd6"
+    },
+    "svcSend": {
+      "offset": 1438224,
+      "bytes": "410400d4c0035fd6e00f1ff8610400d4"
+    },
+    "svcGetThreadId": {
+      "offset": 1438256,
+      "bytes": "e00f1ff8a10400d4e20340f9410000f9"
+    },
+    "svcGetProcessInfo": {
+      "offset": 1438304,
+      "bytes": "e00f1ff8210500d4e20340f9410000f9"
+    },
+    "readTpidrro": {
+      "offset": 1334448,
+      "bytes": "60d03bd5c0035fd60000000000000000"
+    },
+    "memcpy": {
+      "offset": 5851056,
+      "bytes": "e80301cb0a0940925f0102eb62040054"
+    },
+    "memmove": {
+      "offset": 5851952,
+      "bytes": "1f0001eb600b00542800028b1f0100eb"
+    },
+    "memset": {
+      "offset": 5852672,
+      "bytes": "620600b40800028b5f0c00f101000039"
+    }
+  },
+  "mounts": {
+    "tableOffset": 13531208,
+    "observed": [
+      "rom",
+      "save"
+    ],
+    "savePath": "save:/"
+  },
+  "proxy": {
+    "globalOffset": 13968496,
+    "initializedFlagOffset": 13968504
+  },
+  "threadManager": {
+    "globalPointerOffset": 13936520,
+    "managerBias": 224,
+    "listSentinelOffset": 464,
+    "nodeArgumentOffset": 96,
+    "nodeEntryOffset": 104,
+    "nodeHandleOffset": 432,
+    "maxNodes": 64
+  },
+  "liveReadOnlyEvidence": {
+    "saveCapacity": {
+      "result": 0,
+      "totalBytes": 16777216,
+      "freeBytes": 16121856
+    },
+    "tickFrequency": {
+      "declaredHz": 19200000,
+      "measuredHz": 19199702.385,
+      "sampleSeconds": 0.5006475,
+      "sampleTicks": 9612283
+    },
+    "borrowedThread": {
+      "priority": 37,
+      "core": 0,
+      "coreMask": 1,
+      "priorityResult": 0,
+      "coreMaskResult": 0
+    },
+    "nativeProfileReady": true,
+    "qualification": "read-only dependency profile; no FS canary, save write, allocator, or worker creation has run"
+  }
+}

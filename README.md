@@ -12,8 +12,29 @@ an all-in-one ns2 jailbreaking tool for Mac.
 - for CivSwitch: a physical Switch 1 edition Civilization VII cartridge at
   version 1.0.0. set the Switch system language to English (US). the Switch and
   Mac must be on the same network so mac2jb can reach the console's IPv4 address.
+- for Seedsow Lullaby: a compatible Artemis launcher save with HTTP mode
+  available. keep the Switch and Mac on the same network.
+- for kaiHEN: a Switch SD card formatted FAT32 or exFAT.
 
 [block console updates before testing](https://gitlab.com/a/90dns).
+
+### direct offline ethernet
+
+mac2jb can connect to the Switch through a dedicated Mac ethernet adapter
+without a router. connect that adapter directly to the Switch dock or ethernet
+adapter, then open **Offline Ethernet** on mac2jb's main screen and start the
+responder. macOS asks for administrator access to add a temporary
+`192.168.2.2/24` address and listen on local DNS and HTTP ports. mac2jb uses
+`192.168.2.2` as the host address for this connection.
+
+set the Switch's wired connection manually: IPv4 `192.168.2.1`, subnet mask
+`255.255.255.0`, gateway and both DNS fields `192.168.2.2`, with proxy and
+IPv6 off. disable automatic connection to saved Switch wi-fi networks. the
+app shows when a request from the Switch reaches the Mac; a local ready check
+alone does not establish that the Switch connected. this service answers the
+connection check; it does not provide internet access. it cannot run alongside
+DNSwitch because both use ports 53 and 80. stop the responder and choose
+**Restore Mac Ethernet** when finished to remove the temporary address.
 
 ## set up the usb driver
 
@@ -48,7 +69,7 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. download `mac2jb-v0.8.2-macos-arm64.zip`, extract it and open `mac2jb.app`.
+1. download the current macOS arm64 release ZIP, extract it and open `mac2jb.app`.
 2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
 3. click install & load driver… and approve the administrator prompt.
 4. if prompted, open system settings → privacy & security and allow the driver.
@@ -80,7 +101,7 @@ use the normal jailbreak setup. otherwise, choose the host in developer options
 and follow these steps.
 
 1. open SmileBASIC → make a program with an empty editor in slot 0.
-2. click **Jailbreak with ns2jb**, then **Open first-time setup** in the compact
+2. click **Jailbreak with SmileBASIC 4**, then **Open first-time setup** in the compact
    card at the top of the popup. tick the demo checkbox on the first-time page
    only when using the SmileBASIC demo with a host that supports it.
 3. start typing and wait until it finishes. the app defaults to 10 ms per key. after it sends the second enter to confirm load, it waits 1 second for the bootstrap to load before sending run. the other command waits are 0; timing remains adjustable.
@@ -123,209 +144,75 @@ PRGEDIT 0:LOADV "TXT:NS2" OUT C$:PRGSET C$
 mac2jb types this command and presses enter twice to accept ok, then waits
 1 second for the bootstrap to load before sending run.
 
-## jailbreak with ns2jb
+## install kaiHEN
 
-1. restart the Switch and open SmileBASIC → make a program → direct mode.
-2. connect usb and the Switch's ethernet. connect the Mac to the same network
-   by wi-fi or ethernet, then select the Mac's address for that network in mac2jb.
-3. click **Jailbreak with ns2jb**. in the setup popup, tick the demo checkbox
-   if you use the demo, or leave it off for the full version.
-4. confirm the Switch is ready and connected by usb, then click **Start jailbreak**.
-5. keep SmileBASIC focused and wait for 4/4 verification. the default kurumuz
-   host holds rpc open and offers MintBrew, SaveKit, and Artemis launcher saves
-   or native HBLauncher. launch
-   one homebrew at a time while rpc is held.
+mac2jb places kaiHEN first, with three entry points: **Civilization VII**,
+**SmileBASIC 4**, and **Seedsow Lullaby**. choose the matching button on the
+main screen. **Upstream updates** checks the [kaiHEN releases](https://github.com/ouncebrew/kaihen/releases)
+and other bundled components; a newer release is reported without changing the
+bundled copy during an active session.
 
-if verification fails at 2/4 while the Mac is on wi-fi, retry with the Mac on
-ethernet. if it fails at 3/4, try a different host and save that host's matching
-bootstrap before retrying.
+### Civilization VII
 
-after rpc is verified, the usb cable can be disconnected if the Switch keeps
-its separate ethernet connection and the Mac stays on the same network over
-wi-fi or ethernet.
-keep SmileBASIC and mac2jb open for the session. retained rpc keeps the same
-network connection open; switching the Switch from ethernet to wi-fi closes it.
-this build does not reconnect that session.
+the [Civ7 kaiHEN host](https://github.com/s8n/CivSwitchFS-kaiHEN) uses the
+saved CivSwitch Remote JS Loader. select **Jailbreak with Civilization VII**,
+enter the Switch IPv4 address, and open the saved loader with **Load Game**.
+if this is the first run, use **Open first-time setup** to send the loader
+through the game's chat screen, then install its boot trigger. prepare the
+kaiHEN SD files with **Write files to SD card…** or **Prepare copy folder**,
+confirm that the loader is open, and choose **Jailbreak with kaiHEN**. wait
+for the HEN PID and completion message before leaving the game.
 
-## jailbreak with CivSwitch
+developer options also offer **Install persistent kaiHEN trigger**. after
+installation, later **Load Game** launches can run the FS and kaiHEN chain
+without the Mac host. this semi-untethered path is experimental and not
+recommended.
 
-[CivSwitch](https://github.com/Gezine/CivSwitch) uses Civilization VII's chat
-entry point. upstream supports the physical Switch 1 edition cartridge at
-version 1.0.0 and reports tests on Switch 2 firmware 20.4.0 and 23.0.1.
-mac2jb offers two paths: **FS jailbreak** reaches 4/4 and opens held RPC for
-SaveKit, OunceCake and modloader; **Userland** runs CivHomebrew and JavaScript
-through the open Remote JS loader without those FS tools.
+### SmileBASIC 4
 
-if the boot trigger is already saved, open Civilization VII and choose
-**Load Game**. once the loader says **Awaiting payload**, click
-**Jailbreak with CivSwitch** in mac2jb, enter the Switch IPv4 address, select
-the Mac network address on the main screen and click **Start jailbreak**. keep the Switch and Mac
-on the same network. this returning-user path does not type the chat payload
-again or need USB input.
+the [kurumuz ns2jb host](https://gitlab.com/kurumuz/ns2jb) starts kaiHEN
+from SmileBASIC. select **Jailbreak with SmileBASIC 4** and prepare the kaiHEN
+SD files in its setup window. use **Open first-time setup** if the matching
+Kurumuz bootstrap is not already saved. open SmileBASIC in Direct mode and
+confirm the USB power direction. mac2jb types `LOAD`, `RUN`, `REMOVE`, and the
+five-argument `V=START(...)` command. wait for the HEN PID and completion
+message before leaving SmileBASIC.
 
-for first-time setup, choose the keyboard transfer option in CivSwitch setup:
+### Seedsow Lullaby
 
-1. load the mac2jb USB driver. set the Switch system language to English (US),
-   insert the supported cartridge, and keep the Switch and Mac on the same
-   network.
-2. in Civilization VII, open multiplayer → wireless → create game → host lobby
-   → chat. in docked mode, focus the chat input. connect the Switch to the Mac
-   by USB with power flowing Switch → Mac.
-3. choose **Open first-time setup**, enter the Switch IPv4 address and confirm
-   the chat screen is ready, then start the keyboard transfer. the full-screen
-   progress view tracks the 87-line chat payload, which currently takes about
-   20–25 minutes. keep the game and mac2jb open. mac2jb then checks the
-   JavaScript loader on TCP port 9026 and returns to CivSwitch setup.
-4. click **Install boot trigger** to back up Civilization VII's single-player
-   saves and install the persistent Load Game trigger. this replaces files in
-   `save:/saves/Single/`; verified originals are kept under
-   `~/Library/Application Support/mac2jb/CivSwitch/Backups`.
-5. restart Civilization VII and choose **Load Game** for later sessions.
+select **Jailbreak with Seedsow Lullaby**. open your existing Artemis launcher save
+in Seedsow Lullaby and press **Y** to enter HTTP mode. enter the Switch IPv4
+address in mac2jb, confirm that HTTP mode is open, then start the jailbreak.
+keep Seedsow and mac2jb open while the host runs.
 
-### Userland
+after kaiHEN starts, close the entry-point game normally. hold **R** while
+opening a native Switch 2 game to open hbmenu. on a fresh setup, the first
+launch may save the game's policy and open the game normally; close it and
+hold **R** on the next launch. kaiHEN lasts until the Switch restarts.
 
-**Start CivHomebrew in open loader** checks the open loader and starts the app
-library. **Connect to running CivHomebrew** attaches when it was started from a
-saved trigger. for direct JavaScript without starting FS acquisition,
-**Connect to open loader** verifies the existing session. **Send JavaScript…**
-then sends a `.js` file to port 9026. **Install boot trigger** also works on
-that connection after backing up the game's single-player saves.
+## advanced tools
 
-the pinned v0.4.3 CivHomebrew launcher is sent through the verified loader.
-**Install CivHomebrew boot trigger** verifies and keeps the
-original trigger backup before replacing it; **Restore original CivSwitch
-trigger** puts that backup back. both actions need the open loader. source is
-downloaded and checked when first used.
-when CivHomebrew is ready, **Install bundled homebrew…** offers Moonlight,
-SW2NES and Jellyfin. installed apps appear in the CivHomebrew library
-on the Switch. Moonlight needs Sunshine on a computer on the same network;
-its pinned package is downloaded and verified during installation. SW2NES
-v1.0.1 is bundled; add your own `.nes` ROMs to `Root/nes` with CivHomebrew FTP.
-Jellyfin needs a reachable server address. ROMs are not included.
+**Console & Developer Options** contains host-only sessions, held-RPC tools,
+SaveKit, CivSwitch loader controls, and research utilities. **CivHomebrew** runs
+`.civapp` packages through the CivSwitch loader; its **Browse apps** catalog
+defaults to [civapp-db](https://github.com/cpypwn/civapp-db) and accepts custom
+sources.
 
-on the Switch, open **CivHomebrew → Options → Browse apps** to see packages in
-the public [civapp-db](https://github.com/cpypwn/civapp-db) catalog. select an
-app and press A to install it, update it, or reinstall the same release.
-CivHomebrew checks the download size, SHA-256, app ID and release before
-installation. it checks for newer releases when you open Browse apps; updates
-are not installed automatically. use Left/Right to change catalogs, Y to add
-another public HTTPS catalog or GitHub repository, and X to remove a source you
-added. the default source stays available.
+## save data
 
-**Install .civapp…** lets you choose a compatible CivHomebrew package from
-this Mac while CivHomebrew is open. the package remains in its app library.
+after 4/4 verification with RPC held, choose **Start SaveKit** to inspect,
+export, or change a game's save. close the game first. to export it, select
+the title and account, choose **Back up save**, then **Open verified save
+export**. keep the complete folder, including `manifest.json`.
 
-the ordinary CivSwitch loader is separate from ns2jb's held rpc session.
-MintBrew and native HBLauncher still require ns2jb. CivSwitch filesystem access
-can start a separate held host for save installers, SaveKit and OunceCake.
-
-### FS jailbreak
-
-this path has reached 4/4 verification on a Switch. it uses the physical
-Civilization VII cartridge and the open CivSwitch JavaScript loader described
-above. keep the Switch and Mac on the same network.
-
-1. select the Mac network address on the main screen and enter the Switch IPv4
-   address in CivSwitch setup. open the
-   saved CivSwitch loader in Civilization VII, then choose **Start jailbreak**.
-   mac2jb waits for and verifies the loader, then sends the FS bridge once.
-2. wait for 4/4 verification. each step can take several minutes. keep
-   Civilization VII and mac2jb open; the progress page shows the current step,
-   and its console log is in **Console & Developer Options**.
-3. after verification, mac2jb opens the held-session choices automatically.
-   use the save installers, SaveKit or OunceCake. test a read-only
-   title list or backup before writing a save.
-4. finish the session when done. restart Civilization VII before another
-   loader session.
-
-this Mac-side path does not change the saved trigger. restore the original
-CivSwitch trigger first if CivHomebrew's saved trigger is installed. if
-acquisition fails, keep its run logs and restart the console before another
-FS attempt. MintBrew and native HBLauncher are not available through the
-CivSwitch filesystem host. modloader is available after 4/4 verification.
-
-## bundled game saves
-
-create a normal save, close the game, and complete a jailbreak with rpc held.
-choose the matching installer in mac2jb and select the save's console account if
-prompted. mac2jb verifies the bundled files, backs up the original save when
-present, and verifies each write. installation can replace game progress and
-settings. the backup remains available in the app. once the write finishes,
-you can choose another held-rpc option; finish the session before opening the
-game.
-
-| game | bundled save | what it opens |
-| --- | --- | --- |
-| Seedsow Lullaby, Nora Princess 2, Nora, Princess and Stray Cat HD, Hamidashi Creative | [Artemis launcher v2](https://github.com/alula/switch-artemis-launcher/releases/tag/v2) | an HTTP Lua launcher on port `8080`; load its save and press Y to start the server. Seedsow supports its demo and full game, with separate installers. |
-| Seedsow Lullaby demo | [Lua Editor Pro v0.4.0](https://github.com/purple442/seedsow-lua-editor-pro/releases/tag/v0.4.0) | bundles the Artemis launcher with the Lua editor and its script slots. it does not support the full game. |
-| Balatro | [RCE v1.1.0](https://github.com/Luminger/balatro-switch-rce/releases/tag/v1.1.0) | a Lua service on port `9026` and FTP on ports `5000` and `5001`. it requires the physical Switch 1 cartridge in compatibility mode. |
-| Gravity Circuit | [Switch RCE](https://github.com/figurophobia/GravCirc-Switch-rce) | the same Lua and FTP services as Balatro. supported game versions are 1.0.0 and 1.2.1. |
-
-for an Artemis save, use **Console & Developer Options → Artemis launcher HTTP**
-to connect to the Switch's IPv4 address on the same network. its controls can
-send Lua to `/eval`, upload files to `save:/`, and delete selected save files.
-these HTTP controls do not need a held SmileBASIC rpc session. **Check for
-upstream update** reports newer releases without changing the bundled saves.
-
-the **Seedsow FS · experimental** control is in **Console &
-Developer Options**. first open a Seedsow Lullaby launcher save on the Switch
-and leave its HTTP server running. enter the Switch IPv4 address, then start
-the filesystem attempt. mac2jb sends the bridge through `/eval`; it does not
-install or replace the save. this path has not yet passed a console test.
-the current bridge supports Seedsow Lullaby only, not Nora or other Artemis
-games.
-
-## save data and research tools
-
-after a regular jailbreak with kurumuz, Cellenseres or Astral, **Start SaveKit** opens
-the full set of save actions in the held session: account, title and archive
-lists; inspection and verified backups; and the experimental write, restore,
-delete and verify controls. the bundled research source catalog is available
-there too. the same controls are available under **Console & Developer Options →
-Additional tools** after a host-only run with **Hold RPC after success** checked
-and 4/4 verification complete.
-list installed titles from internal storage, SD and game card. **List save archives**
-reads the console's save index, including saves for games that are no longer
-installed; select an archive there to fill its title, account and archive fields.
-the installed-title picker shows names when available. enter a title ID manually
-if needed. read-only backups work for any selected title.
-each write, delete or restore backs up an existing save and verifies it before
-changing files. repeated save opens
-can interrupt the host; if rpc is lost, restart the Switch and start a fresh
-session.
-
-archive filters and an optional all-archive scan are available for titles with more than one save. the game
-being inspected must be fully closed.
-
-to collect an untouched save, select its title and account, then click
-**Back up save** and **Open verified save export**. for archives outside the
-normal account save, use **Scan all matching archives** before backing up.
-retain the complete export folder, including `manifest.json`. the Nora
-Princess 2 trial title ID is `010012900D38A000` if it is absent from the
-installed list. this read-only step does not install a Lua payload.
-
-the SaveKit panel can compare a live save with an export, write a folder of flat
-save files, or delete one root file for any selected title with an accessible
-save archive. it can also restore a verified mac2jb export to the selected
-title's Account or Device archive at rank 0 and index 0. restore replaces files
-in the export and keeps other live files. every write, delete or restore
-requires confirmation and a verified backup when a current save exists.
-large files are verified in chunks after writing. the separate **SaveKit
-research sources** catalog keeps the previous research utilities and adds the current
-upstream save and Artemis tools. it provides source paths and syntax checks;
-utilities with hardware or local path requirements are run manually after review.
-
-for the demo, select Cellenseres, kurumuz or BermTheSequel in developer options. the
-current kurumuz version also fixes the issue on consoles that installed the
-update offered when first inserting a microSD Express card. on those consoles,
-the update is marked `(B)` beside item 3 under system settings → support/health
-& safety.
+SaveKit backs up and verifies an existing save before a write, restore, or
+delete. mac2jb does not bundle game saves.
 
 ## homebrew
 
-when ns2jb reaches 4/4 and holds rpc, choose MintBrew on the next screen. for
-host-only with hold rpc or an existing held rpc session, launch MintBrew from
-developer options.
+for a supported ns2jb host-only session with held RPC, choose MintBrew after
+4/4 verification in **Console & Developer Options**. you can also attach to
+an existing local held-RPC session there.
 
 to try a different standalone launcher while rpc stays held, click **Stop
 current homebrew** and wait until mac2jb confirms that it stopped cleanly.
@@ -455,12 +342,15 @@ saving the bootstrap does not preserve a live jailbreak connection.
 
 ## developer options
 
+**Upstream updates** is above the jailbreak choices. in **Console & Developer
+Options**, **ns2jb host** is followed by **Additional tools**. **Host timeouts**
+and **Live keyboard** appear below **Console**.
+
 - choose pepsipu, kurumuz, Cellenseres, Astral or BermTheSequel as the host. use
   its matching saved bootstrap, or type and save one if needed. pepsipu uses the original
   nine-argument pairing command and does not support held rpc; kurumuz,
   Cellenseres, Astral and BermTheSequel support held rpc and the demo.
-  kurumuz is the default and supports SaveKit, Artemis save installation
-  and native HBLauncher alongside Cellenseres and Astral. kurumuz supports the microSD Express
+  kurumuz is the default and supports SaveKit and native HBLauncher alongside Cellenseres and Astral. kurumuz supports the microSD Express
   update identified by `(B)` beside item 3 under system settings →
   support/health & safety.
 - in additional tools, run host only starts the selected host and waits for
@@ -498,7 +388,7 @@ saving the bootstrap does not preserve a live jailbreak connection.
   key.
 - NXFormat converts an already-decrypted game folder or `.nup` into a verified
   `.nx` archive on this Mac. its developer panel can also inspect, list and
-  verify `.nx` archives. NXConvert 1.0.3 is bundled and verified before use;
+  verify `.nx` archives. NXConvert 1.0.4 is bundled and verified before use;
   it works offline and does not need rpc.
 - NUP can pack an extracted game dump into a compressed `.nup` file, inspect
   and verify a NUP, list its files, or extract it. click **Get pinned NUP source**
@@ -543,10 +433,10 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 - [duszmox](https://github.com/duszmox) — [PR #11](https://github.com/cpypwn/mac2jb/pull/11), automatic USB controller discovery through the IORegistry.
 - [misshexa66](https://github.com/misshexa66) — the original [OunceCake](https://github.com/misshexa66/OunceCake), game-content export.
 - [alula](https://github.com/alula) — [switch-artemis-launcher](https://github.com/alula/switch-artemis-launcher), the Seedsow and Nora save launchers and HTTP interface.
-- [purple442](https://github.com/purple442) — [Seedsow Lua Editor Pro](https://github.com/purple442/seedsow-lua-editor-pro), the bundled v0.4.0 demo save.
-- [soniciso1](https://github.com/soniciso1) — [Seedsow full-game patch](https://github.com/alula/switch-artemis-launcher/pull/8), adapted for a verified SaveKit backup.
-- [figurophobia](https://github.com/figurophobia) — [Gravity Circuit Switch RCE](https://github.com/figurophobia/GravCirc-Switch-rce), the bundled Gravity Circuit save and Lua/FTP launcher.
-- [Luminger](https://github.com/Luminger) — [Balatro Switch RCE](https://github.com/Luminger/balatro-switch-rce), the Balatro save and native Lua/FTP research used by Gravity Circuit Switch RCE.
+- [purple442](https://github.com/purple442) — [Seedsow Lua Editor Pro](https://github.com/purple442/seedsow-lua-editor-pro), the Lua editor project.
+- [soniciso1](https://github.com/soniciso1) — [Seedsow full-game patch](https://github.com/alula/switch-artemis-launcher/pull/8), full-game save research.
+- [figurophobia](https://github.com/figurophobia) — [Gravity Circuit Switch RCE](https://github.com/figurophobia/GravCirc-Switch-rce), the Gravity Circuit Lua/FTP launcher.
+- [Luminger](https://github.com/Luminger) — [Balatro Switch RCE](https://github.com/Luminger/balatro-switch-rce), Lua/FTP research used by Gravity Circuit Switch RCE.
 - [smarkyie](https://github.com/smarkyie) — [NSP-Box](https://github.com/smarkyie/NSP-Box), the extracted-snapshot packager adapted for Mac.
 - [fab918](https://github.com/fab918) — [nxformat](https://github.com/fab918/nxformat), the bundled NX archive tool.
 - [a55uka](https://github.com/a55uka) — [nup](https://github.com/a55uka/nup), the NUP format and reference tool fetched on request.

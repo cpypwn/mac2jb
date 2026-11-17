@@ -14,7 +14,7 @@ struct inventory {
  char error_path[0x300];
  void *memory_manager;
  uint32_t (*allocate_block)(void *,void **,uint64_t);
- uint32_t (*free_block)(void *,void *,uint64_t);
+ void (*free_block)(void *,void *,uint64_t);
 };
 _Static_assert(offsetof(struct inventory,data)==56,"Inventory buffer ABI");
 _Static_assert(offsetof(struct inventory,error_path)==96,"Inventory error ABI");

@@ -16,7 +16,7 @@ async function save(file, value) {
 }
 const local = (session, suffix) => path.join(directory, session + suffix);
 
-async function activate(launchFile) {
+async function activate(launchFile, previousPid) {
   const memory = await connect(), launch = await read(launchFile);
   check(launch.report === memory.reportFile && launch.session === memory.info.session &&
     launch.imageAccepted && launch.restored && launch.flags === 0x10 && /^\d+$/.test(launch.pid),
@@ -25,7 +25,9 @@ async function activate(launchFile) {
   check(state.worker?.joined, 'The launch worker has not joined');
   const sm = await read(local(memory.info.session, '-sm-proof.json'));
   check(sm.report === memory.reportFile && !sm.program.result, 'The original RO identity is stale');
-  const originalPid = Buffer.from(sm.program.hex, 'hex').readBigUInt64LE().toString();
+  const originalPid = previousPid === undefined
+    ? Buffer.from(sm.program.hex, 'hex').readBigUInt64LE().toString()
+    : String(previousPid);
   check(BigInt(originalPid) > 1n && BigInt(launch.pid) > 1n && originalPid !== launch.pid,
     'The original and replacement RO PIDs must be distinct');
   const shell = state.services.find(s => s.name === 'pm:shell')?.handle;

@@ -8,6 +8,7 @@ function inventory(){
  function add(name,type,size){const parent=path.posix.dirname(name);if(name!==sdroot&&!tree.has(parent))add(parent,'directory');tree.set(name,{type,children:[],...(size===undefined?{}:{size})});if(name!==sdroot)tree.get(parent).children.push(path.posix.basename(name));}
  add(sdroot+'/contents/'+title+'/exefs/arbitrary.pchtxt','file',text.length);
  add(sdroot+'/contents/exefs_patches/group/34.ips','file',9);
+ if(mode==='bad-layout')add(sdroot+'/contents/'+title+'/unsupported','directory');
  if(mode==='paired'){
   tree.get(sdroot+'/contents/'+title+'/exefs').children=['12.pchtxt','12.ips'];
   tree.delete(sdroot+'/contents/'+title+'/exefs/arbitrary.pchtxt');
@@ -33,5 +34,10 @@ const {collectSdMods}=require('../../lib/sd-mods.cjs'),lazy=require('../../lib/l
  mode='timeout';reads=[];closed=[];
  await assert.rejects(collectSdMods('unused',path.join(root,'timeout'),sdroot,{nativePreparation:true}),/timed out/);
  assert.equal(reads.length,1);assert.deepEqual(closed,[]);assert.equal(released,0);assert.equal(bridge.c.pending,true);
- console.log('SD patch inputs: metadata-only binary fast path; read and compile standalone text once; alias preserved; no SD writes; timed-out buffers and native bootstrap retained: passed');
+ mode='bad-layout';reads=[];closed=[];const before=attached;
+ const invalid=path.join(root,'bad-layout');
+ await assert.rejects(collectSdMods('unused',invalid,sdroot,{nativePreparation:true}),/Unsupported component/);
+ const saved=JSON.parse(fs.readFileSync(path.join(invalid,'inventory.json')));
+ assert(saved.some(row=>row.path===sdroot+'/contents/'+title+'/unsupported'));assert.equal(released,1);assert.equal(attached,before);assert.equal(reads.length,0);
+ console.log('SD patch inputs: metadata-only binary fast path; read and compile standalone text once; alias preserved; no SD writes; timed-out buffers retained; inventory survives layout errors: passed');
 }finally{fs.rmSync(root,{recursive:true,force:true});}})().catch(error=>{console.error(error.stack);process.exitCode=1;});

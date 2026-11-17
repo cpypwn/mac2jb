@@ -5,6 +5,26 @@ function pathPacket(command, input, address, size) {
   return pathPackets(command, input, [{address, size}]);
 }
 
+function slashPaddedPath(components, length) {
+  check(Array.isArray(components) && components.length >= 2 &&
+    components.every((part, index) => typeof part === 'string' && part.length > 0 &&
+      !part.includes('\0') && (index === 0 ? part.startsWith('/') && !part.endsWith('/') : !part.includes('/'))),
+  'Invalid padded path components');
+  const canonical = components.join('/');
+  check(Number.isInteger(length) && length >= canonical.length && length < 0x800,
+    'Invalid padded path length');
+  let extra = length - canonical.length;
+  let text = components[0];
+  for (let i = 1; i < components.length; i++) {
+    const remaining = components.length - i;
+    const add = Math.ceil(extra / remaining);
+    text += '/'.repeat(1 + add) + components[i];
+    extra -= add;
+  }
+  check(text.length === length, 'Padded path length differs');
+  return text;
+}
+
 function pathPackets(command, input, descriptors) {
   check(descriptors.length > 0 && descriptors.length <= 2, 'Invalid path descriptor count');
   const original = packet(command, input), bytes = Buffer.alloc(256);
@@ -39,4 +59,4 @@ function paths(s, domain) {
   return {raw, normal};
 }
 
-module.exports = {pathPacket, pathPackets, paths};
+module.exports = {pathPacket, pathPackets, slashPaddedPath, paths};

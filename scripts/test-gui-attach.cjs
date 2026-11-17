@@ -78,7 +78,7 @@ function fixture(t, options = {}) {
     }
     setImmediate(() => {
       if (options.childStart) options.childStart(child);
-      else {child.event({type: 'started'}); if (!args[0].endsWith('gui-ouncecake.cjs')) child.event({type: 'running'});}
+      else {child.event({type: 'started'}); if (!args[0].includes('gui-ouncecake')) child.event({type: 'running'});}
     });
     return child;
   }
@@ -177,13 +177,14 @@ test('CivSwitch FS attachment opens SaveKit, lists accounts and releases its cla
   assert.equal((await session.wait('savekit-tool-complete')).action,'accounts');
   session.send({action:'finish-savekit'}); await session.wait('savekit-done');
   assert.equal(session.calls.filter(row => row[0] === 'release').length,1);
-  session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9'}); await session.wait('homebrew-started');
+  session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9',mode:'ftp'}); await session.wait('homebrew-started');
   const child=session.children[1];
+  assert.equal(session.calls.filter(row=>row[0]==='spawn').at(-1)[2][0],root+'/scripts/gui-ouncecake-civ7.cjs');
   child.event({type:'catalog',games:[game]}); await session.wait('homebrew-catalog');
   session.send({action:'select-ouncecake-game',titleId:game.titleId});
   await until(()=>child.input.includes('select-game'));
-  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/'});
-  await session.wait('homebrew-running');
+  child.event({type:'running',host:'192.0.2.9',port:2121,ftpURL:'ftp://192.0.2.9:2121/',mode:'civ7-ftp'});
+  assert.equal((await session.wait('homebrew-running')).ftpURL,'ftp://192.0.2.9:2121/');
   assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim','savekit'],['claim','ouncecake']]);
   session.send({action:'finish'}); assert.equal(await session.done,0);
 });
@@ -768,7 +769,7 @@ test('OunceCake catalog selection and WebDAV endpoint belong to the attached ses
   session.send({action: 'select-ouncecake-game', titleId: game.titleId}); await session.wait('action-rejected', 2);
   session.send({action: 'finish'}); assert.equal(await session.done, 0);
 });
-test('CivSwitch FS OunceCake FTP uses the Mac-local bridge and exposes its verified address', async t => {
+test('CivSwitch FS OunceCake uses direct Switch FTP and exposes its verified address', async t => {
   const session = fixture(t, {profileId:'civswitch-fs', childStart:child=>child.event({type:'started'})});
   await session.attach();
   session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9',mode:'ftp'});
@@ -778,22 +779,31 @@ test('CivSwitch FS OunceCake FTP uses the Mac-local bridge and exposes its verif
   child.event({type:'catalog',games:[game]}); await session.wait('homebrew-catalog');
   session.send({action:'select-ouncecake-game',titleId:game.titleId});
   await until(()=>child.input.includes('select-game'));
-  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/',
-    ftpURL:'ftp://127.0.0.1:40212/'});
-  assert.equal((await session.wait('homebrew-running')).ftpURL,'ftp://127.0.0.1:40212/');
+  child.event({type:'running',host:'192.0.2.9',port:2121,ftpURL:'ftp://192.0.2.9:2121/',mode:'civ7-ftp'});
+  const running=await session.wait('homebrew-running');
+  assert.equal(running.ftpURL,'ftp://192.0.2.9:2121/');
+  assert.equal(running.httpURL,undefined);
   session.send({action:'finish'}); assert.equal(await session.done,0);
 });
-test('CivSwitch FS OunceCake FTP rejects a missing Mac-local bridge address', async t => {
+test('CivSwitch FS OunceCake rejects a Mac-local bridge address', async t => {
   const session=fixture(t,{profileId:'civswitch-fs',childStart:child=>child.event({type:'started'})});
   await session.attach();
   session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9',mode:'ftp'});
   await session.wait('homebrew-started');
   const child=session.children[0];child.event({type:'catalog',games:[game]});await session.wait('homebrew-catalog');
   session.send({action:'select-ouncecake-game',titleId:game.titleId});await until(()=>child.input.includes('select-game'));
-  child.event({type:'running',host:'192.0.2.9',port:2121,httpURL:'http://192.0.2.9:2121/'});
+  child.event({type:'running',host:'192.0.2.9',port:2121,ftpURL:'ftp://127.0.0.1:40212/',mode:'civ7-ftp'});
   await session.wait('homebrew-stopped');
   assert.equal(session.events.some(event=>event.type==='homebrew-running'),false);
   session.send({action:'finish'}); assert.equal(await session.done,1);
+});
+test('CivSwitch FS OunceCake rejects WebDAV before claiming RPC', async t => {
+  const session=fixture(t,{profileId:'civswitch-fs'});
+  await session.attach();
+  session.send({action:'launch-ouncecake',consoleAddress:'192.0.2.9',mode:'webdav'});
+  assert.match((await session.wait('action-rejected')).message,/direct FTP only/);
+  assert.equal(session.calls.filter(row=>row[0]==='claim').length,0);
+  session.send({action:'finish'});assert.equal(await session.done,0);
 });
 test('invalid or duplicate OunceCake catalogs are rejected before selection', async t => {
   for (const games of [[], [game, game], [{...game, titleId: 'bad'}], [{...game, name: 'bad\nname'}],

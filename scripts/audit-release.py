@@ -53,7 +53,6 @@ required = {
     'mac2jb/scripts/gui-homebrew.cjs',
     'mac2jb/scripts/gui-native-hblauncher.cjs',
     'mac2jb/scripts/gui-savekit-tools.cjs',
-    'mac2jb/scripts/seedsow-full-save.cjs',
     'mac2jb/scripts/gui-dnswitch.cjs',
     'mac2jb/scripts/gui-webkit-research.cjs',
     'mac2jb/scripts/gui-bundled-browser-probes.cjs',
@@ -89,23 +88,7 @@ required = {
     'mac2jb/integrations/nsp-box/LICENSE.txt',
     'mac2jb/gui/NSPBoxToolsView.swift',
     'mac2jb/gui/ArtemisHTTPView.swift',
-    'mac2jb/integrations/artemis/cpypwn-showcase.lua',
-    'mac2jb/integrations/artemis/cpypwn-kaleidoscope.lua',
-    'mac2jb/integrations/artemis/seedsowhax-v2-mac2jb.zip',
-    'mac2jb/integrations/seedsow-editor-pro/Seedsow_Pro_v2_JKSV.zip',
-    'mac2jb/integrations/artemis/norahax-v2-mac2jb.zip',
-    'mac2jb/integrations/artemis/norahax-nora1-mac2jb.zip',
-    'mac2jb/integrations/artemis/hamihax-v2-mac2jb.zip',
-    'mac2jb/packaging/ArtemisLauncher-v2.json',
-    'mac2jb/packaging/ArtemisLauncher-seedsow-full.json',
-    'mac2jb/packaging/ArtemisLauncher-upstream-saves.json',
-    'mac2jb/packaging/SeedsowEditorPro-v0.4.0.json',
-    'mac2jb/packaging/ArtemisLauncher-nora1.json',
-    'mac2jb/packaging/ArtemisLauncher-bundles.json',
-    'mac2jb/integrations/gravcirc-rce/GC-v1.1.zip',
-    'mac2jb/integrations/gravcirc-rce/LICENSE',
-    'mac2jb/packaging/GravCirc-v1.1.json',
-    'mac2jb/packaging/GravCirc-v1.1-SHA256SUMS',
+    'mac2jb/integrations/kaihen/provenance.json',
     'mac2jb/scripts/check-webkit-research.cjs',
     'mac2jb/packaging/switch2-browser-research-provenance.json',
     'mac2jb/vendor/switch2-captive-portal-research/LICENSE-NOTICE.md',
@@ -122,6 +105,7 @@ required = {
     'mac2jb/scripts/gui-stremio.cjs',
     'mac2jb/stremio/source-preferences.cjs',
     'mac2jb/scripts/gui-ouncecake.cjs',
+    'mac2jb/scripts/gui-ouncecake-civ7.cjs',
     'mac2jb/keyboard.c',
     'mac2jb/civswitch-hid.c',
     'mac2jb/gui/CivSwitchModel.swift',
@@ -149,6 +133,12 @@ required = {
     'mac2jb/packaging/OunceCake-provenance.json',
     'mac2jb/packaging/OunceCake-SHA256SUMS',
     'mac2jb/packaging/OunceCake-upstream-SHA256SUMS',
+    'mac2jb/vendor/OunceCake-Civ7/LICENSE',
+    'mac2jb/vendor/OunceCake-Civ7/README.md',
+    'mac2jb/vendor/OunceCake-Civ7/engine/civ7-ftp.cjs',
+    'mac2jb/vendor/OunceCake-Civ7/engine/oz-code/native-civ7.bin',
+    'mac2jb/packaging/OunceCake-Civ7-provenance.json',
+    'mac2jb/packaging/OunceCake-Civ7-SHA256SUMS',
     'mac2jb/stremio/pipeline.cjs',
     'mac2jb/stremio/receiver.cjs',
     'mac2jb/stremio/receiver-program.cjs',
@@ -185,6 +175,23 @@ violations = []
 with zipfile.ZipFile(archive) as z:
     names = set(z.namelist())
     removed_components = (
+        'integrations/artemis',
+        'integrations/seedsow-editor-pro',
+        'integrations/seedsow-lua',
+        'integrations/balatro-rce/balatro-switch-rce-1.1.0.zip',
+        'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
+        'integrations/gravcirc-rce/GC-v1.1.zip',
+        'integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
+        'packaging/ArtemisLauncher-v1.json',
+        'packaging/ArtemisLauncher-v2.json',
+        'packaging/ArtemisLauncher-seedsow-full.json',
+        'packaging/ArtemisLauncher-upstream-saves.json',
+        'packaging/ArtemisLauncher-nora1.json',
+        'packaging/ArtemisLauncher-bundles.json',
+        'packaging/SeedsowEditorPro-v0.4.0.json',
+        'packaging/GravCirc-v1.1.json',
+        'packaging/GravCirc-v1.1-SHA256SUMS',
+        'vendor/ns2-savekit/Seedsow-Lua-Editor-Save.zip',
         'gui/CivSwitchControlCenterModel.swift',
         'vendor/CivSwitch-ControlCenter',
         'integrations/civswitch-control-center',
@@ -217,21 +224,9 @@ with zipfile.ZipFile(archive) as z:
         'mac2jb/integrations/civswitch/hello.js',
         'mac2jb/integrations/civswitch/send-hello.cjs',
         'mac2jb/integrations/civswitch/send-hello.test.cjs',
-        'mac2jb/integrations/artemis/cpypwn-showcase.lua',
-        'mac2jb/integrations/artemis/cpypwn-kaleidoscope.lua',
-        'mac2jb/integrations/artemis/seedsowhax-v2-mac2jb.zip',
-        'mac2jb/integrations/artemis/norahax-v2-mac2jb.zip',
-        'mac2jb/integrations/artemis/norahax-nora1-mac2jb.zip',
-        'mac2jb/integrations/artemis/hamihax-v2-mac2jb.zip',
     }
     if not test_build:
         required.difference_update(personal_required)
-        required.update({
-            'mac2jb/integrations/artemis/upstream-v2/seedsow_save.zip',
-            'mac2jb/integrations/artemis/upstream-v2/nora2_save.zip',
-            'mac2jb/integrations/artemis/upstream-v2/hamidashi_save.zip',
-            'mac2jb/integrations/artemis/upstream-nora1-save.zip',
-        })
         for name in names:
             if ('cpypwn' in name.lower() or 'showcase' in name.lower()) and name.startswith('mac2jb/integrations/'):
                 violations.append('personal showcase in public source: ' + name)
@@ -326,7 +321,7 @@ with zipfile.ZipFile(archive) as z:
             registry = json.loads(z.read(host_profiles))
             pins = {
                 'pepsipu': '95f5525089273c5fce0b95047f3600f8442e96ae',
-                'kurumuz': '81d5bb114c856109dadaf1077d927a9f297fe58d',
+                'kurumuz': '28f03b5895e5569d8fbc35cbed84906b8f0a65b2',
                 'cellenseres': '2f686045ff88e5a97f959d19752e00ef3b62011f',
                 'BermTheSequel': '9accf75508f4e7033ffc6912b2ebb7e0b6704e84',
                 'astral': '81d5bb114c856109dadaf1077d927a9f297fe58d',
@@ -412,6 +407,37 @@ with zipfile.ZipFile(archive) as z:
                 violations.append('missing OunceCake GPL license text')
         except (KeyError, ValueError, UnicodeError):
             violations.append('missing or malformed OunceCake source/provenance')
+    civ7_manifest = 'mac2jb/packaging/OunceCake-Civ7-SHA256SUMS'
+    civ7_prefix = 'mac2jb/vendor/OunceCake-Civ7/'
+    if civ7_manifest in names:
+        try:
+            expected = {}
+            for line in z.read(civ7_manifest).decode().splitlines():
+                digest, relative = line.split('  ', 1)
+                if (len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)
+                        or relative.startswith('/') or '..' in PurePosixPath(relative).parts
+                        or '\\' in relative or civ7_prefix + relative in expected):
+                    raise ValueError('invalid OunceCake Civ7 manifest')
+                expected[civ7_prefix + relative] = digest
+            actual = {name for name in names if name.startswith(civ7_prefix) and not name.endswith('/')}
+            if len(expected) != 24 or actual != set(expected):
+                violations.append('incomplete or unexpected OunceCake Civ7 source distribution')
+            for name, digest in expected.items():
+                if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
+                    violations.append('missing or changed OunceCake Civ7 source: ' + name)
+            native = civ7_prefix + 'engine/oz-code/native-civ7.bin'
+            native_hash = 'e5f07bb69d0672ab1f195b8c6387ea4aa728c3b7bbbc7f80568ec1eb7288212a'
+            if hashlib.sha256(z.read(native)).hexdigest() != native_hash:
+                violations.append('changed pinned OunceCake Civ7 native image')
+            provenance = json.loads(z.read('mac2jb/packaging/OunceCake-Civ7-provenance.json'))
+            if (provenance.get('commit') != 'a645d48802146c2d0da23da19efadb74b66c117f'
+                    or provenance.get('license') != 'GPLv2'
+                    or provenance.get('nativeImage', {}).get('sha256') != native_hash):
+                violations.append('changed OunceCake Civ7 upstream provenance')
+            if b'GNU GENERAL PUBLIC LICENSE' not in z.read(civ7_prefix + 'LICENSE'):
+                violations.append('missing OunceCake Civ7 GPL license text')
+        except (KeyError, ValueError, UnicodeError):
+            violations.append('missing or malformed OunceCake Civ7 source/provenance')
     gpu_manifest = 'mac2jb/packaging/GPUBrewLauncher-SHA256SUMS'
     gpu_prefix = 'mac2jb/vendor/GPUBrewLauncher/'
     if gpu_manifest in names:
@@ -435,30 +461,6 @@ with zipfile.ZipFile(archive) as z:
                 violations.append('changed GPUBrewLauncher upstream provenance')
         except (KeyError, ValueError, UnicodeError):
             violations.append('missing or malformed GPUBrewLauncher source/provenance')
-    audit_inventory('Gravity Circuit RCE',
-                    'mac2jb/packaging/GravCirc-v1.1-SHA256SUMS',
-                    'mac2jb/integrations/gravcirc-rce/upstream-v1.1/',
-                    'b0fa4f71298e45ed274943df83e843462fc35c70e913f7c3042c26ffb43fd15e', 21)
-    try:
-        gravcirc = json.loads(z.read('mac2jb/packaging/GravCirc-v1.1.json'))
-        packaged_save = z.read('mac2jb/integrations/gravcirc-rce/GC-v1.1.zip')
-        if (gravcirc.get('repository') != 'https://github.com/figurophobia/GravCirc-Switch-rce' or
-                gravcirc.get('revision') != '3bc0851863f2d2b586e73bec822ce1fa31d23b43' or
-                gravcirc.get('release') != 'v1.1' or
-                gravcirc.get('titleId') != '01008d9019128000' or
-                gravcirc.get('sourceManifest') != 'packaging/GravCirc-v1.1-SHA256SUMS' or
-                gravcirc.get('sourceManifestSha256') != 'b0fa4f71298e45ed274943df83e843462fc35c70e913f7c3042c26ffb43fd15e' or
-                gravcirc.get('sourceFileCount') != 21 or
-                gravcirc.get('archive', {}).get('path') != 'integrations/gravcirc-rce/GC-v1.1.zip' or
-                gravcirc.get('archive', {}).get('installableFiles') != 18 or
-                hashlib.sha256(packaged_save).hexdigest() !=
-                'ab018f3e9947dba3750f18b64100fb76366559fce94bd45db3799fcf9028709e'):
-            violations.append('changed Gravity Circuit save or provenance')
-        if (z.read('mac2jb/integrations/gravcirc-rce/LICENSE') !=
-                z.read('mac2jb/integrations/gravcirc-rce/upstream-v1.1/LICENSE')):
-            violations.append('changed Gravity Circuit license notice')
-    except (KeyError, ValueError, TypeError, AttributeError, UnicodeError):
-        violations.append('missing or malformed Gravity Circuit save/provenance')
     # The app overlay must be the exact published package, independently of
     # the frozen GPUBrewLauncher tree and its unchanged integrity manifest.
     ftpd_manifest = 'mac2jb/packaging/ftpd-sb-v0.1.0-SHA256SUMS'
@@ -497,11 +499,16 @@ with zipfile.ZipFile(archive) as z:
         payload = z.read('mac2jb/integrations/civswitch/payload.txt')
         if (civ.get('upstream') != 'https://github.com/Gezine/CivSwitch' or
                 civ.get('commit') != '10b38e9f5abfd13a4b0bec8af24b026e44567da3' or
+                civ.get('installerUpstreamCommit') != 'b1aa49dfbad6858c83da7b471baa49603f686258' or
+                civ.get('installerSha256') != 'e04dcc41c1ad85d5a9c138edd93bd2f7eb752fda872a258c1e1906eb1136c349' or
                 civ.get('license') != 'MIT' or civ.get('payloadLines') != 87 or
                 civ.get('payloadSha256') != '6ea468ca392558ab2f8f2384200745a8619187cebc5357d5e985fd3ffdada37d' or
                 hashlib.sha256(payload).hexdigest() != civ['payloadSha256'] or
                 len(payload.splitlines()) != 87):
             violations.append('changed CivSwitch source or payload provenance')
+        installer = 'mac2jb/vendor/CivSwitch/installer-creator/install.py'
+        if installer not in names or hashlib.sha256(z.read(installer)).hexdigest() != civ['installerSha256']:
+            violations.append('changed CivSwitch upstream installer')
         for name, expected in civ.get('files', {}).items():
             member = 'mac2jb/vendor/CivSwitch/' + name
             if member not in names or hashlib.sha256(z.read(member)).hexdigest() != expected:

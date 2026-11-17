@@ -1,0 +1,36 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "functions": {
+    "tick": {
+      "offset": 1214048,
+      "bytes": "20e03bd5c0035fd6",
+      "sourceSymbol": "_ZN2nn2os13GetSystemTickEv"
+    },
+    "frequency": {
+      "offset": 1214096,
+      "bytes": "00009f528024a072c0035fd6",
+      "returnedHz": 19200000,
+      "sourceSymbol": "_ZN2nn2os22GetSystemTickFrequencyEv"
+    },
+    "priority": {
+      "offset": 1213664,
+      "bytes": "0088c079c0035fd6",
+      "sourceSymbol": "_ZN2nn2os17GetThreadPriorityEPKNS0_10ThreadTypeE"
+    },
+    "sleep": {
+      "offset": 1213728,
+      "bytes": "3c621214",
+      "sourceSymbol": "_ZN2nn2os11SleepThreadENS_8TimeSpanE"
+    }
+  },
+  "nativeCounterHz": 31250000,
+  "liveMeasurements": [
+    {"intervalNs": 100000000, "elapsedTicks": 3137205, "measuredHz": 31372050},
+    {"intervalNs": 1000000000, "elapsedTicks": 31264192, "measuredHz": 31264192},
+    {"intervalNs": 1000000000, "elapsedTicks": 31263876, "measuredHz": 31263876}
+  ]
+}

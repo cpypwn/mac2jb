@@ -27,7 +27,7 @@ struct lfs_lazy_config {
  struct lfs_lazy_api api;
  void *memory_manager;
  uint32_t (*allocate_block)(void *,void **,uint64_t);
- uint32_t (*free_block)(void *,void *,uint64_t);
+ void (*free_block)(void *,void *,uint64_t);
  uint32_t (*mount_current)(void *,struct ns_out *);
  uint32_t (*mount_program)(void *,struct ns_out *,uint64_t);
  uint32_t (*mount_data)(void *,struct ns_out *,uint64_t,uint32_t);

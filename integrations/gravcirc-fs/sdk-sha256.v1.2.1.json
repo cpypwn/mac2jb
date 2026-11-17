@@ -1,0 +1,42 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "status": "live-qualified",
+  "liveVerified": true,
+  "liveQualification": {
+    "sdkBase": "0x7893381000",
+    "vectorsMatched": 2,
+    "outputGuardsIntact": true,
+    "inputsUnchanged": true,
+    "ownedBuffersReleasedWithLuaChunk": true,
+    "fsBridgeStageAfter": "accept"
+  },
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "function": {
+    "sourceSymbol": "_ZN2nn6crypto18GenerateSha256HashEPvmPKvm",
+    "symbolIndex": 17765,
+    "offset": 19632,
+    "size": 108,
+    "bytes": "ffc302d1fd7b08a9fd030291f65709a9f44f0aa9f60300aae0230091ff7b00b9f30303aaf40302aaf50301aa71d51694e0230091e10314aae20313aa61d51694e0230091e10316aae20315aa6dd51694e023009163d51694f44f4aa9f65749a9fd7b48a9ffc30291c0035fd6",
+    "sha256": "88d784dccfb4c537550d0704aadf7294dfc9200c7d6423292555919e8e816b0b",
+    "abi": "void GenerateSha256Hash(void *digest, size_t digestSize, const void *input, size_t inputSize)",
+    "evidence": "defined dynamic symbol; AArch64 wrapper preserves x0-x3, initializes local context, updates from x2/x3, writes digest through x0/x1, then finalizes"
+  },
+  "adjacentSymbol": {
+    "sourceSymbol": "_ZN2nn6crypto14GenerateSha256EPvmPKvm",
+    "offset": 19520,
+    "size": 108
+  },
+  "vectors": [
+    {
+      "inputHex": "",
+      "expected": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "inputHex": "313233343536373839",
+      "expected": "15e2b0d3c33891ebb0f1ef609ec419420c20e320ce94c65fbc8c3312448eb225"
+    }
+  ]
+}

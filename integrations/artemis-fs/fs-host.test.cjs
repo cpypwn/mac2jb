@@ -7,8 +7,9 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const {PROFILES, PROFILE_FIELDS, PROFILE_PROBE, parseStatus, parseProfile,
-  runCompatibilityCheck} = require('./fs-host.cjs');
-const {stage, verifiedRun} = require('./runtime-host.cjs');
+  runCompatibilityCheck, stageTimeoutMinutes, parseArguments} = require('./fs-host.cjs');
+const {stage, verifiedRun, runFsHost} = require('./runtime-host.cjs');
+const {configuredTimeout} = require('./kit/port/engine/shared/stages.cjs');
 
 function profileReply(game, changes = {}) {
   const profile = {...PROFILES[game], ...changes};
@@ -17,6 +18,39 @@ function profileReply(game, changes = {}) {
     ...PROFILE_FIELDS.map(field => profile[field].toString(16))];
   return 'status: ok\noutput:\n' + values.join('\t') + '\n';
 }
+
+test('Artemis host stage timeout is bounded and parsed from the GUI flag', async () => {
+  const positional = ['10.0.0.199', '10.0.0.205', '/tmp/mac2jb-session'];
+  assert.equal(parseArguments(positional).stageTimeoutMinutes, 10);
+  assert.equal(parseArguments([...positional, '--host-stage-timeout-minutes', '45'])
+    .stageTimeoutMinutes, 45);
+  assert.equal(stageTimeoutMinutes(1), 1);
+  assert.equal(stageTimeoutMinutes(60), 60);
+  for (const value of ['0', '61', '1.5', 'n/a']) {
+    assert.throws(() => parseArguments([...positional, '--host-stage-timeout-minutes', value]),
+      /between 1 and 60 minutes/);
+  }
+  assert.throws(() => parseArguments([...positional, '--unknown', '20']), /usage:/);
+  assert.throws(() => parseArguments([...positional, '--host-stage-timeout-minutes']), /usage:/);
+  await assert.rejects(() => runFsHost({stageTimeoutMinutes: 61}), /between 1 and 60 minutes/);
+});
+
+test('Artemis stage and acquisition share the configured timeout', () => {
+  const previous = process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS;
+  try {
+    delete process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS;
+    assert.equal(configuredTimeout(), 600000);
+    process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS = '60000';
+    assert.equal(configuredTimeout(), 60000);
+    process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS = '3600000';
+    assert.equal(configuredTimeout(), 3600000);
+    process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS = '3600001';
+    assert.equal(configuredTimeout(), 600000);
+  } finally {
+    if (previous === undefined) delete process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS;
+    else process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS = previous;
+  }
+});
 
 test('accepts current Seedsow and Nora v2 HTTP status banners', () => {
   assert.equal(parseStatus('n2h HTTP server (seedsow)\nPOST /eval\n'), 'seedsow');

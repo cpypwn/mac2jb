@@ -2,6 +2,34 @@
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const u32 = n => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
 const pointer = (b, o) => Number(b.readBigUInt64LE(o));
+const WAKE_SETTLE_MS = 100;
+
+// Keep the event asserted only for a bounded quiet wake interval.
+// Retained FS reads must not run until the event has been cleared: a repeatedly
+// selected event can starve the FS request used to inspect the waiter epoch.
+async function wakeAndClear(memory, event, restoration) {
+  let failure;
+  try {
+    const signaled = await memory.request({command: 'root-native-event-signal', handle: event.write});
+    restoration.signal = {at: signaled.at, result: signaled.result};
+    check(signaled.result === 0, 'Restoration event did not signal');
+    await new Promise(resolve => setTimeout(resolve, WAKE_SETTLE_MS));
+  } catch (error) {
+    failure = error;
+    restoration.wakeError = error.message;
+  } finally {
+    try {
+      const cleared = await memory.request({command: 'root-native-event-clear', handle: event.read});
+      restoration.clear = {at: cleared.at, result: cleared.result};
+      check(cleared.result === 0, 'Restoration event did not clear');
+    } catch (error) {
+      restoration.clearError = error.message;
+      if (failure) failure.clearError = error.message;
+      else failure = error;
+    }
+  }
+  if (failure) throw failure;
+}
 
 class Gate {
   constructor(memory, row, workers, waiters, serverCopy, event = null) {
@@ -115,20 +143,20 @@ class Gate {
     }
     await this.memory.write(this.row.address + 0x30, u32(this.park), u32(this.row.wait));
     if (this.event) {
-      // Waking the old kernel wait object is safe even if the real handle has
-      // already become selectable. No synthetic selection or receipt marker
-      // is written after restoring the real handle.
+      // No synthetic selection or receipt marker is written after restoring
+      // the real handle. A fresh FS read must prove the old snapshot retired.
       this.parked = false;
       const epoch = await this.memory.u64(session.parent + 0x18);
-      const signaled = await this.memory.request({command: 'root-native-event-signal', handle: this.event.write});
-      check(!signaled.result, 'Restoration event did not signal');
+      const restoration = this.restoration = {event: true, snapshotRetired: false,
+        epochBefore: epoch.toString(), wakeSettleMs: WAKE_SETTLE_MS};
+      await wakeAndClear(this.memory, this.event, restoration);
       for (let i = 0; i < 30; i++) {
-        const changed = await this.memory.u64(session.parent + 0x18) !== epoch;
+        const currentEpoch = await this.memory.u64(session.parent + 0x18);
         const current = await this.inspect(false);
-        if (changed || current.state === 2 || current.state === 3 || current.parent !== session.parent) {
-          const cleared = await this.memory.request({command: 'root-native-event-clear', handle: this.event.read});
-          check(!cleared.result, 'Restoration event did not clear');
-          this.restoration = {event: true, snapshotRetired: true};
+        if (currentEpoch !== epoch || current.state === 2 || current.state === 3 ||
+            current.parent !== session.parent) {
+          Object.assign(restoration, {snapshotRetired: true, epochAfter: currentEpoch.toString(),
+            state: current.state, parent: current.parent, checks: i + 1});
           return;
         }
       }
@@ -164,26 +192,31 @@ async function restoreGates(gates) {
   }
   for (const gate of parked)
     await memory.write(gate.row.address + 0x30, u32(gate.park), u32(gate.row.wait));
-  const parent = sessions[0].parent, epoch = await memory.u64(parent + 0x18);
+  const epochs = [];
+  for (const session of sessions) epochs.push(await memory.u64(session.parent + 0x18));
   for (const gate of parked) gate.parked = false;
-  const signaled = await memory.request({command: 'root-native-event-signal', handle: event.write});
-  check(!signaled.result, 'Grouped restoration event did not signal');
-  try {
-    for (let i = 0; i < 30; i++) {
-      const current = await parked[0].inspect(false);
-      if (await memory.u64(parent + 0x18) === epoch && current.parent === parent &&
-          current.state !== 2 && current.state !== 3) continue;
-      for (const gate of parked) {
-        await gate.inspect(false);
-        gate.restoration = {event: true, snapshotRetired: true, grouped: parked.length};
-      }
+  const restoration = {event: true, snapshotRetired: false, grouped: parked.length,
+    epochBefore: epochs.map(epoch => epoch.toString()), wakeSettleMs: WAKE_SETTLE_MS};
+  for (const gate of parked) gate.restoration = restoration;
+  await wakeAndClear(memory, event, restoration);
+  for (let i = 0; i < 30; i++) {
+    const snapshots = [];
+    for (let n = 0; n < parked.length; n++) {
+      const current = await parked[n].inspect(false);
+      const currentEpoch = await memory.u64(sessions[n].parent + 0x18);
+      snapshots.push({row: parked[n].row.address, parentBefore: sessions[n].parent,
+        parentAfter: current.parent, epochBefore: epochs[n].toString(),
+        epochAfter: currentEpoch.toString(), state: current.state,
+        retired: currentEpoch !== epochs[n] || current.parent !== sessions[n].parent ||
+          current.state === 2 || current.state === 3});
+    }
+    restoration.snapshots = snapshots;
+    if (snapshots.every(snapshot => snapshot.retired)) {
+      Object.assign(restoration, {snapshotRetired: true, checks: i + 1});
       return;
     }
-    throw Error('Grouped restoration did not retire the old wait snapshot');
-  } finally {
-    const cleared = await memory.request({command: 'root-native-event-clear', handle: event.read});
-    check(!cleared.result, 'Grouped restoration event did not clear');
   }
+  throw Error('Grouped restoration did not retire the old wait snapshot');
 }
 
 module.exports = {Gate, restoreGates};

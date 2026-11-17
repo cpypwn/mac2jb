@@ -1,12 +1,12 @@
+const {runPath} = require('../../shared/paths.cjs');
 const fs = require('node:fs/promises');
-const path = require('node:path');
 const {connect} = require("../tools/fs-memory.cjs");
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const ptr = (b, o = 0) => Number(b.readBigUInt64LE(o));
 
 async function main() {
   const memory = await connect();
-  const read = name => fs.readFile(path.join(__dirname, memory.info.session + name)).then(JSON.parse);
+  const read = name => fs.readFile(runPath('switch2', 'ro', memory.info.session + name)).then(JSON.parse);
   const layout = await read('-layout.json'), proof = await read('-loader-root-copy.json');
   check(layout.report === memory.reportFile && proof.report === memory.reportFile, 'Stale session layout');
   check(layout.slots >= layout.range.address && layout.slots + 0x10000 <= layout.range.address + layout.range.length,
@@ -25,7 +25,7 @@ async function main() {
   }
   check(rows.length === 2 && new Set(rows.map(r => r.domain)).size === 2, 'Server bindings are not unique');
   const binding = {session: memory.info.session, report: memory.reportFile, rows, waiters: layout.waiters};
-  await fs.writeFile(path.join(__dirname, memory.info.session + '-bound-sessions.json'), JSON.stringify(binding, null, 2));
+  await fs.writeFile(runPath('switch2', 'ro', memory.info.session + '-bound-sessions.json'), JSON.stringify(binding, null, 2));
 
   const state = await memory.request({command: 'root-native-info'});
   const code = await memory.request({command: 'root-native-code-domain', handle: state.codeFileSystems[0].handle});
@@ -42,8 +42,9 @@ async function main() {
       metadata: ptr(entry, 0x28), vptr: ptr(header), raw: entry.toString('hex'), header: header.toString('hex')});
   }
   check(types[0].metadata === types[1].metadata && types[0].vptr === types[1].vptr, 'Filesystem adapter types differ');
-  await fs.writeFile(path.join(__dirname, memory.info.session + '-filesystem-types.json'),
+  await fs.writeFile(runPath('switch2', 'ro', memory.info.session + '-filesystem-types.json'),
     JSON.stringify({session: memory.info.session, report: memory.reportFile, rows: types, compatible: true}, null, 2));
-  console.log(JSON.stringify({session: memory.info.session, rows, types}));
+  return {session: memory.info.session, rows, types};
 }
-main().catch(e => { console.error(e.stack); process.exitCode = 1; });
+module.exports = {main};
+if (require.main === module) main().then(result => console.log(JSON.stringify(result))).catch(e => { console.error(e.stack); process.exitCode = 1; });

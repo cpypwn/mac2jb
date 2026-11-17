@@ -1,0 +1,18 @@
+{
+  "source": "Gravity Circuit v1.2.1 SDK capture; see integrations/gravcirc-fs/sdk-timing.v1.2.1.json",
+  "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52",
+  "functions": {
+    "tick": {
+      "offset": 1214048,
+      "bytes": "20e03bd5c0035fd6"
+    },
+    "frequency": {
+      "offset": 1214096,
+      "bytes": "00009f528024a072c0035fd6"
+    },
+    "priority": {
+      "offset": 1213664,
+      "bytes": "0088c079c0035fd6"
+    }
+  }
+}

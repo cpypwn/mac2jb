@@ -42,6 +42,17 @@ async function dispatch(context, request, state, domain) {
     check(replies.every(r => r.result === 0), 'Foreign thread cancellation was rejected');
     return replies;
   }
+  if (command === 'worker-allowlist') {
+    // PROCESS-ESCAPE-PLAN stage A (opt-in): widen the pm-launch title gate for one
+    // experiment boot only. The default (no allowlist) is unchanged: only the
+    // qualified RO replacement may be launched.
+    check(Array.isArray(request.titles) && request.titles.length >= 1 && request.titles.length <= 8 &&
+      request.titles.every(t => typeof t === 'string' && /^0x[0-9a-fA-F]{16}$/.test(t)),
+      'Launch allowlist needs 1..8 hex title IDs');
+    state.launchAllowlist = request.titles.map(t => BigInt(t));
+    await save();
+    return {allowlist: request.titles};
+  }
   if (command === 'worker-prepare') {
     check(!s.threads.size && (!state.worker || state.worker.joined), 'A native worker is still active');
     await workerCode.verifyWorkerCode(s);
@@ -111,7 +122,10 @@ async function dispatch(context, request, state, domain) {
         const flags = Number(request.flags ?? 0);
         check(flags === 0 || flags === 0x10, 'Unsupported launch flags');
         const storage = Number(request.storage ?? 3);
-        check(storage === 3 && request.title === programId(target),
+        // PROCESS-ESCAPE-PLAN stage A: allowlist titles (state.launchAllowlist, set by
+        // root-native-worker-allowlist) may be launched in addition to the RO replacement.
+        check(storage === 3 && (request.title === programId(target) ||
+          (state.launchAllowlist || []).includes(BigInt(request.title))),
           'Only the qualified RO replacement may be launched');
         const input = Buffer.alloc(24); input.writeUInt32LE(flags);
         input.writeBigUInt64LE(BigInt(request.title), 8); input[16] = storage;

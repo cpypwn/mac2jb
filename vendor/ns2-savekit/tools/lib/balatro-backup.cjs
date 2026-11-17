@@ -18,7 +18,7 @@ function safeSavePath(value) {
   return typeof value === 'string' && value.startsWith('/') && value !== '/' &&
     !value.endsWith('/') && !/[\\\0]/.test(value) &&
     !value.split('/').some(part => part === '.' || part === '..') &&
-    path.posix.normalize(value) === value && Buffer.byteLength(value, 'utf8') < 0x301;
+    path.posix.normalize(value) === value && Buffer.byteLength(value, 'utf8') < 0x800;
 }
 
 // Check parents too: lstat of the leaf alone does not detect a symlinked .lovegame.

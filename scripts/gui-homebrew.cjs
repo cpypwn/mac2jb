@@ -71,17 +71,23 @@ function writeJSON(file, value, exclusive = false) {
 async function patchedHostSource(root, directory) {
   const runs = path.dirname(directory), host = path.dirname(runs);
   const vendor = await fs.realpath(path.join(root, 'vendor'));
+  const hostName = path.basename(host);
   if (path.basename(runs) !== 'runs' || path.dirname(host) !== vendor ||
-      !/^ns2-savekit-host-[A-Za-z0-9]{6}$/.test(path.basename(host))) return null;
-  await privatePath(host, true);
-  await privatePath(runs, true);
+      hostName !== 'ns2jb' && !/^ns2-savekit-host-[A-Za-z0-9]{6}$/.test(hostName)) return null;
+  if (hostName === 'ns2jb' && !sync.existsSync(path.join(root, 'selected-host.json'))) return null;
   const {selectedProfile, sourceDigest} = require('./host-profiles.cjs');
   const profile = selectedProfile(root);
+  if (hostName === 'ns2jb' && sourceDigest(host, profile) === profile.sourceSha256) return null;
+  await privatePath(host, true);
+  await privatePath(runs, true);
   check(profile.supportsSaveKit,
     'The patched host requires a selected SaveKit-capable source.');
-  const original = require('./prepare-seedsow-host.cjs').verify(root, true).source;
+  const savekit = require('./prepare-seedsow-host.cjs');
+  const expected = savekit.expectedPatchedSource(root, profile.id);
+  const original = expected.sourceDirectory;
   const overlays = new Set([
     'engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+    'engine/switch2/app/filesystem.cjs',
     'engine/switch2/app/mounted-save.cjs'
   ]);
   const hash = file => crypto.createHash('sha256').update(sync.readFileSync(file)).digest('hex');
@@ -101,14 +107,16 @@ async function patchedHostSource(root, directory) {
       if (entry.isDirectory()) compare(name);
       else {
         check(entry.isFile() && found.isFile(), 'The patched host source contains an unexpected entry: ' + name);
-        const reference = overlays.has(name) ? path.join(root, 'vendor/ns2-savekit/overlay', name) :
+        const reference = overlays.has(name) ? savekit.overlayPath(root, profile.id, name) :
           path.join(original, name);
         check(hash(file) === hash(reference), 'The patched host source changed: ' + name);
       }
     }
   }
   compare();
-  return {directory: host, digest: sourceDigest(host, profile), profileId: profile.id};
+  const digest = sourceDigest(host, profile);
+  check(digest === expected.sourceSha256, 'The patched host source changed.');
+  return {directory: host, digest, profileId: profile.id};
 }
 async function validateRun(root, candidate, verifySession) {
   const directory = await privatePath(candidate,true);
@@ -117,7 +125,7 @@ async function validateRun(root, candidate, verifySession) {
   const runs = await fs.realpath(path.join(root,'vendor/ns2jb/runs')).catch(error=>{
     if(error.code==='ENOENT')return null;throw error;
   });
-  const patched = path.dirname(directory) === runs ? null : await patchedHostSource(root, directory);
+  const patched = await patchedHostSource(root, directory);
   if(path.dirname(directory)!==runs && !patched)
     await require('./rpc-attachment.cjs').validateManifest(root,directory);
   const proof = await verifySession(directory);
@@ -599,7 +607,7 @@ async function main(args = process.argv.slice(2), options = {}) {
   if(failure){failure.homebrewReported=true;throw failure;}
   return {directory,stopped:true};
 }
-module.exports={main,validateRun,proxyHandler,serveProxy,runtimeEnvironment,stageCustomApp,
+module.exports={main,validateRun,patchedHostSource,proxyHandler,serveProxy,runtimeEnvironment,stageCustomApp,
   stageCustomLauncher,preflightCustomApp,preflightCustomHomebrew,stages,owners,souljaOwners,applicationConfig};
 if(require.main===module)main().catch(error=>{
   if(error.homebrewReported){process.exitCode=1;return;}

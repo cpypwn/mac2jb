@@ -5,7 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const readline = require('node:readline');
 const {spawn} = require('node:child_process');
-const {runCompatibilityCheck, request} = require('./fs-host.cjs');
+const {runCompatibilityCheck, request, stageTimeoutMinutes} = require('./fs-host.cjs');
 
 const PREFIX = 'MAC2JB_ARTEMIS_FS ';
 const SOURCE = path.join(__dirname, 'kit', 'port');
@@ -96,6 +96,7 @@ async function verifiedStop(resultPath) {
 async function runFsHost(options) {
   const emit = options.emit || emitLine;
   const runtimeRoot = options.runtimeRoot;
+  const hostStageTimeout = stageTimeoutMinutes(options.stageTimeoutMinutes) * 60 * 1000;
   let child, host, staged, bridgeController, bridgePromise, heldProof;
   let stopping = false, bridgeError;
   const stop = () => {
@@ -119,7 +120,8 @@ async function runFsHost(options) {
     child = (options.spawn || spawn)(process.execPath,
       [path.join(staged.port, 'engine', 'run.cjs'), '--target', 'artemis-seedsow', '--rpc', options.macIp],
       {cwd: staged.port, env: {...process.env, NS2_TARGET:'artemis-seedsow',
-        NS2_CONSOLE_IP:options.consoleIp, NS2_ROM_MOUNT:'game', NS2_CONNECT_TIMEOUT_MS:'120000'},
+        NS2_CONSOLE_IP:options.consoleIp, NS2_ROM_MOUNT:'game', NS2_CONNECT_TIMEOUT_MS:'120000',
+        MAC2JB_HOST_STAGE_TIMEOUT_MS: String(hostStageTimeout)},
       stdio:['ignore','pipe','pipe']});
     host = monitor(child, emit);
     const script = await fs.readFile(staged.bridge, 'utf8');

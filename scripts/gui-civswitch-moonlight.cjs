@@ -18,11 +18,11 @@ function emit(type, fields = {}) {
 
 function verifyPin() {
   if (source.repository !== 'https://github.com/XITRIX/Moonlight-CivSwitch' ||
-      source.tag !== 'v0.1.3' ||
-      source.asset !== 'https://github.com/XITRIX/Moonlight-CivSwitch/releases/download/v0.1.3/moonlight.civapp' ||
-      source.assetSize !== 1953490 ||
-      source.assetSha256 !== '7986a1655431a6fbddc7a48d6c0ea9c76a5fd487f97ac446ad2155aeac5e35fc' ||
-      source.packageId !== 'moonlight-civswitch' || source.packageRelease !== '0.1.3')
+      source.tag !== 'v0.1.4' ||
+      source.asset !== 'https://github.com/XITRIX/Moonlight-CivSwitch/releases/download/v0.1.4/moonlight.civapp' ||
+      source.assetSize !== 3850747 ||
+      source.assetSha256 !== '42e262000771d5edfb2021428ccb5e0f7071a4fdbe3739b16b99338fc76702a8' ||
+      source.packageId !== 'moonlight-civswitch' || source.packageRelease !== '0.1.4')
     throw Error('Moonlight release pin is invalid');
   return source;
 }
@@ -70,7 +70,7 @@ async function cacheDirectory(root, options = {}) {
 }
 
 async function cachePath(root, options = {}) {
-  return path.join(await cacheDirectory(root, options), 'moonlight-v0.1.3.civapp');
+  return path.join(await cacheDirectory(root, options), 'moonlight-v0.1.4.civapp');
 }
 
 async function readCached(root, pin = source, options = {}) {

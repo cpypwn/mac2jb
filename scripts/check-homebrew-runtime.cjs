@@ -5,6 +5,12 @@ const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:
 const crypto=require('node:crypto'),{execFile}=require('node:child_process'),{promisify}=require('node:util');
 const run=promisify(execFile);
 async function main(root=path.resolve(__dirname,'..')) {
+  let testBuild=false;
+  try {
+    testBuild=JSON.parse(await fs.readFile(path.join(root,'packaging/test-build.json'),'utf8')).testBuild===true;
+  } catch(error) {
+    if(error.code!=='ENOENT')throw error;
+  }
   const runtime=path.join(root,'homebrew');
   const manifest=JSON.parse(await fs.readFile(path.join(runtime,'manifest.json'),'utf8'));
   for(const entry of manifest.files) {
@@ -28,11 +34,12 @@ async function main(root=path.resolve(__dirname,'..')) {
       const data=await catalog.scan(launcherEnv.HB_APPS_DIR);
       if(data.rejected.length||!data.apps.length)throw Error(selected.name+' bundled app validation failed: '+JSON.stringify(data.rejected));
       const required=application==='hblauncher'?['hello-world','ftpd-sb']:
-        application==='mintbrew'?['hello-world','froggy-road','ftpd-sb','chip8-test','ouncecake','stremio-experimental']:
+        application==='mintbrew'?['hello-world','froggy-road','ftpd-sb','chip8-test','ouncecake','stremio-experimental',
+          ...(testBuild?['mintnes','mintftp']:[])]:
           ['hello-world','froggy-road','ftpd-sb'];
       for(const id of required)
         if(!data.apps.some(app=>app.id===id))throw Error('Missing bundled '+selected.name+' app: '+id);
-      if(application==='mintbrew'&&data.apps.some(app=>app.id==='mintnes'||app.id==='mintftp'))
+      if(application==='mintbrew'&&!testBuild&&data.apps.some(app=>app.id==='mintnes'||app.id==='mintftp'))
         throw Error('Unreleased MintBrew app is still bundled');
       for(const stage of ['vert','frag','comp'])
         await run(launcherEnv.SPIRV_VAL,['--target-env','vulkan1.0',path.join(vendor,'homebrew-launcher/shaders/launcher.'+stage+'.spv')],{env:launcherEnv});

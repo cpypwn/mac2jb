@@ -18,6 +18,10 @@ const overlays = new Map([
   ['engine/switch2/ro/ncm.cjs', {
     original: 'fdda25755a8023356d92995e9493f6ab515a69bf91a334e544fd66d5e289f7f6',
     patched: '36b76a1a47193f97005672710367ef819a4f58ad17eaa798871b9924d88f55cf'
+  }],
+  ['engine/switch2/app/filesystem.cjs', {
+    original: '2b26eea0e99a1e4cbd9135ea6c0cd45ab5bf3d45729747ffdcec9cdfeb554148',
+    patched: '80406d6efb18c86a86640bd265538fee6c4d50f8e247a57dcd091ecf95c93c4d'
   }]
 ]);
 const memoryRelative = 'engine/switch2/memory/fs-memory-control.cjs';
@@ -71,7 +75,7 @@ async function sourceFiles(directory, relative = '') {
       (info.mode & 0o022) === 0, 'Untrusted CivSwitch source folder: '+folder);
     for (const item of await fs.readdir(folder, {withFileTypes:true})) {
       const name = prefix ? prefix+'/'+item.name : item.name;
-      if (name === 'engine/runs' || name === markerName) continue;
+      if (name === 'engine/runs' || name === markerName || item.name === '.DS_Store') continue;
       check(item.isFile() || item.isDirectory(), 'Unexpected CivSwitch source entry: '+name);
       if (item.isDirectory()) await walk(path.join(folder, item.name), name);
       else entries.set(name, await regular(path.join(folder, item.name)));
@@ -89,7 +93,7 @@ async function bundledFiles() {
   }
   check(files.size === provenance.portFileCount &&
     digest.digest('hex') === provenance.portTreeSha256 &&
-    provenance.portTreeSha256 === 'a4478da994213f31097fd95ee2420f1cbb81592c64b67f51802a0c82465439a8',
+    provenance.portTreeSha256 === '0780fed8b87db5bb6e4f7cd531987fefc868714c316d8fac0f884f934db3fec3',
     'The bundled CivSwitch FS source changed.');
   return files;
 }

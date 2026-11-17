@@ -1,0 +1,24 @@
+{
+  "name": "civswitchfs",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CivSwitch FS privilege-escalation research payload",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "persist:build": "node tools/persist-build.mjs",
+    "persist:install": "node tools/persist-install.mjs",
+    "persist:chain": "node tools/persist-install.mjs --chain",
+    "send": "node tools/send.mjs",
+    "send:chain": "node tools/send.mjs --entry src/chain.mjs",
+    "check": "node tools/check.mjs",
+    "example:user-storage": "node tools/send.mjs --entry examples/user-storage.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

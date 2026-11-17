@@ -1,0 +1,266 @@
+{
+  "gameProfile": "balatro-physical-base-v1.0.1f",
+  "runtimeVersion": "1.0.1f-FULL",
+  "sdkCodeSha256": "47cbfaea43e00261b05dc2327299637890727b476eeac7f42aaba397b108d5f9",
+  "capture": {
+    "code": {
+      "file": "sdk-1.0.1f-code.bin",
+      "size": 6160384
+    },
+    "dynsym": {
+      "file": "sdk-1.0.1f-dynsym.bin",
+      "size": 663336,
+      "sha256": "7fb5f81ba83169b7c786133e30bab2d05a94e7fdea3f3625d979112fb0d3214d",
+      "entrySize": 24
+    },
+    "dynstr": {
+      "file": "sdk-1.0.1f-dynstr.bin",
+      "size": 3041357,
+      "sha256": "8730b1730031846cf8e98dd029071d88a02a4e016cd0f856e7950712aef3f462"
+    }
+  },
+  "functions": {
+    "entryType": {
+      "symbol": "_ZN2nn2fs12GetEntryTypeEPNS0_18DirectoryEntryTypeEPKc",
+      "offset": 670608,
+      "size": 480,
+      "head": "ffc301d1fd7b03a9f85f04a9f65705a9",
+      "sha256": "06690ead2c5b04d6d1a441154a3f212acee1fb88c46b514f123630b251a75ad8",
+      "arguments": [
+        "x0:DirectoryEntryType* (4-byte output)",
+        "x1:const char* path"
+      ],
+      "return": "w0:nn::Result",
+      "body": "ffc301d1fd7b03a9f85f04a9f65705a9f44f06a9fdc30091f30301aaf40300aa5c9414946004003602901494f70300aae0230091e1030091e20313aa4d951494f503002afb8f1494f80300aae1031f2af603152aff7f02a9ff7f01a9740000b455000035810240b9e0430091b9951494e70300aaa35000b063f83891655000f0a5ac3d91e00316aae10317aae20318aae4031faae60313aaaa951494e00316aa6095149480010037b508003510000014e0230091e1030091e20313aa2d951494f503002af603002ae00316aa55951494c0fe0736a15000b021f83891e00316aa54951494f51300b99507003529941494e803002ae00740f96804003608a0413928040034cb8f1494f70300aae20340a9e10314aac3941494f503002ac58f1494f80300aae1031f2af603152aff7f02a9ff7f01a9740000b455000035810240b9e043009183951494e70300aaa35000b063f83891655000f0a5ac3d91e00316aae10317aae20318aae4031faae60313aa28951494e00316aa2a951494400100370f000014e20340f9e10314aaa5941494f503002af603002ae00316aa21951494e0000036a15000b021f83891e00316aa20951494f51300b915010035e003152af44f46a9f65745a9f85f44a9fd7b43a9ffc30191c0035fd6e04300913d8e1494"
+    },
+    "freeSpace": {
+      "symbol": "_ZN2nn2fs16GetFreeSpaceSizeEPlPKc",
+      "offset": 671088,
+      "size": 720,
+      "head": "ff4301d1fd7b01a9f71300f9f65703a9",
+      "sha256": "c75585b0b2bde72f4a791c77306752dc20515fd747243ccb6c9bc94b3ebec582",
+      "arguments": [
+        "x0:long* (8-byte output)",
+        "x1:const char* path"
+      ],
+      "return": "w0:nn::Result",
+      "body": "ff4301d1fd7b01a9f71300f9f65703a9f44f04a9fd43009157c08b52f705a072ff0700f9f40301aaf30300aaf503172ae0931494c0010036868f1494f60300aab30500b4940500b4e00314aac994149440040036a0630091e10314aad1941494f503002a8004003522000014b30200b4940200b4e00314aabe94149460060036a0630091e10314aac6941494f503002a80060034f603152ae00316aae994149400050036615000d021501391e00316aae8941494f50300b9350600348300001453c08b52f305a072e00313aadd941494e00e003646000014a0630091e1230091e20314aaab941494f503002a40000035f5031f2a578f1494e20300aae7031faae003152a730000b455000035670240f9635000d06350139185500090a5c82091e10316aae4031faae60314aa0d951494f603152ae00316aac294149440fb0737750b00350e000014a0630091e1230091e20314aa8f941494f503002ac0f9ff35e0031faab7941494a0000036615000d021501391e0031faab69414948d931494c0010036a80f40f908a1413968010034308f1494f60300aae00740f9a00400b4815000b021d423914a8b149420040034f502101125000014e00740f9400200b4815000b021d42391428b1494c001003448c08b52e805a07213011091e00313aa98941494f502101120060036615000d021501391e00313aa96941494f50300b932000014a00f40f9825000b042d42391e10313aa0f941494f503002af703002ae00317aa879414946003003720000014a00f40f9825000b042d42391e10313aa04941494f503002a028f1494e20300aae7031faaf703152a730000b455000035670240f9635000d06350139185500090a5c82091e00317aae10316aae4031faae60314aa6b941494e00317aa6d941494e0000036615000b021501391e00317aa6c941494f50300b915010035e003152af44f44a9f65743a9f71340f9fd7b41a9ff430191c0035fd6e0030091898d1494"
+    },
+    "createFile": {
+      "symbol": "_ZN2nn2fs10CreateFileEPKcl",
+      "offset": 667296,
+      "size": 8,
+      "head": "e2031f2a07991414",
+      "sha256": "c85c5e4edfa2034c5b05c0aa4b9ecdacf17e7150d10a413445be7af9c294a21f",
+      "arguments": [
+        "x0:const char* path",
+        "x1:long initialSize (signed 64-bit)"
+      ],
+      "return": "w0:nn::Result",
+      "behavior": "Sets w2 to zero before branching through the SDK PLT."
+    },
+    "createFileWithFlags": {
+      "symbol": "_ZN2nn2fs10CreateFileEPKcli",
+      "offset": 682784,
+      "size": 420,
+      "head": "ff8301d1fd7b02a9f85f03a9f65704a9",
+      "sha256": "fa06ef43c4e4a3557388982ea1c187710ece8409c59fbe11ae5b6360d35d8386",
+      "arguments": [
+        "x0:const char* path",
+        "x1:long initialSize (signed 64-bit)",
+        "w2:int createFlags"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "openFile": {
+      "symbol": "_ZN2nn2fs8OpenFileEPNS0_10FileHandleEPKci",
+      "offset": 671808,
+      "size": 548,
+      "head": "ff8301d1fd7b02a9f85f03a9f65704a9",
+      "sha256": "cbc8835a4113e03404e10a90e3220a6a6179cce61c21cec2cc821fd5c7b6c43e",
+      "arguments": [
+        "x0:FileHandle* (8-byte output)",
+        "x1:const char* path",
+        "w2:int openMode"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "writeFile": {
+      "symbol": "_ZN2nn2fs9WriteFileENS0_10FileHandleElPKvmRKNS0_11WriteOptionE",
+      "offset": 664992,
+      "size": 300,
+      "head": "ff4301d1fd7b01a9f85f02a9f65703a9",
+      "sha256": "ccfab2a08c9b452dfada6db3045f85f0f45d6ac7cf97de41e54314407b3ee050",
+      "arguments": [
+        "x0:FileHandle (8-byte value)",
+        "x1:long offset (signed 64-bit)",
+        "x2:const void* data",
+        "x3:unsigned long size (64-bit)",
+        "x4:const WriteOption* (4-byte flags)"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "flushFile": {
+      "symbol": "_ZN2nn2fs9FlushFileENS0_10FileHandleE",
+      "offset": 665296,
+      "size": 236,
+      "head": "ff0301d1fd7b01a9f65702a9f44f03a9",
+      "sha256": "9ff3959809ea0fc3964d38d0acabe2a57cc1fb33829f59be597e6e9c4efba4ae",
+      "arguments": [
+        "x0:FileHandle (8-byte value)"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "closeFile": {
+      "symbol": "_ZN2nn2fs9CloseFileENS0_10FileHandleE",
+      "offset": 664080,
+      "size": 140,
+      "head": "fd7bbea9f44f01a9fd030091f30300aa",
+      "sha256": "479764b58d2db74aad3ee7abbb7d0d1add7ff2e859c8e6f31af1e42ff9129cde",
+      "arguments": [
+        "x0:FileHandle (8-byte value)"
+      ],
+      "return": "void"
+    },
+    "readFile": {
+      "symbol": "_ZN2nn2fs8ReadFileENS0_10FileHandleElPvm",
+      "offset": 664464,
+      "size": 240,
+      "head": "ff0301d1fd7b01a9f51300f9f44f03a9",
+      "sha256": "b386d2be41860933665b0633334be5190c943c01a994e941d8c0393b17e413a1",
+      "arguments": [
+        "x0:FileHandle (8-byte value)",
+        "x1:long offset (signed 64-bit)",
+        "x2:void* output",
+        "x3:unsigned long size (64-bit)"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "getFileSize": {
+      "symbol": "_ZN2nn2fs11GetFileSizeEPlNS0_10FileHandleE",
+      "offset": 665792,
+      "size": 264,
+      "head": "fd7bbca9f70b00f9f65702a9f44f03a9",
+      "sha256": "03e23db48794b9c98c54ff75a7f1dc578d7f248f77b328108b616b4d6dcbf99b",
+      "arguments": [
+        "x0:long* (8-byte output)",
+        "x1:FileHandle (8-byte value)"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "setFileSize": {
+      "symbol": "_ZN2nn2fs11SetFileSizeENS0_10FileHandleEl",
+      "offset": 665536,
+      "size": 252,
+      "head": "fd7bbca9f70b00f9f65702a9f44f03a9",
+      "sha256": "a17b8480b1b3ddc321a27513b439af377273580e69bc8c8814bf4834d755b2df",
+      "arguments": [
+        "x0:FileHandle (8-byte value)",
+        "x1:long size (signed 64-bit)"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "commit": {
+      "symbol": "_ZN2nn2fs14CommitSaveDataEPKc",
+      "offset": 673536,
+      "size": 12,
+      "head": "615000d0214411919effff17",
+      "sha256": "732b83d3aa30521572540729a5a97dba3a52ae7f73cd64f106102914da22833c",
+      "arguments": [
+        "x0:const char* mountName"
+      ],
+      "return": "w0:nn::Result",
+      "behavior": "Loads a static option into x1 and branches to the shared internal routine at SDK +0xa4580."
+    },
+    "commitPlain": {
+      "symbol": "_ZN2nn2fs6CommitEPKc",
+      "offset": 673136,
+      "size": 12,
+      "head": "815000f0213c299102000014",
+      "sha256": "fa4c568c40ccfb47027e3e72d2eb9bd20f8cf57a82e6d2455a0101c1cd6b650e",
+      "arguments": [
+        "x0:const char* mountName"
+      ],
+      "return": "w0:nn::Result",
+      "behavior": "Loads a different static option into x1 and branches to the shared internal routine at SDK +0xa4580."
+    },
+    "commitWithOption": {
+      "symbol": "_ZN2nn2fs6CommitEPKcRKNS0_12CommitOptionE",
+      "offset": 681248,
+      "size": 772,
+      "head": "fd7bbca9fc5f01a9f65702a9f44f03a9",
+      "sha256": "70cd7de22fed0bbc961786ec33d274546f50e7f810f49da2556838581d3ea124",
+      "arguments": [
+        "x0:const char* mountName",
+        "x1:const CommitOption* (4-byte flags)"
+      ],
+      "return": "w0:nn::Result"
+    },
+    "deleteFile": {
+      "symbol": "_ZN2nn2fs10DeleteFileEPKc",
+      "offset": 667312,
+      "size": 384,
+      "head": "ff4301d1fd7b02a9f65703a9f44f04a9",
+      "sha256": "33226e6a2c1b31dc148611da8cad6533c882c060b66796f2b60629f3fc4fa572",
+      "arguments": [
+        "x0:const char* path"
+      ],
+      "return": "w0:nn::Result"
+    }
+  },
+  "flags": {
+    "openModeRead": 1,
+    "openModeWrite": 2,
+    "openModeReadWrite": 3,
+    "writeOptionNone": 0,
+    "writeOptionFlushBit": 1,
+    "resultSuccess": 0
+  },
+  "scratchSequence": {
+    "write": [
+      "createFile",
+      "openFile",
+      "writeFile",
+      "flushFile",
+      "closeFile",
+      "commit"
+    ],
+    "cleanup": [
+      "deleteFile",
+      "commit"
+    ],
+    "filePathPrefix": "save:/",
+    "commitMountName": "save"
+  },
+  "instructionEvidence": {
+    "createDefaultFlags": {
+      "offset": 667296,
+      "bytes": "e2031f2a"
+    },
+    "openModeArgument": {
+      "offset": 671832,
+      "bytes": "f503022a"
+    },
+    "openHandleStore": {
+      "offset": 672316,
+      "bytes": "680200f9"
+    },
+    "writeOptionArgument": {
+      "offset": 665016,
+      "bytes": "f70304aa"
+    },
+    "writeOptionLoad": {
+      "offset": 665096,
+      "bytes": "e90240b9"
+    },
+    "writeFlushBit": {
+      "offset": 651316,
+      "bytes": "c9000036"
+    },
+    "commitOptionLoad": {
+      "offset": 681316,
+      "bytes": "870240b9"
+    }
+  },
+  "qualification": "Offline captured-SDK ABI only; no Balatro file write, commit, or delete has been called."
+}

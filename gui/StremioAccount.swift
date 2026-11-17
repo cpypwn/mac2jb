@@ -275,6 +275,7 @@ private final class StremioAccountHTTP: NSObject, URLSessionTaskDelegate {
 final class StremioAccount: ObservableObject {
     @Published private(set) var signedIn = false
     @Published private(set) var signingIn = false
+    @Published private(set) var signInQRCodeURL: URL?
     @Published private(set) var status = "Sign in to use your Stremio add-ons, or continue without an account."
     @Published private(set) var addonURLs: [String] = []
     @Published private(set) var displayName: String?
@@ -365,6 +366,7 @@ final class StremioAccount: ObservableObject {
         operation?.cancel()
         deadlineTask?.cancel()
         deadlineTask = nil
+        signInQRCodeURL = nil
         if cancelCloud { cancelCloudWork() }
         generation = UUID()
         return generation
@@ -445,11 +447,18 @@ final class StremioAccount: ObservableObject {
         }
         return result
     }
-    func signIn() {
+    func signInWithQRCode() { signIn(openInBrowser: false) }
+    func openSignInPage() {
+        guard signingIn, let signInQRCodeURL else { return }
+        if !openBrowser(signInQRCodeURL) {
+            status = "Could not open the browser. Scan the QR code to continue signing in."
+        }
+    }
+    func signIn(openInBrowser: Bool = true) {
         guard !signingIn else { return }
         let id = begin(cancelCloud: true)
         signingIn = true
-        status = "Opening Stremio sign-in in your browser…"
+        status = "Getting a Stremio sign-in link…"
         operation = Task { [weak self] in
             guard let self else { return }
             defer { if generation == id { deadlineTask?.cancel(); deadlineTask = nil } }
@@ -461,8 +470,9 @@ final class StremioAccount: ObservableObject {
                 else { throw StremioAccountError.response }
                 let browser = try StremioAccountCodec.browserURL(link.link)
                 try ensureCurrent(id)
-                guard openBrowser(browser) else { throw StremioAccountError.browser }
-                status = "Complete sign-in on Stremio’s website. Waiting for approval…"
+                signInQRCodeURL = browser
+                if openInBrowser, !openBrowser(browser) { throw StremioAccountError.browser }
+                status = openInBrowser ? "Complete sign-in on Stremio’s website. Waiting for approval…" : "Scan the QR code with your phone and approve sign-in."
                 let timeout = localTimeout
                 deadlineTask = Task { [weak self] in
                     do { try await Task.sleep(for: timeout) } catch { return }
@@ -470,6 +480,7 @@ final class StremioAccount: ObservableObject {
                     operation?.cancel()
                     generation = UUID()
                     signingIn = false
+                    signInQRCodeURL = nil
                     status = "This Mac stopped waiting after five minutes. Start sign-in again for a new code."
                 }
                 let deadline = ContinuousClock.now.advanced(by: localTimeout)
@@ -489,6 +500,7 @@ final class StremioAccount: ObservableObject {
                 }
                 try ensureCurrent(id)
                 guard let linkToken else { throw StremioAccountError.expired }
+                signInQRCodeURL = nil
                 status = "Finishing Stremio sign-in…"
                 // The link API's authKey field is a link token, not the key to
                 // persist. This exchange is deliberately attempted only once.
@@ -511,6 +523,7 @@ final class StremioAccount: ObservableObject {
             } catch {
                 guard generation == id else { return }
                 signingIn = false
+                signInQRCodeURL = nil
                 if error is CancellationError { return }
                 if (error as? StremioAccountError) == .expired {
                     status = "This Mac stopped waiting after five minutes. Start sign-in again for a new code."

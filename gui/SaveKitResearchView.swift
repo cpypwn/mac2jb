@@ -96,7 +96,9 @@ struct SaveKitResearchView: View {
                         DisclosureGroup("\(group.name) · \(group.items.count)") {
                             VStack(alignment: .leading, spacing: 12) {
                                 ForEach(group.items) { item in sourceRow(item) }
-                            }.padding(.top, 8)
+                            }
+                            .padding(.top, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .font(.system(size: 11, weight: .semibold))
                     }
@@ -107,7 +109,9 @@ struct SaveKitResearchView: View {
                     Text(loadFailed ? "The bundled research catalog is unavailable." : "Preparing research catalog…")
                         .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
                 }
-            }.padding(.top, 10)
+            }
+            .padding(.top, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .font(.system(size: 12, weight: .semibold))
         .onAppear(perform: load)

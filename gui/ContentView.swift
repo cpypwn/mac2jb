@@ -1,10 +1,26 @@
 import SwiftUI
 import AppKit
 import Combine
+import CoreImage.CIFilterBuiltins
 import UniformTypeIdentifiers
 
 private let ink = Mac2jbTheme.ink
 private let teal = Mac2jbTheme.mint
+private let lastCivSwitchAddressKey = "lastCivSwitchConsoleAddress"
+
+private enum StremioSignInQR {
+    static let context = CIContext()
+
+    static func image(for url: URL) -> NSImage? {
+        let generator = CIFilter.qrCodeGenerator()
+        generator.message = Data(url.absoluteString.utf8)
+        generator.correctionLevel = "M"
+        guard let output = generator.outputImage,
+              let bitmap = context.createCGImage(output.transformed(by: CGAffineTransform(scaleX: 8, y: 8)),
+                                                 from: output.extent.applying(CGAffineTransform(scaleX: 8, y: 8))) else { return nil }
+        return NSImage(cgImage: bitmap, size: NSSize(width: bitmap.width, height: bitmap.height))
+    }
+}
 
 private struct ToolsContentHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
@@ -21,13 +37,19 @@ struct ContentView: View {
     @StateObject private var civSwitch = CivSwitchModel()
     @StateObject private var civApps = CivSwitchAppsModel()
     @StateObject private var civFS = CivSwitchFSModel()
+    @StateObject private var kaiHEN = KaiHENModel()
+    @StateObject private var civKaiHEN = CivSwitchKaiHENModel()
+    @StateObject private var seedsowKaiHEN = SeedsowKaiHENModel()
     @StateObject private var artemisFS = ArtemisFSModel()
     @StateObject private var dnsSwitch = DNSwitchModel()
+    @StateObject private var offlineEthernet = OfflineEthernetModel()
     @StateObject private var webKitResearch = WebKitResearchModel()
-    @StateObject private var saveGameUpdates = SaveGameUpdateChecker()
     @StateObject private var bundledUpdates = BundledUpdateChecker()
     @State private var dnsSwitchDestinationURL = ""
-    @State private var readyConfirmed = false
+    @State private var smilePowerConfirmed = false
+    @State private var smileDirectModeConfirmed = false
+    @State private var civLoaderConfirmed = false
+    @State private var seedsowHTTPConfirmed = false
     @State private var setupReady = false
     @State private var developerReady = false
     @State private var hostOnlyKeepRPC = false
@@ -37,11 +59,15 @@ struct ContentView: View {
     @State private var showNS2JBSetup = false
     @State private var showBootstrapSetup = false
     @State private var showCivSwitchSetup = false
+    @State private var showSeedsowKaiHENSetup = false
+    @State private var showKaiHENInstaller = false
+    @State private var showOfflineEthernetSetup = false
     @State private var showCivSwitchFirstTime = false
+    @State private var showOtherLoaderTools = false
     @State private var civSwitchReady = false
-    @State private var civSwitchConsoleAddress = ""
+    @State private var civSwitchConsoleAddress = UserDefaults.standard.string(forKey: lastCivSwitchAddressKey) ?? ""
     @State private var launchCivHomebrewAfterAttach = false
-    @State private var artemisConsoleAddress = ""
+    @AppStorage("civHomebrewLauncherChoice") private var civHomebrewLauncherChoice = "compatible"
     @State private var civFSAttachedRunPath: String?
     @State private var artemisFSAttachedRunPath: String?
     @State private var showDeveloperOptions = false
@@ -55,8 +81,6 @@ struct ContentView: View {
     @State private var failureText = ""
     @State private var failureLogURL: URL?
     @State private var showBundledUpdates = false
-    @State private var selectedLuaEditorSave: URL?
-    @State private var luaEditorSelectionMessage: String?
     @State private var nativeSDRomFolder = "/sd/roms/nes"
 
     private var canConfigure: Bool {
@@ -67,7 +91,7 @@ struct ContentView: View {
         showCivSwitchFirstTime && !showCivSwitchSetup &&
         [.typing, .verifying, .stopping].contains(civSwitch.phase)
     }
-    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning || model.sessionCleanupRunning || civSwitch.isRunning || civApps.isActive || civFS.isRunning || artemisFS.isRunning || !canConfigure }
+    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning || model.sessionCleanupRunning || civSwitch.isRunning || civApps.isActive || civFS.isRunning || kaiHEN.isRunning || civKaiHEN.isRunning || seedsowKaiHEN.isRunning || artemisFS.isRunning || !canConfigure }
     private var civSwitchAddressValid: Bool {
         let parts = civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: ".", omittingEmptySubsequences: false)
@@ -91,6 +115,7 @@ struct ContentView: View {
         (1...2000).contains(model.keyDelayMs) && (0...2000).contains(model.keyHoldMs) &&
         (0...2000).contains(model.enterSettleMs) && (1...16).contains(model.pollInterval) &&
         (1...120).contains(model.enumerationTimeoutSeconds) &&
+        (1...60).contains(model.hostStageTimeoutMinutes) &&
         [model.effectiveLoadConfirmWaitMs, model.loadWaitMs, model.runWaitMs, model.removeWaitMs]
             .allSatisfy { (0...120000).contains($0) }
     }
@@ -111,7 +136,8 @@ struct ContentView: View {
             return model.hostIsExploiting ? "Jailbreaking…" : model.activeRunMode.isHostOnly ? "Waiting for your console commands" : "Waiting for the Switch to respond"
         case .commands: return model.status
         case .commandsSent: return model.keyboardIsLoading ? "Loading…" : "Commands sent"
-        case .rpcHeld: return "You’re ready to go"
+        case .rpcHeld: return model.savekitSessionBlocked || model.savekitReturnBlocked
+            ? "Save action needs attention" : "You’re ready to go"
         case .dumpingFirmware: return "Saving system code"
         case .installingSave: return "You’re ready to go"
         case .rpcFinishing: return "Finishing up safely"
@@ -137,12 +163,19 @@ struct ContentView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(spacing: 16) {
-                            if showFailure { sessionFailureBanner }
+                            if showFailure && civFS.phase != .failed { sessionFailureBanner }
                             if let driverMessage { driverStatusBanner(driverMessage) }
                             if updater.state != .idle { updateStatus }
+                            if !civFS.isRunning && !kaiHEN.isRunning && !civKaiHEN.isRunning && !seedsowKaiHEN.isRunning && !artemisFS.isRunning && !civFirstTimeTransferActive { bundledUpdatesCard }
                             if canConfigure && civFirstTimeTransferActive {
                                 civSwitchTransferSession
-                            } else if canConfigure && civFS.isRunning {
+                            } else if canConfigure && kaiHEN.phase != .idle {
+                                kaiHENSession
+                            } else if canConfigure && civKaiHEN.phase != .idle {
+                                civKaiHENSession
+                            } else if canConfigure && seedsowKaiHEN.phase != .idle {
+                                seedsowKaiHENSession
+                            } else if canConfigure && (civFS.isRunning || civFS.phase == .failed) {
                                 civSwitchFSSession
                             } else if canConfigure && artemisFS.isRunning {
                                 artemisFSChecking
@@ -151,7 +184,6 @@ struct ContentView: View {
                             } else {
                                 activeSession
                             }
-                            if !civFS.isRunning && !artemisFS.isRunning && !civFirstTimeTransferActive { bundledUpdatesCard }
                             toolsBubble
                             Text("mac2jb · v\(AppBuildIdentity.version)")
                                 .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
@@ -195,13 +227,21 @@ struct ContentView: View {
             model.accountProgressHandler = { [weak account] update in account?.handleProgress(update) }
             model.prepare(); updater.start()
             dnsSwitch.refreshAddresses()
+            if model.runtime != nil {
+                offlineEthernet.open(runtimeRoot: model.runtime?.root)
+                bundledUpdates.checkKaiHENAtBoot(runtimeRoot: model.runtime?.root)
+            }
             NSApp.activate(ignoringOtherApps: true)
         }
         .onDisappear {
+            offlineEthernet.close()
             model.accountProgressHandler = nil
             account.cancelSignIn()
             civSwitch.cancel()
             civFS.stop()
+            kaiHEN.stop()
+            civKaiHEN.stop()
+            seedsowKaiHEN.stop()
             artemisFS.stop()
             dnsSwitch.stopForTermination()
             webKitResearch.stopForTermination()
@@ -209,6 +249,13 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshNetworkAddressesIfIdle()
             dnsSwitch.refreshAddresses()
+            offlineEthernet.refreshAdapters()
+        }
+        .onChange(of: model.runtime?.root.path) { _, path in
+            if path != nil {
+                offlineEthernet.open(runtimeRoot: model.runtime?.root)
+                bundledUpdates.checkKaiHENAtBoot(runtimeRoot: model.runtime?.root)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             account.cancelSignIn()
@@ -216,13 +263,13 @@ struct ContentView: View {
             dnsSwitch.stopForTermination()
             webKitResearch.stopForTermination()
             civFS.stop()
+            kaiHEN.stop()
+            civKaiHEN.stop()
+            seedsowKaiHEN.stop()
             artemisFS.stop()
         }
         .onChange(of: model.phase) { _, phase in
-            readyConfirmed = false; setupReady = false; developerReady = false; savedConfirmed = false; saveDirectModeReady = false
-            if phase == .hostStarting && model.activeRunMode != .hostOnlyHeld {
-                selectedLuaEditorSave = nil; luaEditorSelectionMessage = nil
-            }
+            setupReady = false; developerReady = false; savedConfirmed = false; saveDirectModeReady = false
             if phase == .failed {
                 let location = model.diagnosticLogURL.map { "Log saved at:\n" + $0.path }
                     ?? "A diagnostic log could not be created. Expand Console & Developer Options to view session activity."
@@ -271,7 +318,8 @@ struct ContentView: View {
             if launchCivHomebrewAfterAttach {
                 if phase == .verified {
                     launchCivHomebrewAfterAttach = false
-                    civApps.open(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
+                    civApps.open(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root,
+                                 launcher: civHomebrewLauncherChoice)
                 } else if phase == .failed || phase == .cancelled {
                     launchCivHomebrewAfterAttach = false
                 }
@@ -289,20 +337,38 @@ struct ContentView: View {
                 }
             }
         }
-        .onChange(of: model.runMode) { _, _ in readyConfirmed = false; setupReady = false; developerReady = false }
+        .onChange(of: offlineEthernet.phase) { _, phase in
+            if phase == "ready" { selectOfflineEthernetAddress() }
+            if phase == "restored" { model.refreshNetworkAddressesIfIdle() }
+        }
+        .onChange(of: model.runMode) { _, _ in setupReady = false; developerReady = false }
         .onChange(of: model.selectedHost) { _, _ in
-            readyConfirmed = false; setupReady = false; developerReady = false
+            setupReady = false; developerReady = false
             savedConfirmed = false; saveDirectModeReady = false; hostOnlyKeepRPC = false
         }
-        .onChange(of: model.selectedAddress) { _, _ in if canConfigure { readyConfirmed = false } }
+        .onChange(of: civSwitchConsoleAddress) { _, address in
+            if civSwitchAddressValid {
+                UserDefaults.standard.set(address.trimmingCharacters(in: .whitespacesAndNewlines),
+                                          forKey: lastCivSwitchAddressKey)
+            }
+        }
         .onChange(of: showNS2JBSetup) { _, shown in
-            if shown { showBootstrapSetup = false; readyConfirmed = false; setupReady = false }
+            if shown {
+                showBootstrapSetup = false
+                setupReady = false
+                smilePowerConfirmed = false
+                smileDirectModeConfirmed = false
+            }
         }
         .onChange(of: showCivSwitchSetup) { _, shown in
             if shown {
                 civSwitchReady = false
+                civLoaderConfirmed = false
                 showCivSwitchFirstTime = false
             }
+        }
+        .onChange(of: showSeedsowKaiHENSetup) { _, shown in
+            if shown { seedsowHTTPConfirmed = false }
         }
         .onChange(of: civSwitch.triggerInstalled) { _, installed in
             if installed { showCivSwitchFirstTime = false }
@@ -317,6 +383,8 @@ struct ContentView: View {
             else { ns2jbSetup }
         }
         .sheet(isPresented: $showCivSwitchSetup) { civSwitchSheet }
+        .sheet(isPresented: $showSeedsowKaiHENSetup) { seedsowKaiHENSetup }
+        .sheet(isPresented: $showOfflineEthernetSetup) { offlineEthernetSheet }
         .sheet(isPresented: $showBundledUpdates) { bundledUpdatesSheet }
     }
 
@@ -398,33 +466,60 @@ struct ContentView: View {
                     Button("Open original save backup") { model.revealSeedsowBackup() }
                 }
             }
+            panel { essentials }
             panel {
-                VStack(alignment: .leading, spacing: 24) {
-                    essentials
-                    Divider().overlay(.white.opacity(0.04))
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("ns2jb").font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
-                        Text(model.selectedHost.supportsDemo
-                             ? "SmileBASIC 4 full game or demo supported."
-                             : "SmileBASIC 4 full game supported.")
-                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                    }
-                    Button { showNS2JBSetup = true } label: {
-                        HStack(spacing: 14) { Text("Jailbreak with ns2jb"); Image(systemName: "arrow.right") }
-                    }.buttonStyle(PrimaryActionStyle(large: true))
-                        .disabled(configurationLocked || updater.blocksNewSession)
-                    Divider().overlay(.white.opacity(0.04))
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("CivSwitch").font(.system(size: 15, weight: .semibold))
-                        Text("Use a Civilization VII cartridge and its own setup.")
-                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                        Button { showCivSwitchSetup = true } label: {
-                            HStack(spacing: 14) { Text("Jailbreak with CivSwitch"); Image(systemName: "arrow.right") }
+                VStack(alignment: .leading, spacing: 10) {
+                    Button {
+                        withAnimation(expansionAnimation) { showKaiHENInstaller.toggle() }
+                    } label: {
+                        HStack {
+                            Text("kaiHEN installer")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(ink)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(teal)
+                                .rotationEffect(.degrees(showKaiHENInstaller ? 180 : 0))
                         }
-                        .buttonStyle(PrimaryActionStyle(large: true))
-                        .disabled((configurationLocked && !civFS.isRunning) || updater.blocksNewSession)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityValue(showKaiHENInstaller ? "Expanded" : "Collapsed")
+                    if showKaiHENInstaller {
+                        Divider().overlay(.white.opacity(0.04))
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Civilization VII").font(.system(size: 16, weight: .semibold))
+                            Text("Use the saved CivSwitch loader to run kaiHEN")
+                                .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                            Button("Jailbreak with Civilization VII") { showCivSwitchSetup = true }
+                                .buttonStyle(PrimaryActionStyle(large: true))
+                                .disabled(configurationLocked || updater.blocksNewSession)
+                        }
+                        Divider().overlay(.white.opacity(0.04))
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("SmileBASIC 4").font(.system(size: 16, weight: .semibold))
+                            Text("Use the saved Kurumuz bootstrap to run kaiHEN")
+                                .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                            Button("Jailbreak with SmileBASIC 4") {
+                                model.selectHost(.kurumuz)
+                                showNS2JBSetup = true
+                            }
+                            .buttonStyle(PrimaryActionStyle(large: true))
+                            .disabled(configurationLocked || updater.blocksNewSession)
+                        }
+                        Divider().overlay(.white.opacity(0.04))
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Seedsow Lullaby").font(.system(size: 16, weight: .semibold))
+                            Text("Use the Artemis loader’s HTTP mode to run kaiHEN")
+                                .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                            Button("Jailbreak with Seedsow Lullaby") { showSeedsowKaiHENSetup = true }
+                                .buttonStyle(PrimaryActionStyle(large: true))
+                                .disabled(configurationLocked || updater.blocksNewSession)
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -471,8 +566,9 @@ struct ContentView: View {
     }
 
     private var networkPicker: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: model.addresses.isEmpty ? "network.slash" : "network").foregroundStyle(teal).frame(width: 16)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: model.addresses.isEmpty ? "network.slash" : "network")
+                .foregroundStyle(teal).frame(width: 16).padding(.top, 2)
             VStack(alignment: .leading, spacing: 5) {
                 Text("Mac connection").font(.system(size: 12, weight: .semibold))
                 if model.addresses.isEmpty {
@@ -481,12 +577,86 @@ struct ContentView: View {
                     Picker("Mac connection", selection: $model.selectedAddress) {
                         ForEach(model.addresses) { address in Text(address.label).tag(address.address) }
                     }.labelsHidden().frame(maxWidth: 360, alignment: .leading)
+                        .disabled(offlineEthernet.active)
                 }
+                HStack(spacing: 10) {
+                    Button("Offline Ethernet…") { showOfflineEthernetSetup = true }
+                    if offlineEthernet.active {
+                        Text(offlineEthernet.switchSeen ? "Switch connection test received" : "Waiting for Switch connection test")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                }
+                .padding(.top, 4)
             }
             Spacer(minLength: 0)
             Button { model.refreshChecks() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).help("Refresh connection and driver checks")
         }.disabled(configurationLocked)
+    }
+
+    private func selectOfflineEthernetAddress() {
+        model.refreshNetworkAddressesIfIdle()
+        if model.addresses.contains(where: { $0.address == "192.168.2.2" }) {
+            model.selectedAddress = "192.168.2.2"
+        }
+    }
+
+    private var offlineEthernetSheet: some View {
+        sheetFrame(title: "Offline Ethernet",
+                   subtitle: "Connect the Switch directly to a dedicated Mac Ethernet adapter.",
+                   compact: true,
+                   close: { showOfflineEthernetSetup = false }) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Mac Ethernet adapter")
+                    .font(.system(size: 12, weight: .semibold))
+                HStack(spacing: 12) {
+                    Picker("Mac Ethernet adapter", selection: $offlineEthernet.selectedInterface) {
+                        ForEach(offlineEthernet.adapters) { adapter in
+                            Text("\(adapter.label) · \(adapter.interface)").tag(adapter.interface)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 270, alignment: .leading)
+                    .disabled(offlineEthernet.active || offlineEthernet.needsRestore)
+                    Button("Refresh") { offlineEthernet.refreshAdapters() }
+                        .disabled(offlineEthernet.active)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 10) {
+                    Button("Start offline Ethernet") { offlineEthernet.start() }
+                        .disabled(!offlineEthernet.canStart || dnsSwitch.isActive || model.runtime == nil)
+                    Button("Stop responder") { offlineEthernet.stop() }
+                        .disabled(!offlineEthernet.canStop)
+                    Button("Restore Mac Ethernet") { offlineEthernet.restore() }
+                        .disabled(!offlineEthernet.canRestore)
+                }
+                if dnsSwitch.isActive {
+                    Text("Stop DNSwitch first; both services use DNS port 53 and HTTP port 80.")
+                        .foregroundStyle(.orange)
+                }
+                Text(offlineEthernet.message)
+                    .foregroundStyle(offlineEthernet.phase == "failed" ? .orange : ink)
+                if !offlineEthernet.actionError.isEmpty {
+                    Text(offlineEthernet.actionError).foregroundStyle(.orange)
+                }
+                if offlineEthernet.active {
+                    Text(offlineEthernet.switchSeen ? "Switch request received: \(offlineEthernet.lastSwitchRequest)" :
+                         "Waiting for a connection test from 192.168.2.1")
+                        .foregroundStyle(Mac2jbTheme.muted)
+                }
+                Divider()
+                Text("On your Switch").font(.system(size: 12, weight: .semibold))
+                Text("Set IP address to 192.168.2.1, subnet mask to 255.255.255.0, and gateway and both DNS fields to 192.168.2.2. Turn off proxy and IPv6, then run Test Connection.")
+                    .foregroundStyle(Mac2jbTheme.muted)
+                Text("mac2jb selects 192.168.2.2 for the jailbreak host when the responder is ready. Keep this app open during the session.")
+                    .foregroundStyle(Mac2jbTheme.muted)
+                Text("Stop ends the local DNS and HTTP service. Restore removes the temporary Mac address when you are done.")
+                    .foregroundStyle(Mac2jbTheme.muted)
+            }
+            .font(.system(size: 11))
+            .onAppear { offlineEthernet.open(runtimeRoot: model.runtime?.root) }
+        }
     }
 
     private func beginRun(_ mode: SessionRunMode) {
@@ -498,9 +668,10 @@ struct ContentView: View {
     }
 
     private var ns2jbSetup: some View {
-        sheetFrame(title: "ns2jb setup", subtitle: "Choose your SmileBASIC edition and confirm the Switch is ready.", compact: true,
+        sheetFrame(title: "SmileBASIC 4",
+                   subtitle: "Use the saved bootstrap to run kaiHEN.", compact: true,
                    close: { showNS2JBSetup = false }) {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("First-time setup")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(ink)
@@ -513,38 +684,76 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1))
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Restart your Switch and open SmileBASIC → Make a Program.")
-                    Text("USB power: Switch → Mac. The Mac must not charge the Switch.")
-                    Text("Connect both devices to the same local network. The Switch must use Ethernet.")
+                VStack(alignment: .leading, spacing: 7) {
+                    demoEditionCheckbox
+                    Toggle("USB power flows from the Switch to this Mac", isOn: $smilePowerConfirmed)
+                        .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium)).foregroundStyle(ink)
+                        .disabled(configurationLocked)
+                    Toggle("SmileBASIC Direct mode is open", isOn: $smileDirectModeConfirmed)
+                        .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium)).foregroundStyle(ink)
+                        .disabled(configurationLocked)
+                    Text("""
+                        Restart your Switch and open SmileBASIC → Make a Program → Direct mode.
+                        USB power: Switch → Mac. The Mac must not charge the Switch.
+                        Connect both devices to the same local network. The Switch must use Ethernet.
+                        """)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Mac2jbTheme.muted)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
-                demoEditionCheckbox
-                Toggle("My Switch is ready and connected by USB", isOn: $readyConfirmed)
-                    .toggleStyle(.checkbox).font(.system(size: 12, weight: .medium)).foregroundStyle(ink)
-                    .disabled(configurationLocked)
                 if !model.driverLoaded {
-                    note("Install the USB driver on the main screen before starting ns2jb.",
+                    note("Install the USB driver on the main screen before starting the jailbreak.",
                          icon: "cable.connector", color: .orange)
                 }
                 if model.selectedAddress.isEmpty {
                     note("Choose this Mac’s network connection on the main screen before starting the jailbreak.",
                          icon: "network", color: .orange)
                 }
-                Button("Start jailbreak") {
-                    beginRun(model.selectedHost.supportsSaveKit ? .seedsowSave :
-                             model.selectedHost.supportsHeldRPC ? .heldRPC : .exploitOnly)
+                if model.selectedHost == .kurumuz {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("kaiHEN")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
+                        Text("Use your saved Kurumuz bootstrap and kaiHEN files on an SD card. Your Mac will type the Direct mode commands.")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Button("Jailbreak with kaiHEN") {
+                            kaiHEN.startNs2jb(macAddress: model.selectedAddress,
+                                               runtimeRoot: model.runtime?.root,
+                                               stageTimeoutMinutes: model.hostStageTimeoutMinutes,
+                                               typing: KaiHENModel.TypingSettings(
+                                                driverAvailable: model.driverLoaded,
+                                                controller: model.controller,
+                                                delayMs: model.keyDelayMs,
+                                                enumerationTimeoutSeconds: model.enumerationTimeoutSeconds,
+                                                loadWaitMs: model.loadWaitMs,
+                                                runWaitMs: model.runWaitMs,
+                                                removeWaitMs: model.removeWaitMs,
+                                                loadConfirmWaitMs: model.loadConfirmWaitMs,
+                                                keyHoldMs: model.keyHoldMs,
+                                                enterSettleMs: model.enterSettleMs,
+                                                pollInterval: model.pollInterval,
+                                                demo: model.selectedEdition == .demo,
+                                                preferredController: model.lastSuccessfulController))
+                            if kaiHEN.phase != .idle { showNS2JBSetup = false }
+                        }
+                        .buttonStyle(PrimaryActionStyle())
+                        .disabled(startBlocked || !smilePowerConfirmed || !smileDirectModeConfirmed ||
+                                  !CivSwitchFSModel.validIPv4(model.selectedAddress))
+                        kaiHENSDControls
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1))
                 }
-                .buttonStyle(PrimaryActionStyle())
-                .disabled(startBlocked || !readyConfirmed || model.selectedAddress.isEmpty)
             }
         }
     }
 
     private var firstTimeSetup: some View {
-        sheetFrame(title: "First-time setup", subtitle: "Save a small program once. After that, use Jailbreak with ns2jb.", compact: true,
-                   close: { showNS2JBSetup = false }, skip: {
+        sheetFrame(title: "First-time setup", subtitle: "Save a small program once. After that, use Jailbreak with kaiHEN.", compact: true,
+                   close: { showBootstrapSetup = false }, skip: {
                        guard model.canSkipBootstrapTyping, !updater.blocksNewSession else { return }
                        model.skipBootstrapTyping()
                        if model.phase == .awaitingSave { showNS2JBSetup = false }
@@ -589,17 +798,34 @@ struct ContentView: View {
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 12) {
+                Text("Launcher")
+                    .font(.system(size: 12, weight: .medium))
+                Picker("Launcher", selection: $civHomebrewLauncherChoice) {
+                    Text("Compatible · 0.4.3").tag("compatible")
+                    Text("Native · 1.3.8").tag("native")
+                }
+                .labelsHidden()
+                .frame(width: 190)
+                .disabled(civApps.isActive || civApps.companionReady)
+            }
+            Text(civHomebrewLauncherChoice == "native"
+                 ? "Native launcher supports apps built for its native UI, including Moonlight"
+                 : "Compatible launcher supports Moonlight, SW2NES and Jellyfin")
+                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
                 if !civApps.companionReady {
-                    Button("Start CivHomebrew in open loader") {
+                    Button("Start CivHomebrew") {
                         if civSwitch.canSendPayload {
-                            civApps.open(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
+                            civApps.open(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root,
+                                         launcher: civHomebrewLauncherChoice)
                         } else {
                             launchCivHomebrewAfterAttach = true
                             civSwitch.attachExisting(consoleAddress: civSwitchConsoleAddress,
                                                      runtimeRoot: model.runtime?.root)
                         }
                     }
-                    .buttonStyle(PrimaryActionStyle())
+                    .buttonStyle(PrimaryActionStyle(compact: true))
                     .disabled((!civSwitch.canSendPayload && !civSwitch.canAttach) || !civSwitchAddressValid ||
                               civApps.isActive || civSwitch.isRunning || model.runtime == nil ||
                               model.hasLiveWorkers || updater.blocksNewSession)
@@ -635,11 +861,13 @@ struct ContentView: View {
                     Button("Moonlight") {
                         civApps.installMoonlight(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
                     }
-                    Button("SW2NES") {
-                        civApps.installSW2NES(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
-                    }
-                    Button("Jellyfin") {
-                        civApps.installJellyfin(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
+                    if civHomebrewLauncherChoice == "compatible" {
+                        Button("SW2NES") {
+                            civApps.installSW2NES(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
+                        }
+                        Button("Jellyfin") {
+                            civApps.installJellyfin(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
+                        }
                     }
                 }
                 .disabled(civApps.busy || model.runtime == nil ||
@@ -648,7 +876,8 @@ struct ContentView: View {
             if civSwitch.canSendPayload || civApps.companionReady {
                 HStack(spacing: 12) {
                     Button("Install CivHomebrew boot trigger") {
-                        civApps.installTrigger(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root)
+                        civApps.installTrigger(address: civSwitchConsoleAddress, runtimeRoot: model.runtime?.root,
+                                               launcher: civHomebrewLauncherChoice)
                     }
                     .disabled(civApps.busy || model.runtime == nil ||
                               model.hasLiveWorkers || updater.blocksNewSession)
@@ -686,7 +915,7 @@ struct ContentView: View {
             if showCivSwitchFirstTime { civSwitchFirstTimeSetup }
             else { civSwitchSetup }
         }
-        .interactiveDismissDisabled(civSwitch.isRunning || civApps.isActive || civFS.isRunning)
+        .interactiveDismissDisabled(civSwitch.isRunning || civApps.isActive || civFS.isRunning || kaiHEN.isRunning || civKaiHEN.isRunning)
     }
 
     private var civSwitchAddressField: some View {
@@ -709,7 +938,7 @@ struct ContentView: View {
                     Text("2. Open Multiplayer → Wireless → Create Game → Host Lobby → Chat. In docked mode, focus the chat input.")
                     Text("3. Connect the Switch to this Mac by USB and keep both devices on the same network. USB power must flow Switch → Mac. If the Mac charges the Switch, unplug at the Switch for a second, then reconnect it.")
                     Text("4. Enter the Switch IPv4 address below and confirm the chat screen is ready. The transfer can take 20–25 minutes.")
-                    Text("5. When the loader opens, install its boot trigger. On later visits, load the saved trigger from Civilization VII.")
+                    Text("5. When the loader opens, install the CivSwitch boot trigger. On later visits, load the saved trigger from Civilization VII.")
                 }
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
@@ -742,7 +971,7 @@ struct ContentView: View {
                             .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
                     }
                     if civSwitch.canInstallTrigger {
-                        Button("Install boot trigger") { civSwitch.installTrigger() }
+                        Button("Install CivSwitch boot trigger") { civSwitch.installTrigger() }
                             .buttonStyle(PrimaryActionStyle())
                             .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
                     }
@@ -806,6 +1035,7 @@ struct ContentView: View {
                     }
                 }
                 .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .font(.system(size: 11, weight: .medium))
         }
@@ -867,43 +1097,6 @@ struct ContentView: View {
         }
     }
 
-    private var artemisFSControls: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Seedsow FS · experimental")
-                .font(.system(size: 15, weight: .semibold))
-            Text("Open the existing Seedsow launcher with HTTP listening on your Switch, then enter its IPv4 address. The Mac and Switch must be on the same network.")
-                .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                TextField("Switch IPv4 address", text: $artemisConsoleAddress)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .monospaced))
-                    .frame(maxWidth: 220)
-                    .disabled(artemisFS.isRunning)
-                Button("Start jailbreak") {
-                    artemisFS.start(consoleAddress: artemisConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
-                                    macAddress: model.selectedAddress, runtimeRoot: model.runtime?.root)
-                }
-                .disabled(!ArtemisFSModel.validIPv4(artemisConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines)) ||
-                          !ArtemisFSModel.validIPv4(model.selectedAddress) || model.runtime == nil ||
-                          configurationLocked || updater.blocksNewSession)
-            }
-            Text("RPC opens only if all four filesystem stages verify. This path has not been console tested; Nora and other Artemis games need separate profiles.")
-                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                .fixedSize(horizontal: false, vertical: true)
-            if artemisFS.phase == .held {
-                Text(artemisFS.status)
-                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(teal)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let logURL = artemisFS.failureLogURL ?? artemisFS.diagnosticLogURL,
-               artemisFS.phase == .held || artemisFS.phase == .failed {
-                Button("Open session log") { NSWorkspace.shared.open(logURL) }
-                    .font(.system(size: 11))
-            }
-        }
-    }
-
     private var civSwitchFSSession: some View {
         panel {
             VStack(alignment: .leading, spacing: 22) {
@@ -920,7 +1113,7 @@ struct ContentView: View {
                              "Jailbreaking…")
                             .font(.system(size: 28, weight: .bold, design: .rounded))
                             .foregroundStyle(ink)
-                        Text(civFS.phase == .starting
+                        Text(civFS.isRunning
                              ? "Jailbreak has four steps. Each can take several minutes. Please be patient and keep Civilization VII and mac2jb open."
                              : civFS.status)
                             .font(.system(size: 13))
@@ -944,6 +1137,23 @@ struct ContentView: View {
                         .buttonStyle(.bordered)
                         .disabled(!model.canChangeHost || updater.blocksNewSession)
                 }
+                DisclosureGroup("Session details") {
+                    ScrollView {
+                        Text(civFS.log.isEmpty ? "Activity will appear here." : civFS.log)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Mac2jbTheme.muted)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    }
+                    .frame(height: 140)
+                    .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                    if let logURL = civFS.failureLogURL ?? civFS.diagnosticLogURL {
+                        Button("Open session log") { NSWorkspace.shared.open(logURL) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
                 if civFS.isRunning {
                     HStack {
                         Text("Keep Civilization VII and mac2jb open until the session finishes.")
@@ -953,6 +1163,269 @@ struct ContentView: View {
                             civFS.stop()
                         }
                         .disabled(civFS.phase == .stopping || model.hasLiveWorkers)
+                    }
+                } else if civFS.phase == .failed {
+                    HStack {
+                        Spacer()
+                        Button("Go back") { civFS.dismissFailure(); showFailure = false }
+                    }
+                }
+            }
+        }
+    }
+
+    private var kaiHENSession: some View {
+        panel {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .top, spacing: 16) {
+                    Image(systemName: "square.stack.3d.up")
+                        .font(.system(size: 29)).foregroundStyle(teal)
+                        .frame(width: 52, height: 52)
+                        .background(teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(kaiHEN.phase == .installed || kaiHEN.phase == .complete ? "kaiHEN ready" :
+                             kaiHEN.phase == .failed ? "kaiHEN needs attention" :
+                             kaiHEN.phase == .stopping ? "Stopping kaiHEN" : "Jailbreaking…")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(ink)
+                        Text(kaiHEN.isRunning && kaiHEN.phase != .installed
+                             ? "Jailbreak has four steps. Each can take several minutes. Please be patient and keep \(kaiHEN.launchPath == .ns2jb ? "SmileBASIC" : "Civilization VII") and mac2jb open."
+                             : kaiHEN.status)
+                            .font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if kaiHEN.isRunning {
+                    ProgressView(value: kaiHEN.progressStep, total: 4).tint(teal)
+                }
+                if kaiHEN.launchPath == .ns2jb && [.preparing, .running].contains(kaiHEN.phase) {
+                    if !kaiHEN.typingStatus.isEmpty {
+                        Text(kaiHEN.typingStatus)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Mac2jbTheme.muted)
+                    }
+                    if let enumerationProgress = kaiHEN.enumerationProgress {
+                        ProgressView(value: enumerationProgress)
+                            .tint(teal)
+                        if let remainingMs = kaiHEN.enumerationRemainingMs {
+                            Text(String(format: "USB enumeration · %.1f seconds remaining", max(0, remainingMs) / 1000))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(Mac2jbTheme.muted)
+                        }
+                    }
+                    if let command = kaiHEN.startCommand {
+                        DisclosureGroup("Show Direct mode commands") {
+                            Text([model.selectedEdition.loadCommand(for: "NS2"), "RUN",
+                                  "REMOVE NSR,&H60000000,&H3FFFFFFF", command]
+                                .joined(separator: "\n"))
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(ink)
+                                .textSelection(.enabled)
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text("Waiting for the host to generate the START command")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                }
+                Text(kaiHEN.status)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Mac2jbTheme.muted)
+                    .monospacedDigit()
+                DisclosureGroup("Session details") {
+                    ScrollView {
+                        Text(kaiHEN.log.isEmpty ? "Activity will appear here." : kaiHEN.log)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Mac2jbTheme.muted).textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                    }
+                    .frame(height: 140)
+                    .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                    if let logURL = kaiHEN.diagnosticLogURL {
+                        Button("Open kaiHEN log") { NSWorkspace.shared.open(logURL) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
+                HStack {
+                    if kaiHEN.phase == .installed || kaiHEN.phase == .complete {
+                        Text("Close \(kaiHEN.launchPath == .ns2jb ? "SmileBASIC" : "Civilization VII") normally. Hold R when opening a native game. If the game opens, close it and hold R on the next launch for hbmenu.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    } else if kaiHEN.isRunning {
+                        Text("Keep \(kaiHEN.launchPath == .ns2jb ? "SmileBASIC" : "Civilization VII") and mac2jb open until this step finishes.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                    Spacer()
+                    if kaiHEN.isRunning {
+                        Button(kaiHEN.phase == .stopping ? "Stopping session…" : "Stop session", role: .destructive) {
+                            kaiHEN.stop()
+                        }
+                        .disabled(kaiHEN.phase == .stopping)
+                    } else {
+                        Button("Go back") { kaiHEN.dismiss() }
+                    }
+                }
+            }
+        }
+    }
+
+    private var seedsowKaiHENSession: some View {
+        panel {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .top, spacing: 16) {
+                    Image(systemName: "square.stack.3d.up")
+                        .font(.system(size: 29)).foregroundStyle(teal)
+                        .frame(width: 52, height: 52)
+                        .background(teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(seedsowKaiHEN.phase == .complete ? "kaiHEN ready" :
+                             seedsowKaiHEN.phase == .failed ? "kaiHEN needs attention" :
+                             seedsowKaiHEN.phase == .stopping ? "Stopping kaiHEN" : "Jailbreaking…")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(ink)
+                        Text(seedsowKaiHEN.isRunning
+                             ? "Jailbreak has four steps. Each can take several minutes. Please be patient and keep Seedsow Lullaby and mac2jb open."
+                             : seedsowKaiHEN.status)
+                            .font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if seedsowKaiHEN.isRunning {
+                    ProgressView(value: seedsowKaiHEN.progressStep, total: 4).tint(teal)
+                }
+                Text(seedsowKaiHEN.status)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Mac2jbTheme.muted)
+                    .monospacedDigit()
+                DisclosureGroup("Session details") {
+                    ScrollView {
+                        Text(seedsowKaiHEN.log.isEmpty ? "Activity will appear here." : seedsowKaiHEN.log)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Mac2jbTheme.muted)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    }
+                    .frame(height: 140)
+                    .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                    if let logURL = seedsowKaiHEN.diagnosticLogURL {
+                        Button("Open session log") { NSWorkspace.shared.open(logURL) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
+                HStack {
+                    if seedsowKaiHEN.phase == .complete {
+                        Text("Close Seedsow normally. Hold R when opening a native game; repeat if the first launch opens the game.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                    Spacer()
+                    if seedsowKaiHEN.isRunning {
+                        Button(seedsowKaiHEN.phase == .stopping ? "Stopping session…" : "Stop session", role: .destructive) {
+                            seedsowKaiHEN.stop()
+                        }
+                        .disabled(seedsowKaiHEN.phase == .stopping)
+                    } else {
+                        Button("Go back") { seedsowKaiHEN.dismiss() }
+                    }
+                }
+            }
+        }
+    }
+
+    private var civKaiHENSession: some View {
+        panel {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .top, spacing: 16) {
+                    Image(systemName: "square.stack.3d.up")
+                        .font(.system(size: 29)).foregroundStyle(teal)
+                        .frame(width: 52, height: 52)
+                        .background(teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(civKaiHEN.phase == .failed ? "kaiHEN needs attention" :
+                             civKaiHEN.phase == .complete && civKaiHEN.operation == .prepareSD ? "kaiHEN files ready" :
+                             civKaiHEN.phase == .complete && civKaiHEN.operation == .stageSD ? "SD card ready" :
+                             civKaiHEN.phase == .complete && civKaiHEN.operation == .install ? "kaiHEN trigger installed" :
+                             civKaiHEN.phase == .complete ? "kaiHEN ready" :
+                             civKaiHEN.operation == .prepareSD ? "Preparing SD files" :
+                             civKaiHEN.operation == .stageSD ? "Writing kaiHEN files to SD card" :
+                             civKaiHEN.operation == .runOnce ? "Jailbreaking…" : "Installing kaiHEN…")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(ink)
+                        Text(civKaiHEN.isRunning && civKaiHEN.operation == .runOnce
+                             ? "Jailbreak has four steps. Each can take several minutes. Please be patient and keep Civilization VII and mac2jb open."
+                             : civKaiHEN.status)
+                            .font(.system(size: 13)).foregroundStyle(Mac2jbTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                if civKaiHEN.isRunning {
+                    ProgressView(value: civKaiHEN.progressStep).tint(teal)
+                    Text(civKaiHEN.status)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Mac2jbTheme.muted)
+                        .monospacedDigit()
+                }
+                if civKaiHEN.phase == .complete {
+                    if civKaiHEN.operation == .prepareSD {
+                        Text("Copy the contents of this folder to the root of your Switch SD card before installing the trigger")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                        if let folder = civKaiHEN.preparedSDURL {
+                            Button("Open prepared SD files") { NSWorkspace.shared.open(folder) }
+                                .buttonStyle(.bordered)
+                        }
+                    } else if civKaiHEN.operation == .stageSD {
+                        Text("kaiHEN files are ready on the selected Switch SD card")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                        if let folder = civKaiHEN.sdBackupURL {
+                            Button("Open replaced-file backup") { NSWorkspace.shared.open(folder) }
+                                .buttonStyle(.bordered)
+                        }
+                    } else if civKaiHEN.operation == .install {
+                        Text("Close Civilization VII normally. On later boots, open it and choose Load Game to run kaiHEN from the saved trigger")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("After kaiHEN loads, hold R when opening a native Switch 2 game. The first launch may save its policy; hold R again on the next launch for hbmenu")
+                            .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                DisclosureGroup("Session details") {
+                    ScrollView {
+                        Text(civKaiHEN.log.isEmpty ? "Activity will appear here" : civKaiHEN.log)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(Mac2jbTheme.muted)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                    }
+                    .frame(height: 140)
+                    .background(.black.opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                    if let logURL = civKaiHEN.diagnosticLogURL {
+                        Button("Open kaiHEN log") { NSWorkspace.shared.open(logURL) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .font(.system(size: 11, weight: .medium))
+                HStack {
+                    if civKaiHEN.isRunning {
+                        Text(civKaiHEN.operation == .stageSD
+                             ? "Keep the SD card connected until the write finishes."
+                             : civKaiHEN.operation == .prepareSD
+                               ? "Keep mac2jb open until the files are ready."
+                               : "Keep Civilization VII and mac2jb open until this step finishes.")
+                            .font(.system(size: 11)).foregroundStyle(Mac2jbTheme.muted)
+                    }
+                    Spacer()
+                    if civKaiHEN.isRunning {
+                        Button(civKaiHEN.phase == .stopping ? "Stopping…" : "Stop session", role: .destructive) {
+                            civKaiHEN.stop()
+                        }
+                        .disabled(civKaiHEN.phase == .stopping)
+                    } else {
+                        Button("Go back") { civKaiHEN.dismiss() }
                     }
                 }
             }
@@ -999,24 +1472,20 @@ struct ContentView: View {
         }
     }
 
-    private var civSwitchFSStartSection: some View {
+    private var civSwitchKaiHENSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("FS jailbreak").font(.system(size: 15, weight: .semibold))
-            Text("Verify 4/4 and open held RPC for SaveKit, OunceCake and modloader")
+            Text("kaiHEN").font(.system(size: 15, weight: .semibold))
+            Text("Run the current kaiHEN release through Civilization VII. Requires firmware 23.0.1, a physical Civilization VII v1.0.0 cartridge and an SD card")
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Start jailbreak") {
-                civFS.start(consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
-                            macAddress: model.selectedAddress,
-                            runtimeRoot: model.runtime?.root,
-                            waitForLoader: !civSwitch.canSendPayload)
-                showCivSwitchSetup = false
+            Button("Jailbreak with kaiHEN") {
+                kaiHEN.start(consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+                             runtimeRoot: model.runtime?.root)
+                if kaiHEN.phase != .idle { showCivSwitchSetup = false }
             }
             .buttonStyle(PrimaryActionStyle())
-            .disabled(!civSwitchAddressValid || model.runtime == nil ||
-                      !CivSwitchFSModel.validIPv4(model.selectedAddress) ||
-                      civSwitch.isRunning || civApps.isActive ||
-                      model.hasLiveWorkers || updater.blocksNewSession)
+            .disabled(!civLoaderConfirmed || !civSwitchAddressValid || model.runtime == nil || configurationLocked || updater.blocksNewSession)
+            kaiHENSDControls
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1024,14 +1493,50 @@ struct ContentView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1))
     }
 
+    private var kaiHENSDControls: some View {
+        HStack(spacing: 10) {
+            Button("Write files to SD card…") { chooseKaiHENSDCard() }
+                .buttonStyle(.bordered)
+                .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
+            Button("Prepare copy folder") {
+                civKaiHEN.prepareSD(runtimeRoot: model.runtime?.root)
+                if civKaiHEN.phase != .idle {
+                    showNS2JBSetup = false
+                    showCivSwitchSetup = false
+                    showSeedsowKaiHENSetup = false
+                }
+            }
+            .buttonStyle(.bordered)
+            .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func chooseKaiHENSDCard() {
+        let picker = NSOpenPanel()
+        picker.title = "Choose the root of the mounted Switch SD card"
+        picker.prompt = "Write kaiHEN files"
+        picker.canChooseDirectories = true
+        picker.canChooseFiles = false
+        picker.allowsMultipleSelection = false
+        picker.directoryURL = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        picker.begin { response in
+            guard response == .OK, let volume = picker.url else { return }
+            civKaiHEN.startStageSD(volumeURL: volume, runtimeRoot: model.runtime?.root)
+            if civKaiHEN.phase != .idle {
+                showCivSwitchSetup = false
+                showNS2JBSetup = false
+                showSeedsowKaiHENSetup = false
+            }
+        }
+    }
+
     private var civSwitchUserlandSection: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Userland").font(.system(size: 15, weight: .semibold))
-            Text("Run CivHomebrew or JavaScript through the Remote JS loader. SaveKit, OunceCake and modloader need FS 4/4.")
+            Text("CivSwitch loader").font(.system(size: 15, weight: .semibold))
+            Text("Connect to the open Remote JS loader or manage its saved boot trigger")
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
-            civHomebrewSection
-            Divider().overlay(.white.opacity(0.04))
             HStack(spacing: 10) {
                 Button("Connect to open loader") {
                     civSwitch.attachExisting(consoleAddress: civSwitchConsoleAddress,
@@ -1039,12 +1544,25 @@ struct ContentView: View {
                 }
                 .disabled(!civSwitch.canAttach || !civSwitchAddressValid || model.runtime == nil ||
                           configurationLocked || updater.blocksNewSession)
-                Button("Install boot trigger") { civSwitch.installTrigger() }
+                Button("Install CivSwitch boot trigger") { civSwitch.installTrigger() }
                     .disabled(!civSwitch.canInstallTrigger || model.runtime == nil ||
                               configurationLocked || updater.blocksNewSession)
             }
             .font(.system(size: 12, weight: .semibold))
             .buttonStyle(.bordered)
+            HStack(spacing: 10) {
+                Button("Install persistent kaiHEN trigger") {
+                    civKaiHEN.startInstall(
+                        consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+                        runtimeRoot: model.runtime?.root)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!civSwitchAddressValid || model.runtime == nil || configurationLocked || updater.blocksNewSession)
+                Text("Experimental; not recommended")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.orange)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 10) {
                 if civSwitch.canSendPayload {
                     Button("Send JavaScript…") { chooseCivSwitchDirectPayload() }
@@ -1058,7 +1576,15 @@ struct ContentView: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             if civSwitch.canRetryProbe || civSwitch.canCancel {
-                DisclosureGroup("Other loader tools") {
+                Button {
+                    showOtherLoaderTools.toggle()
+                } label: {
+                    Label("Other loader tools", systemImage: showOtherLoaderTools ? "chevron.down" : "chevron.right")
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if showOtherLoaderTools {
                     HStack(spacing: 10) {
                         if civSwitch.canRetryProbe {
                             Button("Check loader again") { civSwitch.retryProbe() }
@@ -1072,37 +1598,75 @@ struct ContentView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .padding(.top, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .font(.system(size: 11, weight: .medium))
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.08), lineWidth: 1))
     }
 
     private var civSwitchSetup: some View {
-        sheetFrame(title: "CivSwitch setup", subtitle: "Choose FS jailbreak or userland tools.",
+        sheetFrame(title: "Civilization VII", subtitle: "Run kaiHEN through the CivSwitch loader.",
                    compact: false,
                    close: { showCivSwitchSetup = false },
-                   closeDisabled: civSwitch.isRunning || civApps.isActive) {
+                   closeDisabled: civSwitch.isRunning || civApps.isActive || kaiHEN.isRunning || civKaiHEN.isRunning) {
             VStack(alignment: .leading, spacing: 20) {
                 civSwitchFirstTimeSection
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Use the saved CivSwitch trigger").font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
-                    Text("Open Civilization VII and choose Load Game. If the Remote JS Loader is already open, leave it running.")
+                    Text("Open the CivSwitch loader").font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
+                    Text("Open Civilization VII and choose Load Game. Leave the Remote JS Loader open.")
                     Text("Keep the Switch and Mac on the same network, then connect using the Switch IPv4 address below.")
                 }
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 civSwitchAddressField
-                civSwitchFSStartSection
-                civSwitchUserlandSection
+                Toggle("Load Game opened the CivSwitch JS loader", isOn: $civLoaderConfirmed)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(ink)
+                    .disabled(configurationLocked)
+                if civSwitch.canInstallTrigger && !civSwitch.triggerInstalled {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("First-time transfer complete")
+                            .font(.system(size: 14, weight: .semibold))
+                        Button("Install persistent CivSwitch boot trigger") { civSwitch.installTrigger() }
+                            .buttonStyle(PrimaryActionStyle())
+                            .disabled(model.runtime == nil || configurationLocked || updater.blocksNewSession)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                civSwitchKaiHENSection
                 if civSwitch.phase != .idle || !civSwitch.log.isEmpty || !civApps.log.isEmpty {
                     civSwitchActivity
                 }
             }
         }
+    }
+
+    private var seedsowKaiHENSetup: some View {
+        sheetFrame(title: "Seedsow Lullaby", subtitle: "Run kaiHEN through the Artemis loader.",
+                   compact: true,
+                   close: { showSeedsowKaiHENSetup = false },
+                   closeDisabled: seedsowKaiHEN.isRunning) {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Load the Artemis launcher save in Seedsow Lullaby, then press Y to open HTTP mode. Keep the game open and the Switch and Mac on the same network.")
+                    .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                kaiHENSDControls
+                civSwitchAddressField
+                Toggle("Artemis loader HTTP mode is open after pressing Y", isOn: $seedsowHTTPConfirmed)
+                    .toggleStyle(.checkbox)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(ink)
+                    .disabled(configurationLocked)
+                Button("Jailbreak with Seedsow Lullaby") {
+                    seedsowKaiHEN.start(consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+                                         runtimeRoot: model.runtime?.root)
+                    if seedsowKaiHEN.phase != .idle { showSeedsowKaiHENSetup = false }
+                }
+                .buttonStyle(PrimaryActionStyle())
+                .disabled(!seedsowHTTPConfirmed || !civSwitchAddressValid || model.runtime == nil || configurationLocked || updater.blocksNewSession)
+            }
+        }
+        .interactiveDismissDisabled(seedsowKaiHEN.isRunning)
     }
 
     private func chooseCivSwitchDirectPayload() {
@@ -1132,13 +1696,24 @@ struct ContentView: View {
         picker.begin { response in
             if response == .OK, let url = picker.url {
                 civApps.installPackage(url, address: civSwitchConsoleAddress,
-                                       runtimeRoot: model.runtime?.root)
+                                       runtimeRoot: model.runtime?.root,
+                                       launcher: civHomebrewLauncherChoice)
             }
         }
     }
 
     private var developerOptions: some View {
         VStack(alignment: .leading, spacing: 22) {
+            panel { usbTimingSettings }
+            panel { keyboardControls }.id("keyboard-controls")
+            panel {
+                VStack(alignment: .leading, spacing: 14) {
+                    civSwitchAddressField
+                    civSwitchUserlandSection
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            panel { civHomebrewSection }
             panel {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("ns2jb host").font(.system(size: 15, weight: .semibold))
@@ -1159,8 +1734,6 @@ struct ContentView: View {
                         .toggleStyle(.checkbox).font(.system(size: 12))
                 }
             }
-            panel { artemisFSControls }
-            panel { ArtemisHTTPView() }
             panel {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Additional tools").font(.system(size: 15, weight: .semibold))
@@ -1204,6 +1777,7 @@ struct ContentView: View {
                     }
                 }
             }
+            panel { ArtemisHTTPView() }
             panel { dnsSwitchSettings }
             panel { webKitResearchSettings }
             panel { NSPBoxToolsView(runtimeRoot: model.runtime?.root) }
@@ -1237,8 +1811,6 @@ struct ContentView: View {
                 }
             }
             panel { stremioSettings }
-            panel { keyboardControls }.id("keyboard-controls")
-            panel { usbTimingSettings }
             panel {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Diagnostics").font(.system(size: 15, weight: .semibold))
@@ -1293,7 +1865,7 @@ struct ContentView: View {
                 Button("Start DNSwitch") {
                     dnsSwitch.start(destinationURL: dnsSwitchDestinationURL, runtimeRoot: model.runtime?.root)
                 }
-                .disabled(!dnsSwitch.canStart || dnsSwitch.selectedAddress.isEmpty || model.runtime == nil)
+                .disabled(!dnsSwitch.canStart || dnsSwitch.selectedAddress.isEmpty || model.runtime == nil || offlineEthernet.active)
                 if dnsSwitch.canStop {
                     Button("Stop DNSwitch") { dnsSwitch.stop() }
                 }
@@ -1538,6 +2110,11 @@ struct ContentView: View {
 
     private var usbTimingSettings: some View {
         VStack(alignment: .leading, spacing: 14) {
+            Text("Host timeouts").font(.system(size: 15, weight: .semibold))
+            timingField("Maximum wait per stage", units: "min", value: $model.hostStageTimeoutMinutes, range: 1...60)
+            Text("Applies to each jailbreak host stage, including FS acquisition.")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
+            Divider()
             Text("USB & timing").font(.system(size: 15, weight: .semibold))
             Picker("Controller", selection: $model.controller) {
                 Text("Automatic").tag("auto")
@@ -1565,12 +2142,8 @@ struct ContentView: View {
             timingField("After LOAD → before RUN", units: "ms", value: $model.loadWaitMs, range: 0...120000)
             timingField("After RUN → before REMOVE", units: "ms", value: $model.runWaitMs, range: 0...120000)
             timingField("After REMOVE → before START", units: "ms", value: $model.removeWaitMs, range: 0...120000)
-            HStack {
-                Text("Stock: 10 ms release gap · no added hold or Enter wait · polling interval 10 · 4 s connection · 1 s after LOAD.")
-                    .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                Spacer(minLength: 8)
-
-            }
+            Text("Stock: 10 ms release gap · no added hold or Enter wait · polling interval 10 · 4 s connection · 1 s after LOAD.")
+                .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
             if !timingSettingsValid { Text("Enter values within the ranges shown before starting.").font(.system(size: 11)).foregroundStyle(.orange) }
         }.disabled(configurationLocked)
     }
@@ -1772,7 +2345,9 @@ struct ContentView: View {
                       systemImage: "checkmark.shield.fill")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(teal)
             }
-            Text(model.postRun.cleanupBlocked
+            Text(model.savekitSessionBlocked || model.savekitReturnBlocked
+                 ? "Held RPC remains open. Finish this session before another save or app action. Keep the backup and log."
+                 : model.postRun.cleanupBlocked
                  ? "Restart your Switch, then use Stop session. Cleanup could not be confirmed."
                  : model.phase == .dumpingFirmware
                     ? "Keep the active game open until the dump finishes. Stopping early may leave a partial dump."
@@ -1861,9 +2436,9 @@ struct ContentView: View {
                     }
                 }
                 Spacer(minLength: 8)
-                Button(bundledUpdates.results.isEmpty ? "Check for updates" : "View results") {
+                Button("Check for updates") {
                     showBundledUpdates = true
-                    if bundledUpdates.results.isEmpty {
+                    if !bundledUpdates.isChecking {
                         bundledUpdates.check(runtimeRoot: model.runtime?.root)
                         updater.check()
                     }
@@ -1953,7 +2528,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Choose what to open")
                 .font(.system(size: 15, weight: .semibold)).foregroundStyle(ink)
-            Text(model.phase == .installingSave
+            Text(model.savekitSessionBlocked
+                 ? "The save action stopped. Held RPC remains open; finish this session before another operation."
+                 : model.phase == .installingSave
                  ? "Installing a save. Other options will become available after RPC is verified."
                  : model.phase == .failed && model.seedsowInstallStarted
                  ? "RPC is no longer available. Restart the Switch before another app attempt."
@@ -1994,8 +2571,6 @@ struct ContentView: View {
             Divider()
             modloaderRow
             Divider()
-            artemisInstallerRow
-            Divider()
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "externaldrive.badge.person.crop")
                     .font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
@@ -2014,186 +2589,9 @@ struct ContentView: View {
         .background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private var artemisInstallerRow: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "square.and.arrow.down")
-                .font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Save installers").font(.system(size: 13, weight: .semibold))
-                Text("Artemis launcher")
-                    .font(.system(size: 11, weight: .semibold))
-                HStack(spacing: 10) {
-                    Button("Install seedsowhax (demo)") {
-                        model.installArtemisSave(game: .seedsow, seedsowEdition: .demo)
-                    }
-                    Button("Install seedsowhax (full game)") {
-                        model.installArtemisSave(game: .seedsow, seedsowEdition: .full)
-                    }.help("Requires an existing Seedsow Lullaby full-game save")
-                }.disabled(!model.canInstallSeedsowTargetSave)
-                HStack(spacing: 10) {
-                    Button("Install norahax") { model.installArtemisSave(game: .nora1) }
-                        .help("Nora, Princess and Stray Cat HD demo")
-                    Button("Install nora2hax") { model.installArtemisSave(game: .nora) }
-                        .help("Nora, Princess and Crying Cat 2 demo")
-                    Button("Install hamihax") { model.installArtemisSave(game: .hamidashi) }
-                }.disabled(!model.canInstallArtemisSave)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Seedsow Lua Editor save")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("This will overwrite the Artemis launcher and overlapping save slots")
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 10) {
-                        if AppBuildIdentity.isTestBuild {
-                            Button("Install Lua editor save") { model.installSeedsowSave() }
-                        }
-                        Button("Install Lua Editor Pro (demo)") { model.installSeedsowSave(pro: true) }
-                    }.disabled(!model.canInstallSeedsowTargetSave)
-                }.padding(.top, 4)
-                if model.isAttachedArtemisFS {
-                    Text("Close Seedsow Lullaby and use another host session before writing its save")
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Balatro")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Requires the Switch 1 cartridge in compatibility mode; the native Switch 2 edition is unsupported. This save opens a Lua and FTP launcher instead of the game.")
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Install Balatro RCE") { model.installBalatroSave(variant: .upstream) }
-                        .disabled(!model.canInstallBalatroSave)
-                }.padding(.top, 4)
-                VStack(alignment: .leading, spacing: 5) {
-                    Text("Gravity Circuit")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Install the bundled Lua and FTP save for versions 1.0.0 and 1.2.1")
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                    Button("Install Gravity Circuit save") { model.installGravCircSave() }
-                        .disabled(!model.canInstallGravCircSave)
-                }.padding(.top, 4)
-                if model.phase == .installingSave {
-                    VStack(alignment: .leading, spacing: 7) {
-                        if let progress = model.progress { ProgressView(value: progress).tint(teal) }
-                        else { ProgressView().progressViewStyle(.linear).tint(teal) }
-                        Text(model.status)
-                            .font(.system(size: 11, weight: .semibold))
-                        if !model.progressLabel.isEmpty {
-                            Text(model.progressLabel)
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(Mac2jbTheme.muted)
-                        }
-                    }.padding(.vertical, 4)
-                }
-                if model.phase == .failed && model.seedsowInstallStarted {
-                    Text(model.detail)
-                        .font(.system(size: 10)).foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                if !model.seedsowUsers.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Choose the console user whose \(model.activeSaveTitle) save will be updated")
-                            .font(.system(size: 11, weight: .semibold))
-                        Picker("Console user", selection: $model.selectedSeedsowUser) {
-                            ForEach(model.seedsowUsers, id: \.self) { user in Text(user).tag(user) }
-                        }
-                        Button("Back up and install save") { model.selectSeedsowUser() }
-                            .buttonStyle(PrimaryActionStyle())
-                    }
-                }
-                if model.seedsowBackupFolder != nil {
-                    Button("Open original save backup") { model.revealSeedsowBackup() }
-                }
-                if model.seedsowInstallCompleted && model.phase == .rpcHeld {
-                    Text(model.seedsowInstallSkipped
-                         ? "Existing \(model.activeSaveTitle) save preserved"
-                         : model.installingSeedsowEditorSave
-                           ? model.installingSeedsowEditorPro
-                             ? "Seedsow Lua Editor Pro installed"
-                             : "Seedsow Lua Editor save installed"
-                           : model.activeSaveGame == .balatro
-                             ? model.activeBalatroVariant == .showcase
-                               ? "Balatro cpypwn showcase installed"
-                               : "Balatro RCE save installed"
-                           : model.activeSaveGame == .gravcirc
-                             ? "Gravity Circuit save installed"
-                           : "\(model.activeSaveGame?.launcher ?? "Artemis launcher") save installed")
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                } else {
-                    Text("Close the selected game before installing. Installing can replace game progress; the original save is verified and kept as a backup.")
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                HStack(spacing: 10) {
-                    Button("Check all save game updates") {
-                        saveGameUpdates.check(runtimeRoot: model.runtime?.root)
-                    }.disabled(saveGameUpdates.isChecking || model.runtime == nil || model.phase == .installingSave)
-                    if saveGameUpdates.isChecking { ProgressView().controlSize(.small) }
-                    if !saveGameUpdates.releasePages.isEmpty {
-                        Menu("View releases") {
-                            ForEach(saveGameUpdates.releasePages) { page in
-                                Link(page.name, destination: page.url)
-                            }
-                        }
-                    }
-                }.font(.system(size: 10))
-                if !saveGameUpdates.message.isEmpty {
-                    Text(saveGameUpdates.message)
-                        .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            Spacer(minLength: 8)
-        }
-    }
-
-    private var customSeedsowEditorControl: some View {
-        DisclosureGroup("Custom Seedsow Lua editor save") {
-            VStack(alignment: .leading, spacing: 8) {
-                Button("Choose editor save…") { chooseLuaEditorSave() }
-                    .disabled(!model.canInstallSeedsowTargetSave && !canConfigure)
-                if let selectedLuaEditorSave {
-                    Text(selectedLuaEditorSave.lastPathComponent)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(Mac2jbTheme.muted).textSelection(.enabled)
-                    Button("Install selected save") {
-                        model.installSeedsowSave(source: selectedLuaEditorSave)
-                    }.disabled(!model.canInstallSeedsowTargetSave)
-                }
-                if let luaEditorSelectionMessage {
-                    Text(luaEditorSelectionMessage).font(.system(size: 10)).foregroundStyle(.orange)
-                }
-            }.padding(.top, 6)
-        }
-        .font(.system(size: 11))
-        .padding(.leading, 44)
-    }
-
-    private func chooseLuaEditorSave() {
-        guard model.canInstallSeedsowTargetSave || showHostOnlyHomebrew && canConfigure else { return }
-        let picker = NSOpenPanel()
-        picker.title = "Choose a Seedsow Lua editor save"
-        picker.message = "Select a ZIP archive or a folder containing the editor save files."
-        picker.canChooseDirectories = true
-        picker.canChooseFiles = true
-        picker.allowsMultipleSelection = false
-        picker.begin { response in
-            guard response == .OK, let url = picker.url else { return }
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
-            guard values?.isDirectory == true ||
-                  values?.isRegularFile == true && url.pathExtension.lowercased() == "zip" else {
-                selectedLuaEditorSave = nil
-                luaEditorSelectionMessage = "Choose a ZIP archive or a folder of save files."
-                return
-            }
-            selectedLuaEditorSave = url.standardizedFileURL
-            luaEditorSelectionMessage = nil
-        }
-    }
-
     private var homebrewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choose an app")
+            Text("Choose what to open")
                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
             Text(model.phase == .installingSave
                  ? "Installing a save. Other options will become available after RPC is verified."
@@ -2212,7 +2610,7 @@ struct ContentView: View {
             homebrewRow(icon: "square.grid.3x3.fill", title: "MintBrew",
                         description: "Open the homebrew library on your Switch",
                         actionTitle: model.postRun.homebrewAttempted && model.homebrewApp == .mintBrew
-                            ? homebrewActionTitle : "Launch MintBrew",
+                            ? homebrewActionTitle : "Open MintBrew",
                         enabled: model.canLaunchMintBrew, action: {
                             model.launchMintBrew(accountAddons: account.addonURLs,
                                                  libraryItems: account.libraryPayload())
@@ -2229,7 +2627,7 @@ struct ContentView: View {
             }
             homebrewRow(icon: "cpu", title: "HBLauncher",
                         description: "Run native AArch64 apps in this held session",
-                        actionTitle: "Launch HBLauncher",
+                        actionTitle: "Open HBLauncher",
                         enabled: model.canLaunchNativeHBLauncher && nativeSDRomFolderValid,
                         action: { model.launchNativeHBLauncher(sdRomFolder: nativeSDRomFolder) }) {
                 HStack(spacing: 10) {
@@ -2244,8 +2642,6 @@ struct ContentView: View {
             modloaderRow
             if showHostOnlyHomebrew &&
                (canConfigure ? model.selectedHost : model.activeHost).supportsSaveKit {
-                artemisInstallerRow
-                customSeedsowEditorControl
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(alignment: .top, spacing: 12) {
@@ -2288,14 +2684,11 @@ struct ContentView: View {
 
     private var filesystemActionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Choose an app")
+            Text("Choose what to open")
                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(ink)
             ounceCakeRow
             Divider()
             modloaderRow
-            Divider()
-            artemisInstallerRow
-            customSeedsowEditorControl
             Divider()
             homebrewRow(icon: "externaldrive.badge.person.crop", title: "SaveKit",
                         description: "Inspect, back up or manage game saves in this held session",
@@ -2367,7 +2760,8 @@ struct ContentView: View {
     }
 
     private var ounceCakeRow: some View {
-        HStack(alignment: .top, spacing: 12) {
+        let civFTP = model.isAttachedCivSwitchFS
+        return HStack(alignment: .top, spacing: 12) {
             Image(systemName: "externaldrive.fill")
                 .font(.system(size: 22)).foregroundStyle(teal).frame(width: 32)
             VStack(alignment: .leading, spacing: 8) {
@@ -2387,9 +2781,10 @@ struct ContentView: View {
                         .disabled(!model.canSelectOunceCakeGame)
                 }
                 if model.ounceCakeSession.stage == .serving,
-                   let webDAV = model.ounceCakeSession.endpoint?.address {
+                   let endpoint = model.ounceCakeSession.endpoint {
                     HStack(spacing: 8) {
-                        Text("WebDAV \(webDAV)").textSelection(.enabled)
+                        Text("\(endpoint.service == .civFTP ? "FTP on Switch" : "WebDAV") \(endpoint.address)")
+                            .textSelection(.enabled)
                         Button("Copy") { model.copyOunceCakeAddress() }
                     }.font(.system(size: 11))
                     if let ftp = model.ounceCakeFTPURL {
@@ -2402,8 +2797,12 @@ struct ContentView: View {
             }
             Spacer(minLength: 8)
             HStack(spacing: 8) {
-                Button("WebDAV") { model.launchOunceCake(ftp: false) }
-                Button("FTP on this Mac") { model.launchOunceCake(ftp: true) }
+                if civFTP {
+                    Button("FTP on Switch") { model.launchOunceCake(ftp: true) }
+                } else {
+                    Button("WebDAV") { model.launchOunceCake(ftp: false) }
+                    Button("FTP on this Mac") { model.launchOunceCake(ftp: true) }
+                }
             }.font(.system(size: 11, weight: .medium))
                 .disabled(!model.canLaunchOunceCake)
         }
@@ -2445,6 +2844,9 @@ struct ContentView: View {
             HStack(spacing: 10) {
                 if account.signingIn {
                     ProgressView().controlSize(.small)
+                    if account.signInQRCodeURL != nil {
+                        Button("Open sign-in page") { account.openSignInPage() }
+                    }
                     Button("Cancel sign-in") { account.cancelSignIn() }
                 } else if account.signedIn {
                     Text(account.displayName.map { "Stremio: \($0)" } ?? "Signed in to Stremio")
@@ -2452,11 +2854,21 @@ struct ContentView: View {
                     Button("Refresh") { account.refresh() }
                     Button("Sign out") { account.signOut() }
                 } else {
-                    Button("Sign in to Stremio") { account.signIn() }
+                    Button("Sign in with QR code") { account.signInWithQRCode() }
+                    Button("Open sign-in page") { account.signIn() }
                     Text("Optional · account stays on this Mac").foregroundStyle(Mac2jbTheme.muted)
                 }
             }
             .disabled(model.postRun.homebrewAttempted && model.hasLiveWorkers)
+            if let url = account.signInQRCodeURL, let qrCode = StremioSignInQR.image(for: url) {
+                Image(nsImage: qrCode)
+                    .interpolation(.none)
+                    .resizable()
+                    .frame(width: 180, height: 180)
+                    .padding(10)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 12))
+                    .accessibilityLabel("Stremio sign-in QR code")
+            }
             Text(account.status).foregroundStyle(Mac2jbTheme.muted).fixedSize(horizontal: false, vertical: true)
             if !account.watchProgressStatus.isEmpty {
                 Text(account.watchProgressStatus).foregroundStyle(Mac2jbTheme.muted)
@@ -2490,7 +2902,7 @@ struct ContentView: View {
 
     private var homebrewActionTitle: String {
         switch model.postRun.homebrewStage {
-        case .idle: return "Launch MintBrew"
+        case .idle: return "Open MintBrew"
         case .launching: return "Starting…"
         case .selecting: return "Choose a game"
         case .running: return "Running"

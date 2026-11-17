@@ -16,19 +16,19 @@ template=args.templates or root/'native/prebuilt/templates.json'
 t=json.loads(template.read_text())['runtime'];offsets=t['offsets'];code=bytearray(base64.b64decode(t['code']))
 BASE=0x100000;CTX=0x400000;LAZY=0x410000;NODE=0x460000;OBJECT=0x470000;TLS=0x480000
 SDK=0x700400;STACK=0x800000;RET=0x900000;FS=0x20000000;TAGS=[0x101,0x102];WAIT=0x40000000
-for name,value in [('resident_context',CTX),('lazy_context',LAZY),('namespace_context',0)]:struct.pack_into('<Q',code,offsets[name],value)
-sdk_page=None
+sdk_page=None;sdk_offset=0x218000;lock_offset=0x2187d0;unlock_offset=0x218870
 if args.sdk_capture:
- raw=args.sdk_capture.read_bytes();range_=next(r for r in json.loads((root/'lib/native/fs-abi.json').read_text())['ranges'] if r['offset']==0x2187d0)
- assert hashlib.sha256(raw[range_['offset']:range_['offset']+range_['size']]).hexdigest()==range_['sha256']
- sdk_page=raw[0x218000:0x219000]
+ from fs_sdk_fixture import load_sdk_mutex
+ sdk_page,sdk_offset,lock_offset,unlock_offset=load_sdk_mutex(root,args.sdk_capture)
+for name,value in [('resident_context',CTX),('lazy_context',LAZY),('namespace_context',0),('lfs_mutex_lock_address',FS+lock_offset),('lfs_mutex_unlock_address',FS+unlock_offset)]:
+ if name in offsets:struct.pack_into('<Q',code,offsets[name],value)
 insns={i.address:i for i in Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN).disasm(bytes(code),BASE)}
-if sdk_page:insns.update({i.address:i for i in Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN).disasm(sdk_page,FS+0x218000)})
+if sdk_page:insns.update({i.address:i for i in Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN).disasm(sdk_page,FS+sdk_offset)})
 def reg(name):return getattr(R,'UC_ARM64_REG_'+name.upper())
 def check(seed,priority=False):
  u=Uc(UC_ARCH_ARM64,UC_MODE_ARM);u.mem_map(BASE,(len(code)+4095)&~4095);u.mem_write(BASE,bytes(code))
- for at,n in [(CTX,0x100000),(STACK,0x40000),(SDK&~4095,4096),(RET,4096),(FS+0x1000,4096),(FS+0x218000,4096)]:u.mem_map(at,n)
- if sdk_page:u.mem_write(FS+0x218000,sdk_page)
+ for at,n in [(CTX,0x100000),(STACK,0x40000),(SDK&~4095,4096),(RET,4096),(FS+0x1000,4096),(FS+sdk_offset,len(sdk_page) if sdk_page else 4096)]:u.mem_map(at,n)
+ if sdk_page:u.mem_write(FS+sdk_offset,sdk_page)
  def q(at,n):u.mem_write(at,struct.pack('<Q',n))
  def w(at,n):u.mem_write(at,struct.pack('<I',n))
  def readw(at):return int.from_bytes(u.mem_read(at,4),'little')
@@ -69,9 +69,9 @@ def check(seed,priority=False):
   if pc==FS+0x1248:
    lock(u.reg_read(R.UC_ARM64_REG_X0),u.reg_read(R.UC_ARM64_REG_X1),u.reg_read(R.UC_ARM64_REG_X2));return
   if pc==FS+0x1250:unlock(u.reg_read(R.UC_ARM64_REG_X0));return
-  if not sdk_page and pc==FS+0x2187d0:
+  if not sdk_page and pc==FS+lock_offset:
    address,owner,tag=[u.reg_read(reg('x'+str(i))) for i in range(3)];lock(owner&~WAIT,address,tag);return
-  if not sdk_page and pc==FS+0x218870:unlock(u.reg_read(R.UC_ARM64_REG_X0));return
+  if not sdk_page and pc==FS+unlock_offset:unlock(u.reg_read(R.UC_ARM64_REG_X0));return
   i=insns.get(pc)
   if not i:return
   if i.mnemonic in ['bti','pacibsp','autibsp','xpaci','xpaclri']:u.reg_write(R.UC_ARM64_REG_PC,pc+4);return

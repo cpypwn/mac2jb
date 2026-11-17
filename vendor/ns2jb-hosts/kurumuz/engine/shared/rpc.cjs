@@ -1,6 +1,6 @@
 const http = require('node:http');
-const path = require('node:path');
-const {port, addresses} = require('../connection.json');
+const {runPath} = require('./paths.cjs');
+const {port, addresses} = require(runPath('connection.json'));
 
 function request(body) {
   return new Promise((resolve, reject) => {
@@ -61,4 +61,4 @@ async function query(address) {
 
 module.exports = {request, call, callAddress, pair, read, write, query, a: addresses,
   output: addresses.scratch + 0x4040,
-  directory: path.resolve(__dirname, '..', 'switch' + addresses.platform)};
+  directory: runPath('switch' + addresses.platform)};

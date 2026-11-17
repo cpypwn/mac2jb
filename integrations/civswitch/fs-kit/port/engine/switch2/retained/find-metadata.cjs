@@ -11,6 +11,25 @@ const {loadTarget, required} = require('../../shared/target.cjs');
 const target = loadTarget();
 const DECIDABLE_CANDIDATES = 4;
 
+// Replay a single read-only retained request once on transient transport errors.
+// Rationale (2026-11-11, RUN 44/50): the memory socket is fail-closed, so a
+// transport hiccup (read timeout / reset) aborts an otherwise healthy attempt.
+// Every call wrapped here is read-only or an idempotent anchor move, so one
+// replay cannot corrupt state; it only avoids wasting a full boot on a
+// transport-level failure.
+async function replay(label, fn, evidence) {
+  try {
+    return await fn();
+  } catch (error) {
+    const message = String(error && (error.message || error));
+    if (!/timed out|was not replayed|ECONNRESET|ECONNREFUSED|EPIPE/.test(message)) throw error;
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    const result = await fn();
+    (evidence.replays || (evidence.replays = [])).push({label, at: new Date().toISOString()});
+    return result;
+  }
+}
+
 function poolBounds(links, seed) {
   check(links.length > 0, 'The pool capture has no native links');
   const size = 0x2000000, alignment = 0x200000;
@@ -72,7 +91,8 @@ async function resolvePool(socket, info, source, evidence, save) {
     }
     if (start === undefined) break;
 
-    const capture = await memory.read(socket, start, cycle);
+    const capture = await replay(`bucket-read@${start.toString(16)}`,
+      () => memory.read(socket, start, cycle), evidence);
     captures.push(capture.result); search.captures.push(capture.result);
     links.push(...linksFrom(capture.bytes, start, source.result.address));
     await save();
@@ -135,7 +155,39 @@ async function main(supervisorFile) {
   const save = () => fs.writeFile(file, JSON.stringify(evidence, null, 2) + '\n', {mode: 0o600});
   await save();
   try {
-    const source = await memory.read(socket, info.plan.target, 0x500000);
+    // Re-capture the initial pool window if the first read raced the retained
+    // helper (RUN 49: capture contained zero native links). The window is
+    // read-only; re-reading cannot corrupt anything.
+    let source;
+    for (let captureAttempt = 0; captureAttempt < 3; captureAttempt++) {
+      source = await replay(`pool-capture#${captureAttempt}`,
+        () => memory.read(socket, info.plan.target, 0x500000), evidence);
+      if (linksFrom(source.bytes, source.result.address, source.result.address).length > 0) break;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    if (linksFrom(source.bytes, source.result.address, source.result.address).length === 0) {
+      // Patch 14: the retained pool drifted outside the fixed capture window
+      // (RUN 56/65: three 5 MiB captures contained zero native links). Sweep
+      // neighbouring 0x40000 buckets read-only; the first bucket yielding >=2
+      // links becomes the pool-capture source. Bounded (8 rings, 16 reads),
+      // logged; no console-side state changes.
+      const cycle = info.bucketPeriod;
+      const sweep = {reads: [], target: info.plan.target.toString(16)};
+      for (let ring = 1; ring <= 8; ring++) {
+        for (const dir of [1, -1]) {
+          const start = Number(info.plan.target) + dir * ring * cycle;
+          const capture = await replay(`pool-sweep@${start.toString(16)}`,
+            () => memory.read(socket, start, 0x40000), evidence);
+          const found = linksFrom(capture.bytes, capture.result.address, capture.result.address).length;
+          sweep.reads.push({address: capture.result.address.toString(16), links: found});
+          await save();
+          if (found >= 2) { source = capture; sweep.picked = capture.result.address.toString(16); break; }
+        }
+        if (sweep.picked) break;
+      }
+      evidence.poolCaptureSweep = sweep;
+      check(sweep.picked, 'The pool capture has no native links in the window or its sweep');
+    }
     evidence.poolCapture = source.result;
     evidence.poolHypothesis = await resolvePool(socket, info, source, evidence, save);
     const hypothesis = evidence.poolHypothesis;
@@ -145,7 +197,9 @@ async function main(supervisorFile) {
       try {
         const size = hypothesis.size;
         const {node, capture, tried} = await locatePoolAnchor(
-          (address, length) => memory.read(socket, address, length), {...hypothesis, start: first}, info, evidence, save);
+          (address, length) => replay(`anchor-read@${address.toString(16)}`,
+            () => memory.read(socket, address, length), evidence),
+          {...hypothesis, start: first}, info, evidence, save);
         const {next} = node;
         evidence.node = {...node, candidate: first};
         evidence.poolHypothesis = {...hypothesis, start: first, tried};
@@ -162,24 +216,29 @@ async function main(supervisorFile) {
             fallback + probeLength <= item.address + item.length)) {
           check(fallback >= first && fallback + probeLength <= first + size,
             'A missed-header control is outside the identified native buffer pool');
-          evidence.fallbackCapture = (await memory.read(socket, fallback, probeLength)).result;
+          evidence.fallbackCapture = (await replay('fallback-read',
+            () => memory.read(socket, fallback, probeLength), evidence)).result;
           await save();
         }
         const anchor = Buffer.alloc(16);
         anchor.writeBigUInt64LE(BigInt(node.address));
         anchor.writeBigUInt64LE(BigInt(node.address), 8);
         for (let attempt = 0; attempt < 6; attempt++) {
-          const result = await memory.request(socket, {command: 'retained-bootstrap-move',
-            address: page, length: probeLength, anchorOffset: window.anchorOffset, anchorHex: anchor.toString('hex')});
+          const result = await replay(`bootstrap-move#${attempt}`,
+            () => memory.request(socket, {command: 'retained-bootstrap-move',
+              address: page, length: probeLength, anchorOffset: window.anchorOffset, anchorHex: anchor.toString('hex')}),
+            evidence);
           evidence.attempts.push(result);
           await save();
           console.log(JSON.stringify({stage: result.verified ? 'metadata-verified' : 'header-missed',
             file, attempt, capture: result.capture}));
           if (result.verified) {
             evidence.verified = true;
-            evidence.metadata = await memory.request(socket, {command: 'retained-bootstrap-read',
-              address: page - required(target.retainedCaptureOffset, `${target.name} retained capture offset`),
-              length: required(target.retainedCaptureBytes, `${target.name} retained capture size`)});
+            evidence.metadata = await replay('bootstrap-read',
+              () => memory.request(socket, {command: 'retained-bootstrap-read',
+                address: page - required(target.retainedCaptureOffset, `${target.name} retained capture offset`),
+                length: required(target.retainedCaptureBytes, `${target.name} retained capture size`)}),
+              evidence);
             console.log(JSON.stringify({stage: 'metadata-captured', file, capture: evidence.metadata}));
             succeeded = true;
             break;

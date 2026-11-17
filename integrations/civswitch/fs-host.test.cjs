@@ -6,7 +6,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const net = require('node:net');
-const {runFsHost, stage, verifiedRun, verifiedStop, failureDetails} = require('./fs-host.cjs');
+const {runFsHost, stage, verifiedRun, verifiedStop, failureDetails, stageTimeoutMinutes} = require('./fs-host.cjs');
 const {prepare, verifyStage} = require('../../scripts/prepare-civswitch-savekit.cjs');
 
 test('the pinned kit stages with SaveKit compatibility and a patched bridge address', async t => {
@@ -70,6 +70,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 fs.mkdirSync(path.join(__dirname, 'runs'), {recursive: true});
 const run = fs.mkdtempSync(path.join(__dirname, 'runs', 'switch2-'));
+fs.writeFileSync(path.join(run, 'timeout.txt'), process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS || '');
 console.log('Waiting for Civilization VII via CivSwitch at 127.0.0.1:39380.');
 console.log('Run folder: ' + run);
 setTimeout(() => {
@@ -143,16 +144,25 @@ test('stages the host, sends the bridge once, exposes a verified held run and st
   const result = await runFsHost({
     consoleIp: '127.0.0.1', macIp: '192.168.1.55', runtimeRoot: f.root,
     sourcePort: f.sourcePort, loaderPort: f.port, prepare: async () => {},
-    verifyPrepared: async () => {},
+    verifyPrepared: async () => {}, stageTimeoutMinutes: 17,
     abortSignal: abort.signal, handleSignals: false,
     emit: entry => {events.push(entry); if (entry.type === 'held-ready') abort.abort();},
   });
   assert.equal(result.stopped, true);
   assert.match(result.runPath, /\/runs\/civswitch-fs-[a-f0-9]{16}\/port\/engine\/runs\/switch2-/);
   assert.equal(await fs.readFile(result.connectionPath, 'utf8'), '{"port":42123}');
+  assert.equal(await fs.readFile(path.join(result.runPath, 'timeout.txt'), 'utf8'), '1020000');
   assert.match(f.received(), /PC_IP: '192\.168\.1\.55'/);
   assert.deepEqual(events.filter(entry => ['bridge-sent', 'held-ready', 'stopped'].includes(entry.type))
     .map(entry => entry.type), ['bridge-sent', 'held-ready', 'stopped']);
+});
+
+test('host stage timeout accepts only whole minutes from 1 to 60', () => {
+  assert.equal(stageTimeoutMinutes(), 10);
+  assert.equal(stageTimeoutMinutes('1'), 1);
+  assert.equal(stageTimeoutMinutes('60'), 60);
+  for (const value of ['0', '61', '1.5', 'not-a-number'])
+    assert.throws(() => stageTimeoutMinutes(value), /between 1 and 60 minutes/);
 });
 
 test('wait mode verifies the saved loader before sending a single bridge', async t => {

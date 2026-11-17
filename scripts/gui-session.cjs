@@ -162,12 +162,12 @@ function heldSignalGuard(message) {
 }
 
 async function main({root, address, emit, lines, verifiedResult, input = process.stdin, graceMs = 300000,
-  seedsowSave = false, savekitTools = false,
+  seedsowSave = false, savekitTools = false, stageTimeoutMinutes = 10,
   preflightCustomApp}) {
   if (!net.isIPv4(address)) throw Error('Choose the Mac’s LAN IPv4 address.');
   if ((seedsowSave || savekitTools) &&
       !selectedProfile(root).supportsSaveKit)
-    throw Error('Seedsow and SaveKit operations require a SaveKit-capable host.');
+    throw Error('Save tools require a SaveKit-capable host.');
   const folder = seedsowSave || savekitTools ? require('./prepare-seedsow-host.cjs').prepare(root) :
     path.join(root, 'vendor/ns2jb');
   const runs = path.join(folder, 'runs');
@@ -192,7 +192,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
   let savekitChild, savekitTask, savekitBusy = false, savekitCompleted = false, savekitSkipped = false, savekitStage;
   let savekitCustom = false, savekitGame, savekitVariant,
     savekitSelected = false, savekitFinishedForHomebrew = false;
-  let savekitUsers = new Set(), savekitFailurePublished = false;
+  let savekitUsers = new Set();
   let toolChild, toolTask, toolBusy = false, toolAction, savekitSaveTouched = false;
   let savekitToolFailed = false;
   let preflightBusy = false, preflightTask;
@@ -283,7 +283,8 @@ async function main({root, address, emit, lines, verifiedResult, input = process
   try {
     runner = spawn(process.execPath, ['--require', guard, 'run.cjs', '--rpc', address], {
       cwd: folder, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
-      env: {...process.env, NS2_BASIC_ARITY: '5', NS2_RPC_MODE: '0', NS2_FIRMWARE_DUMP_DIR: dumpDirectory}
+      env: {...process.env, NS2_BASIC_ARITY: '5', NS2_RPC_MODE: '0', NS2_FIRMWARE_DUMP_DIR: dumpDirectory,
+        MAC2JB_HOST_STAGE_TIMEOUT_MS: String(stageTimeoutMinutes * 60000)}
     });
     const runnerDone = finished(runner);
     function output(line) {
@@ -378,8 +379,8 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       savekitBusy = true;
       const previousSavekitCompleted = savekitCompleted;
       savekitCompleted = false; savekitSkipped = false; savekitStage = undefined;
-      savekitFailurePublished = false; savekitUsers.clear();
-      let preSaveFailure, absentSaveFailure, unchangedSaveFailure, verifiedBackupPath;
+      savekitUsers.clear();
+      let reportedSaveFailure, verifiedBackupPath;
       savekitChild = spawn(process.execPath,
         [path.join(root, 'scripts/gui-savekit.cjs'), directory,
           ...(balatroVariant ? ['--balatro', balatroVariant] :
@@ -437,29 +438,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
           safeEmit('savekit-' + event.type,
             {game: artemisGame, backupPath: backup, files: event.files, message: event.message});
         } else {
-          if (event.reason === 'save-absent' && savekitStage === 'backup' && !event.backupPath) {
-            absentSaveFailure = event.message;
-            return;
-          }
-          if (event.reason === 'save-unchanged' && savekitStage === 'writing' &&
-              typeof event.backupPath === 'string' && path.isAbsolute(event.backupPath) &&
-              path.resolve(event.backupPath) === verifiedBackupPath) {
-            unchangedSaveFailure = event.message;
-            return;
-          }
-          if (event.reason === 'save-preflight' && savekitStage === 'backup' &&
-              typeof event.backupPath === 'string' && path.isAbsolute(event.backupPath) &&
-              path.resolve(event.backupPath) === verifiedBackupPath) {
-            preSaveFailure = event.message;
-            return;
-          }
-          if (artemisGame && savekitStage === 'checking' && !event.backupPath) {
-            preSaveFailure = event.message;
-            return;
-          }
-          savekitFailurePublished = true;
-          fail(event.message);
-          safeEmit('savekit-failed', {game: artemisGame, backupPath: event.backupPath, message: event.message});
+          reportedSaveFailure = event;
         }
       };
       lines(child.stdout, observe, 1024 * 1024);
@@ -467,44 +446,31 @@ async function main({root, address, emit, lines, verifiedResult, input = process
       const outcome = await done;
       savekitChild = undefined; savekitUsers.clear();
       if (outcome.error || outcome.code !== 0 || outcome.signal || !savekitCompleted) {
-        if (unchangedSaveFailure && savekitStage === 'writing' &&
-            !outcome.error && !outcome.signal && outcome.code === 1 && !failure) {
-          savekitBusy = false; savekitTask = undefined; savekitStage = undefined;
-          savekitCompleted = previousSavekitCompleted;
-          savekitFailurePublished = false; savekitGame = undefined; savekitCustom = false;
-          safeEmit('savekit-recoverable', {game: artemisGame,
-            backupPath: verifiedBackupPath, message: unchangedSaveFailure});
-          return;
-        }
-        if (absentSaveFailure && savekitStage === 'backup' &&
-            !outcome.error && !outcome.signal && outcome.code === 1 && !failure) {
-          savekitBusy = false; savekitTask = undefined; savekitStage = undefined;
-          savekitCompleted = previousSavekitCompleted;
-          savekitFailurePublished = false; savekitGame = undefined; savekitCustom = false;
-          safeEmit('savekit-recoverable', {game: artemisGame, message: absentSaveFailure});
-          return;
-        }
-        if (preSaveFailure && ['checking', 'backup'].includes(savekitStage) &&
-            !outcome.error && !outcome.signal && outcome.code === 1 && !failure) {
-          let rpcReady = false;
+        let rpcReady = false;
+        if (!outcome.error && !outcome.signal && outcome.code === 1 && !failure &&
+            reportedSaveFailure?.safeToContinue === true && savekitStage !== 'writing') {
           try {
             rpcReady = (await require(path.join(folder, 'rpc.cjs')).request(directory,
               {command: 'status'}))?.ready === true;
           } catch {}
-          if (rpcReady) {
-            savekitBusy = false; savekitTask = undefined; savekitStage = undefined;
-            savekitCompleted = previousSavekitCompleted;
-            savekitFailurePublished = false; savekitGame = undefined; savekitCustom = false;
-            safeEmit('savekit-recoverable', {game: artemisGame,
-              message: preSaveFailure + ' Held RPC is still ready; choose another action.'});
-            return;
-          }
+        }
+        if (rpcReady) {
+          savekitBusy = false; savekitTask = undefined; savekitStage = undefined;
+          savekitCompleted = previousSavekitCompleted;
+          savekitGame = undefined; savekitCustom = false;
+          safeEmit('savekit-recoverable', {game: artemisGame,
+            backupPath: verifiedBackupPath,
+            message: reportedSaveFailure.message + ' Held RPC is ready; choose another action.'});
+          return;
         }
         savekitBusy = false;
-        fail('Save installation did not finish. Keep the backup and restart the console.');
-        if (!savekitFailurePublished) safeEmit('savekit-failed',
-          {game: artemisGame, message: failure + ' This write was not retried.'});
-        finish('Save installation stopped.');
+        savekitToolFailed = true;
+        const message = (reportedSaveFailure?.message ||
+          'Save installation did not finish. Keep the backup.') +
+          ' Held RPC remains open; finish this session before another save operation.';
+        fail(message);
+        safeEmit('savekit-failed', {game: artemisGame,
+          backupPath: verifiedBackupPath, message});
       } else {
         savekitBusy = false;
         savekitFinishedForHomebrew = true;
@@ -549,28 +515,27 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         const {type, ...fields} = completionEvent;
         safeEmit('savekit-tool-complete', fields);
       } else {
-        let safeToContinue = false;
+        let rpcReady = false;
         if (!invalid && !outcome.error && !outcome.signal && outcome.code === 1 &&
-            !completed && failureEvent?.safeToContinue === true) {
+            !completed) {
           try {
-            safeToContinue = (await require(path.join(folder, 'rpc.cjs')).request(directory,
+            rpcReady = (await require(path.join(folder, 'rpc.cjs')).request(directory,
               {command: 'status'}))?.ready === true;
           } catch {}
         }
+        const safeToContinue = rpcReady && failureEvent?.safeToContinue === true;
         savekitToolFailed = !safeToContinue;
         const message = invalid ? 'The save data worker returned invalid progress.' :
           'The save data operation did not finish. Check the log and keep any backup.';
         if (failureEvent) {
           const {type, ...fields} = failureEvent;
           safeEmit('savekit-tool-failed', {...fields, safeToContinue,
-            message: safeToContinue ? fields.message + ' Held RPC is ready; choose another save action or Done.' : fields.message});
-        } else safeEmit('savekit-tool-failed', {action: value.action, message});
-        if (!safeToContinue &&
-            (['write', 'restore', 'delete', 'titles'].includes(value.action) || failureEvent?.unsafe === true)) {
-          cleanupBlocked = true;
-          fail(message + ' Restart the console before another save operation.');
-          finish('Save data operation stopped.');
-        }
+            message: fields.message + (safeToContinue
+              ? ' Held RPC is ready; choose another save action or Done.'
+              : rpcReady ? ' Held RPC remains open; finish the session before another save operation.'
+                : ' RPC status could not be confirmed; check the session log.')});
+        } else safeEmit('savekit-tool-failed', {action: value.action, message,
+          safeToContinue: false});
       }
     }
     async function homebrew(application, config = {}) {
@@ -872,17 +837,20 @@ async function main({root, address, emit, lines, verifiedResult, input = process
           command.action === 'install-artemis-save' || command.action === 'install-seedsow-save' ?
             command.variant : undefined).catch(error => {
           fail(error.message);
+          savekitBusy = false;
+          savekitToolFailed = true;
           safeEmit('savekit-failed', {game: artemisGame, message: error.message});
-          finish('Save installation stopped.');
         });
         return;
       }
       if (command.action === 'savekit-tool') {
-        if (!savekitTools || !rpcHeldConfirmed  || toolBusy || savekitBusy ||
+        if (!savekitTools || !rpcHeldConfirmed || toolBusy || savekitBusy || savekitToolFailed ||
             homebrewAttempted || helper || statusBusy || preflightBusy || dumpBusy || failure ||
             seedsowSave && !savekitCompleted && !savekitSelected) {
           safeEmit('action-rejected', {action: command.action,
-            message: 'Save data tools need this session’s verified held RPC.'}); return;
+            message: savekitToolFailed
+              ? 'Finish this session before another save operation after an uncertain failure.'
+              : 'Save data tools need this session’s verified held RPC.'}); return;
         }
         let value;
         try {value = require('./gui-savekit-tools.cjs').request(command.request);}
@@ -895,11 +863,11 @@ async function main({root, address, emit, lines, verifiedResult, input = process
         }
         toolTask = runSavekitTool(value, command.request).catch(error => {
           const message = 'Save data operation stopped: ' + error.message;
-          safeEmit('savekit-tool-failed', {action: value.action, message});
-          if (['write', 'restore', 'delete'].includes(value.action)) {
-            cleanupBlocked = true;
-            fail(message); finish('Save data operation stopped.');
-          }
+          toolBusy = false;
+          toolChild = undefined;
+          savekitToolFailed = true;
+          safeEmit('savekit-tool-failed', {action: value.action, message,
+            safeToContinue: false});
         });
         return;
       }

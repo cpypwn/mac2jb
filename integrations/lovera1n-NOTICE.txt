@@ -1,0 +1,18 @@
+# lovera1n source notice
+
+The shared FS host and Switch 2 payload are derived from the CivSwitch FS kit
+and ns2jb work. This package carries those files under GPL-2.0; see
+`integrations/civswitch/fs-kit/LICENSE`. The FS kit source includes its own
+historical upstream notes in `integrations/civswitch/fs-kit/NOTICE.md` and
+`CHANGES.md`. Those notes describe a larger upstream tree; they are not an
+inventory of this lovera1n package.
+
+Gravity Circuit and Balatro target adapters and their measured profiles were
+developed for lovera1n. The included `build-payload.cjs`, payload C and
+assembly source, linker script, and manifest are the corresponding build
+inputs for the bundled RO payload image. Rebuilding that image requires
+Zig 0.15.2.
+
+This runtime package excludes game save archives, captured SDK binaries, run
+reports, and Switch 1 binaries. Its target-specific verification gates remain
+active; including a target profile does not establish full FS access.

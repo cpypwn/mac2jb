@@ -632,30 +632,40 @@ for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test('private ' + hos
   await fs.mkdir(vendor);
   await fs.cp(path.join(sourceRoot, 'vendor/ns2jb-hosts', hostId),
     path.join(vendor, 'ns2jb'), {recursive: true});
+  await fs.cp(path.join(sourceRoot, 'vendor/ns2jb-hosts', hostId),
+    path.join(vendor, 'ns2jb-hosts', hostId), {recursive: true});
   const savekit = path.join(vendor, 'ns2-savekit');
   await fs.mkdir(savekit, {recursive: true});
-  for (const name of ['Seedsow-Lua-Editor-Save.zip'])
-    await fs.copyFile(path.join(sourceRoot, 'vendor/ns2-savekit', name), path.join(savekit, name));
+  const overlayPath = require('./prepare-seedsow-host.cjs').overlayPath;
   for (const relative of ['engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+    'engine/switch2/app/filesystem.cjs',
     'engine/switch2/app/mounted-save.cjs']) {
-    const target = path.join(savekit, 'overlay', relative);
+    const target = overlayPath(temp, hostId, relative);
     await fs.mkdir(path.dirname(target), {recursive: true});
-    await fs.copyFile(path.join(sourceRoot, 'vendor/ns2-savekit/overlay', relative), target);
+    await fs.copyFile(overlayPath(sourceRoot, hostId, relative), target);
   }
   await fs.writeFile(path.join(temp, 'selected-host.json'), JSON.stringify(profileById(hostId)));
   const folder = prepare(temp);
-  assert.match(path.basename(folder), /^ns2-savekit-host-/);
+  assert.equal(folder, path.join(vendor, 'ns2jb'));
   assert.ok((await fs.stat(path.join(folder, 'run.cjs'))).isFile());
   for (const relative of ['engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+    'engine/switch2/app/filesystem.cjs',
     'engine/switch2/app/mounted-save.cjs'])
     assert.deepEqual(await fs.readFile(path.join(folder, relative)),
-      await fs.readFile(path.join(savekit, 'overlay', relative)));
+      await fs.readFile(overlayPath(temp, hostId, relative)));
   assert.ok((await fs.stat(path.join(folder, 'runs'))).isDirectory());
+  const priorRun = path.join(folder, 'runs/switch2-prior');
+  await fs.mkdir(priorRun);
+  await fs.writeFile(path.join(priorRun, 'result.json'), '{"verified":true}\n');
+  assert.equal(prepare(temp), folder);
+  assert.equal(await fs.readFile(path.join(priorRun, 'result.json'), 'utf8'), '{"verified":true}\n');
   const ipc = path.join(vendor, 'ns2jb/engine/shared/ipc.cjs');
   await fs.appendFile(ipc, '\nmodified\n');
-  assert.throws(() => prepare(temp), /source integrity check failed/);
-  await fs.copyFile(path.join(sourceRoot, 'vendor/ns2jb-hosts', hostId,
-    'engine/shared/ipc.cjs'), ipc);
+  assert.throws(() => prepare(temp), /patch integrity check failed/);
+  for (const relative of ['engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+    'engine/switch2/app/filesystem.cjs', 'engine/switch2/app/mounted-save.cjs'])
+    await fs.copyFile(path.join(sourceRoot, 'vendor/ns2jb-hosts', hostId, relative),
+      path.join(folder, relative));
   await fs.appendFile(path.join(savekit, 'overlay/engine/switch2/ro/ncm.cjs'), '\nmodified\n');
-  assert.throws(() => prepare(temp), /source integrity check failed/);
+  assert.throws(() => prepare(temp), /patch integrity check failed/);
 });

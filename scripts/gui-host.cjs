@@ -10,6 +10,21 @@ const {autoControllers} = require('./usb-controllers.cjs');
 const root = path.resolve(__dirname, '..');
 const timingDefaults = Object.freeze({delay: 10, enumerationTimeout: 4, loadWaitMs: 1000,
   runWaitMs: 0, removeWaitMs: 0, loadConfirmWaitMs: 0, keyHoldMs: 0, enterSettleMs: 0, pollInterval: 10});
+function hostSettings(args) {
+  if (args[0] !== 'host') throw Error('Expected a host command.');
+  const values = args.slice(2);
+  let stageTimeoutMinutes = 10;
+  const position = values.indexOf('--host-stage-timeout-minutes');
+  if (position !== -1) {
+    const value = values[position + 1];
+    if (!/^(?:[1-9]|[1-5][0-9]|60)$/.test(value || '') ||
+        values.indexOf('--host-stage-timeout-minutes', position + 1) !== -1)
+      throw Error('Host stage timeout must be 1–60 minutes.');
+    stageTimeoutMinutes = Number(value);
+    values.splice(position, 2);
+  }
+  return {args: args.slice(0, 2).concat(values), stageTimeoutMinutes};
+}
 function hidSettings(args) {
   const settings = {...timingDefaults};
   const values = [...args];
@@ -117,7 +132,7 @@ function stop() {
   stopTimer = setTimeout(() => signalGroup(current, 'SIGKILL'), 2000);
   stopTimer.unref();
 }
-async function host(address) {
+async function host(address, stageTimeoutMinutes = 10) {
   if (!net.isIPv4(address)) throw Error('Choose the Mac’s LAN IPv4 address.');
   const profile = selectedProfile(root);
   const folder = path.join(root, 'vendor/ns2jb');
@@ -132,7 +147,8 @@ async function host(address) {
     cwd: folder, detached: true, stdio: ['ignore', 'pipe', 'pipe'],
     // Use the selected host's matching bootstrap without changing its source.
     // GUI sessions finish after verification, regardless of inherited settings.
-    env: {...process.env, NS2_BASIC_ARITY: String(profile.startArgumentCount), NS2_RPC_MODE: '0'}
+    env: {...process.env, NS2_BASIC_ARITY: String(profile.startArgumentCount), NS2_RPC_MODE: '0',
+      MAC2JB_HOST_STAGE_TIMEOUT_MS: String(stageTimeoutMinutes * 60000)}
   });
   const child = current;
   let published = false, directory, publicationError, networkFailure, networkTimer, progressed = false;
@@ -199,8 +215,7 @@ async function host(address) {
   emit('failed', {message: result?.error || 'The host ended without a verified result. Restart the console before retrying.'});
   return code || 1;
 }
-async function hid(kind, controller, settings = timingDefaults) {
-  const profile = selectedProfile(root);
+async function hid(kind, controller, settings = timingDefaults, profile = selectedProfile(root)) {
   if (settings.demo && !profile.supportsDemo) throw Error(`${profile.label} does not support the demo in this pinned build.`);
   if (!['bootstrap', 'commands', 'commands-only', 'save-bootstrap'].includes(kind)) throw Error('Invalid transfer kind.');
   if (controller !== 'auto' && !/^usb-drd(?:[0-9]|1[0-5])$/.test(controller)) throw Error('Choose a controller from 0 to 15.');
@@ -414,23 +429,25 @@ async function hid(kind, controller, settings = timingDefaults) {
     : 'No controller connected. The Mac must NOT be supplying charging power to the Switch. Unplug the USB-C cable from the Switch, wait about one second, then plug it back into the Switch and verify that power is directed toward the Mac. Software cannot force the power role. You can also choose a controller manually.'}); return 1;
 }
 async function main(args = process.argv.slice(2)) {
+  let stageTimeoutMinutes = 10;
+  if (args[0] === 'host') ({args, stageTimeoutMinutes} = hostSettings(args));
   if (args[0] === 'host' && args.length === 4 && args[2] === '--post-run-options' &&
       args[3] === '--seedsow-save') {
     if (!selectedProfile(root).supportsSaveKit)
       throw Error('Seedsow save installation requires a SaveKit-capable host.');
     return require('./gui-session.cjs').main({root, address: args[1], emit, lines,
-      verifiedResult, seedsowSave: true, savekitTools: true});
+      verifiedResult, seedsowSave: true, savekitTools: true, stageTimeoutMinutes});
   }
   if (args[0] === 'host' && args.length === 4 && args[2] === '--post-run-options' &&
       args[3] === '--savekit-tools') {
     if (!selectedProfile(root).supportsSaveKit)
       throw Error('SaveKit tools require a SaveKit-capable host.');
     return require('./gui-session.cjs').main({root, address: args[1], emit, lines,
-      verifiedResult, savekitTools: true});
+      verifiedResult, savekitTools: true, stageTimeoutMinutes});
   }
   if (args[0] === 'host' && args.length === 3 && args[2] === '--post-run-options') {
     if (!selectedProfile(root).supportsHeldRPC) throw Error('The selected host does not provide held RPC.');
-    return require('./gui-session.cjs').main({root, address: args[1], emit, lines, verifiedResult});
+    return require('./gui-session.cjs').main({root, address: args[1], emit, lines, verifiedResult, stageTimeoutMinutes});
   }
   if (args.length === 1 && args[0] === '--self-test') {
     const address = '192.0.2.1';
@@ -445,15 +462,22 @@ async function main(args = process.argv.slice(2)) {
     return 0;
   }
   process.on('SIGINT', stop); process.on('SIGTERM', stop);
-  if (args[0] === 'host' && args.length === 2) return host(args[1]);
+  if (args[0] === 'host' && args.length === 2) return host(args[1], stageTimeoutMinutes);
   if (args[0] === 'hid' && args[1] === 'commands-only')
     return hid(args[1], args[2], commandsOnlySettings(args.slice(3),selectedProfile(root)));
+  if (args[0] === 'hid' && args[1] === 'kaihen-commands') {
+    const profile = profileById('kurumuz');
+    const settings = heldCommandsSettings(args.slice(3), profile);
+    if (!settings.startCommand) throw Error('kaiHEN requires its current five-argument START command.');
+    return hid('commands', args[2], settings, profile);
+  }
   if (args[0] === 'hid' && args[1] === 'commands')
     return hid(args[1], args[2], heldCommandsSettings(args.slice(3),selectedProfile(root)));
   if (args[0] === 'hid' && args.length >= 3) return hid(args[1], args[2], hidSettings(args.slice(3)));
-  throw Error('Usage: gui-host.cjs host IPv4 | hid bootstrap|commands|save-bootstrap auto|usb-drdN [delay-ms] | hid commands-only auto|usb-drdN [delay-ms] --commands CSV [--start-prefix|--start-command TEXT]');
+  throw Error('Usage: gui-host.cjs host IPv4 [--host-stage-timeout-minutes 1..60] | hid bootstrap|commands|save-bootstrap auto|usb-drdN [delay-ms] | hid commands-only auto|usb-drdN [delay-ms] --commands CSV [--start-prefix|--start-command TEXT]');
 }
-module.exports = {validStart, verifiedResult, hidSettings,commandsOnlySettings,heldCommandsSettings, lines, main, networkBindFailure, networkUnavailableMessage};
+module.exports = {validStart, verifiedResult, hidSettings,commandsOnlySettings,heldCommandsSettings, hostSettings,
+  lines, main, networkBindFailure, networkUnavailableMessage};
 if (require.main === module) main().then(code => {process.exitCode = code;}).catch(error => {
   signalGroup(current, 'SIGTERM'); emit('failed', {message: error.message}); process.exitCode = 1;
 });

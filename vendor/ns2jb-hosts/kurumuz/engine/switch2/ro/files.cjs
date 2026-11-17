@@ -48,6 +48,14 @@ async function dispatch(context, request, state, domain) {
     const donor = state.donor;
     check(donor?.ready && !donor.pendingRemoval && !s.threads.size && !s.pendingIpc && state.worker?.joined,
       'Donor cleanup requires the completed launch and an idle worker');
+    if (donor.mount === 'package') {
+      check(s.handles.has(donor.handle), 'RO package session is unavailable');
+      await s.close(donor.handle);
+      donor.cleanedUp = true;
+      donor.closedAt = new Date().toISOString();
+      await save();
+      return {cleanedUp: true, files: []};
+    }
     const filesystem = require('../app/filesystem.cjs');
     const handle = await require('../app/mounted-save.cjs').cloneMountedFilesystem(s, donor.mount || 'save');
     try {
@@ -75,6 +83,22 @@ async function dispatch(context, request, state, domain) {
     } finally {await s.close(handle);}
     donor.cleanedUp = true; await save();
     return {cleanedUp: true, files: donor.files.filter(item => item.removed).map(item => item.name)};
+  }
+  if (command === 'donor-refresh') {
+    check(state.donor?.ready && state.worker?.joined && !s.threads.size && !s.pendingIpc,
+      'A prior launch must be settled before replacing its donor');
+    const old = state.donor;
+    const handle = await require('../app/mounted-save.cjs').cloneMountedFilesystem(s, 'save');
+    const converted = await domain.send(s, 'Fresh RO donor ConvertToDomain', handle,
+      domain.wire.control(0));
+    check(!converted.result && converted.data.readUInt32LE() > 0,
+      'Fresh donor domain conversion failed');
+    const root = converted.data.readUInt32LE();
+    state.donor = {handle, root, mount: 'save', ready: true,
+      files: [], created: new Date().toISOString(), previousHandle: old.handle};
+    await save();
+    await s.close(old.handle);
+    return state.donor;
   }
   if (command === 'donor-prepare') {
     const manifest = require('./payload/manifest.json');

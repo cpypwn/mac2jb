@@ -56,6 +56,21 @@ const archiveText = archive => `space=${SPACES[archive.space] ?? archive.space} 
 const archiveDir = archive => `archive-space${archive.space}-type${archive.type}` +
   `-rank${archive.rank}-index${archive.index}-${uidLabel(archive.uid).slice(0, 8)}`;
 
+async function checkedCleanup(s) {
+  await s.closeUpload();
+  if (!await s.ready() || s.threads.size)
+    throw Error('Save pull cannot release native resources');
+  for (const handle of [...s.handles].reverse()) await s.close(handle);
+  if (s.base) {
+    const result = await s.call('free', s.base, 0, 0);
+    if (result) throw Error('Save pull allocation did not free: ' + code(result));
+    s.base = 0;
+  }
+  if (!await s.ready() || s.handles.size || s.threads.size || s.base)
+    throw Error('Save pull left native resources open');
+  console.log('MAC2JB_SAVE_PULL_CLEANUP_OK');
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   // `known` is what exists; `given` is what was passed. Testing membership of the
@@ -117,7 +132,7 @@ async function main() {
     open: (save, full) => filesystem.openFile(s, save, full),
     size: opened => filesystem.fileSize(s, opened.handle),
     read: (opened, offset, size) => filesystem.readFile(s, opened.handle, offset, size),
-    close: opened => s.close(opened.handle).catch(() => s.handles.delete(opened.handle)),
+    close: opened => s.close(opened.handle),
   };
 
   // Raw 16-byte AccountUid values. Do not round-trip them through BigInt hex:
@@ -143,7 +158,7 @@ async function main() {
   }
   if (listUids) {
     for (const uid of uids) console.log(uid.toString('hex'));
-    await s.cleanup().catch(() => {});
+    await checkedCleanup(s);
     return;
   }
   if (forcedUid) uids.splice(0, uids.length, Buffer.from(forcedUid.replace(/^0x/i, ''), 'hex'));
@@ -363,7 +378,7 @@ async function main() {
           console.error(`done: ${state.files} files, ${state.bytes} bytes -> ${target}`);
       }
       if (!keepOpen) {
-        await s.close(openHandle).catch(() => s.handles.delete(openHandle));
+        await s.close(openHandle);
         openHandle = null;
       }
     }
@@ -379,8 +394,16 @@ async function main() {
       console.error('--keep-open: leaving the save mounted and the session alive');
       return;
     }
-    if (openHandle !== null) await s.close(openHandle).catch(() => s.handles.delete(openHandle));
-    await s.cleanup().catch(() => {});
+    if (openHandle !== null) {
+      try { await s.close(openHandle); }
+      catch (error) { console.error('save pull close failed:', error.message); }
+    }
+    try {
+      await checkedCleanup(s);
+    } catch (error) {
+      console.error('save pull cleanup failed:', error.message);
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -402,7 +425,7 @@ function fail(error) {
     process.exit(3);
   }
   console.error('FAILED:', error.message);
-  process.exit(1);
+  process.exitCode = 1;
 }
 
 main().catch(fail);

@@ -1,0 +1,33 @@
+{
+  "gameProfile": "balatro-physical-base-v1.0.1f",
+  "runtimeVersion": "1.0.1f-FULL",
+  "nonce": "97f6db50f37731e5",
+  "sdkCodeSha256": "47cbfaea43e00261b05dc2327299637890727b476eeac7f42aaba397b108d5f9",
+  "sdkCrc32": "0xac8a9d29",
+  "sdkBase": "0x59298b4000",
+  "mount": {
+    "name": "save",
+    "node": "0x31494472a8",
+    "accessor": "0x31494472a0",
+    "implementation": "0x3149489680",
+    "service": "0x31494b22d0",
+    "serviceVtable": "0x592a59c9a0",
+    "serviceVtableOffset": "0xce89a0",
+    "manager": "0x592a606940",
+    "objectId": 152,
+    "guardsVerified": true
+  },
+  "proxy": {
+    "object": "0x592a6064c0",
+    "manager": "0x592a606940",
+    "objectId": 153
+  },
+  "sessionManager": {
+    "stateSize": 2048,
+    "stateValue": 3,
+    "slot": "0x592a6069c0",
+    "borrowedHandle": 459250
+  },
+  "absentPathResult": "0x00000202",
+  "status": "read-only; mounted domain not cloned"
+}

@@ -20,13 +20,13 @@ async function manifestFor(root) {
   check(data.length < 4096, 'NXFormat manifest is too large');
   const manifest = JSON.parse(data);
   check(manifest.repository === 'https://github.com/fab918/nxformat' &&
-    manifest.release === 'V1.0.3' && manifest.version === '1.0.3' &&
-    manifest.archive === 'https://github.com/fab918/nxformat/releases/download/V1.0.3/nxformat-1.0.3-macos-universal.tar.gz' &&
-    manifest.archiveBytes === 63966246 &&
-    manifest.archiveSha256 === 'b61fecfad224d2f0b6a040c23663e5f6915eb500be9fc36016e3ffcb0aa66e52' &&
-    manifest.binarySha256 === '16bb123a70617c668e5236ec1cc8efe7889ebebac28dac6d2f58c3d11d04fdd0' &&
+    manifest.release === 'V1.0.4' && manifest.version === '1.0.4' &&
+    manifest.archive === 'https://github.com/fab918/nxformat/releases/download/V1.0.4/nxformat-1.0.4-macos-universal.tar.gz' &&
+    manifest.archiveBytes === 71457447 &&
+    manifest.archiveSha256 === 'a91cd724702d052ff210b3126d9e05ca782660e65671774d932939b37f84ae57' &&
+    manifest.binarySha256 === '80a7123ba1a0d9cfa6a2f809e39d0dbf2bcd8e29d5d651e49061f98f07c73f4d' &&
     manifest.binaryPath === 'bin/nxconvert' &&
-    manifest.checksumSource === 'https://github.com/fab918/nxformat/releases/download/V1.0.3/SHA256SUMS',
+    manifest.checksumSource === 'https://github.com/fab918/nxformat/releases/download/V1.0.4/SHA256SUMS',
   'The pinned NXFormat manifest is invalid');
   return manifest;
 }

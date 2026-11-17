@@ -1,6 +1,7 @@
 // Locate the native allocator's external link from this session's captures.
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const {stageTimeoutMs} = require('../../shared/stages.cjs');
 const memory = require('../tools/endpoint.cjs');
 const {linksFrom} = require('./links.cjs');
 const rpc = require('../../shared/rpc.cjs');
@@ -68,7 +69,7 @@ async function resolvePool(socket, info, source, evidence, save) {
 }
 
 async function main(supervisorFile) {
-  const deadline = Date.now() + 600000;
+  const deadline = Date.now() + stageTimeoutMs;
   let supervisor;
   for (;;) {
     supervisor = JSON.parse(await fs.readFile(supervisorFile));

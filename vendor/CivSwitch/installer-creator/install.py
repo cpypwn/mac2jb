@@ -144,7 +144,7 @@ let oldVal = "";
 for (let k = 0; k < OLD_LEN; k++) oldVal += String.fromCharCode(tpl[HPOS + 20 + k]);
 if (oldVal !== "4000 BCE") { await log("E: unexpected record value"); return; }
 
-const NEWVAL = STAGER + "XSSP:0:" + STAGE_HEX;
+const NEWVAL = STAGER + '<span style="display:none">XSSP:0:' + STAGE_HEX + '</span>';
 const VAL_OFF = HPOS + 20;
 const TAIL_OFF = VAL_OFF + OLD_LEN + 1;
 const newSize = tpl.length + NEWVAL.length - OLD_LEN;

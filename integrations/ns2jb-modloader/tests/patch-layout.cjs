@@ -3,6 +3,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {collectMods}=require('../lib/mods.cjs'),lazy=require('../lib/lazy-context.cjs'),{patchedNso}=require('../lib/exefs.cjs');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'patch-layout-')),title='0400c3f00006e000',build='12'.padEnd(64,'0');
 function write(name,bytes){const file=path.join(root,name);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,bytes);return file;}
+// The backing files live on the PC; the remote adapter only sees SD paths.
+const sdRoot='/ns2jb-modloader';
+function sdPath(file){return sdRoot+'/'+path.relative(root,file).split(path.sep).join('/');}
+function localPath(name){assert(name===sdRoot||name.startsWith(sdRoot+'/'),'Unexpected SD path: '+name);return path.join(root,...name.slice(sdRoot.length).split('/'));}
 const binary=Buffer.from(['PATCH',Buffer.from([0,1,8,0,1,0x78]),'EOF'].map(part=>Buffer.isBuffer(part)?part:Buffer.from(part)).reduce((a,b)=>Buffer.concat([a,b]),Buffer.alloc(0)));
 try{
  const folder='contents/'+title+'/exefs/';
@@ -15,10 +19,11 @@ try{
  assert.equal(game.patches.length,1);assert.equal(game.patches[0].file,ips);assert.equal(collection.patches.length,0);assert.equal(game.patchReferences.length,1);
  const virtual=patchedNso(full,game.patches);assert.equal(virtual.segments[0].data[8],0x78);assert.equal(virtual.segments[0].data[7],0);
  // Metadata-only SD scanning must make the same choice without reading file bodies.
- const remote={remote:true,existsSync:fs.existsSync,statSync:fs.statSync,lstatSync:fs.lstatSync,readdirSync:fs.readdirSync};
- collection=collectMods(root,remote);const plan=lazy.plan(collection,'switch2-layout');
+ const remote={remote:true,existsSync:name=>fs.existsSync(localPath(name)),statSync:name=>fs.statSync(localPath(name)),
+  lstatSync:name=>fs.lstatSync(localPath(name)),readdirSync:(name,options)=>fs.readdirSync(localPath(name),options)};
+ collection=collectMods(sdRoot,remote);const plan=lazy.plan(collection,'switch2-layout');
  assert.equal(plan.lazyPatches.length,0);assert.equal(plan.lazyGames[0].titleId,title);
- const scoped=plan.lazyGames[0].files.filter(file=>file.kind===6);assert.equal(scoped.length,1);assert.equal(scoped[0].sdPath,ips);
+ const scoped=plan.lazyGames[0].files.filter(file=>file.kind===6);assert.equal(scoped.length,1);assert.equal(scoped[0].sdPath,sdPath(ips));
  const native={sdk:{original:Object.fromEntries(['fileRead','fileSize','fileRelease','filesystemRelease','storageRelease','directoryRead','directoryCount','directoryRelease'].map((name,i)=>[name,0x1000+i*16]))},namespace:{original:{open:0x2000,directory:0x2010,type:0x2020}},originalSize:0x3000,lazy:{original:{current:0x4000,program:0x4010,data:0x4020}}};
  const bytes=lazy.buildContext(plan,{filesystem:{object:0x6100001000n},registry:0x6100003000n},0x4000000000n,0x6000000000n,native),layout=lazy.layout(plan);
  assert.equal(bytes.readBigUInt64LE(layout.gamesOffset),BigInt('0x'+title));assert.equal(bytes.readBigUInt64LE(layout.lazyOffset+88),0n);
@@ -36,9 +41,9 @@ try{
  assert.equal(game.exefs.length,2);assert.equal(patchedNso(full,[compiled]).segments[0].data[8],0x79);
  // The resident manifest embeds the generated IPS in one owned allocation,
  // with pointers relocated to that allocation and no scratch SD file.
- collection=collectMods(root,remote);assert.equal(collection.games[0].patches.find(file=>file.file===text).format,'pchtxt');
+ collection=collectMods(sdRoot,remote);assert.equal(collection.games[0].patches.find(file=>file.file===sdPath(text)).format,'pchtxt');
  assert.throws(()=>lazy.plan(collection,'switch2-layout'),/compiled during setup/);
- collection=collectMods(root);for(const file of [...collection.games[0].exefs,...collection.games[0].patches,...collection.patches])file.sdPath=file.file;
+ collection=collectMods(root);for(const file of [...collection.games[0].exefs,...collection.games[0].patches,...collection.patches])file.sdPath=sdPath(file.file);
  const compiledPlan=lazy.plan(collection,'switch2-layout'),compiledLayout=lazy.layout(compiledPlan),base=0x6000000000n;
  const context=lazy.buildContext(compiledPlan,{filesystem:{object:0x6100001000n},registry:0x6100003000n},0x4000000000n,base,native);
  const index=compiledPlan.lazyGames[0].files.findIndex(file=>file.kind===7),record=compiledLayout.filesOffset+index*80;
@@ -49,6 +54,11 @@ try{
  assert.equal(again.readBigUInt64LE(record+56),context.readBigUInt64LE(record+56)+4096n);
  fs.unlinkSync(text);
  const invalid=write(folder+'main.ips',binary);assert.throws(()=>collectMods(root),/named for an NSO Build ID/);fs.unlinkSync(invalid);
- fs.symlinkSync(ips,path.join(root,'exefs_patches','ab.ips'));assert.throws(()=>collectMods(root),/symlinks/);
+ // Report a symlink through the directory API without requiring Windows
+ // Developer Mode or administrator rights just to run the test.
+ const link=write('exefs_patches/ab.ips',binary),symlinks={...fs,readdirSync:(folder,options)=>{
+  const entries=fs.readdirSync(folder,options);if(options?.withFileTypes)for(const entry of entries)if(path.join(folder,entry.name)===link)entry.isSymbolicLink=()=>true;return entries;
+ }};
+ assert.throws(()=>collectMods(root,symlinks),/symlinks/);
  console.log('Patch layout: native ExeFS, binary companion preference, both global roots, text-only compilation, resident inline extent/relocation and title-scoped ABI: passed');
 }finally{fs.rmSync(root,{recursive:true,force:true});}

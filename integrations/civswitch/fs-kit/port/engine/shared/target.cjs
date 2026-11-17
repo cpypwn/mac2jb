@@ -1,7 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
-const TARGETS = new Set(['smilebasic', 'civ7']);
+const TARGETS = new Set(['smilebasic', 'civ7', 'gravcirc']);
 const transportNames = ['memcpy', 'memmove', 'queryMemory'];
 const nativeNames = [...transportNames, 'crc32', 'cancelSynchronization', 'eventSyscallScan',
   'threadId', 'waitZero', 'processInfo', 'syscallCapture'];
@@ -18,7 +19,7 @@ function readJson(file, label = file) {
 }
 
 function selectedTarget(value = process.env.NS2_TARGET || 'smilebasic') {
-  if (!TARGETS.has(value)) throw Error(`Unsupported target ${JSON.stringify(value)}; choose civ7 or smilebasic`);
+  if (!TARGETS.has(value)) throw Error(`Unsupported target ${JSON.stringify(value)}; choose civ7, gravcirc, or smilebasic`);
   return value;
 }
 
@@ -106,6 +107,9 @@ const requiredAppFunctions = {
     'nn::os::detail::ThreadManagerImplByHorizon::GetThreadAvailableCoreMask() const',
     'nn::os::detail::ThreadManagerImplByHorizon::GetCurrentCoreNumber() const']
 };
+const rawSvcWorkerFunctions = ['createThread', 'startThread', 'exitThread', 'closeHandle',
+  'waitSynchronization', 'getThreadPriority', 'getThreadCoreMask',
+  'getCurrentProcessorNumber', 'setThreadCoreMask', 'readTpidrro'];
 
 function validateCodeEntry(entry, target, label) {
   if (!entry || typeof entry.bytes !== 'string' || !/^(?:[0-9a-f]{2}){4,256}$/i.test(entry.bytes))
@@ -114,7 +118,19 @@ function validateCodeEntry(entry, target, label) {
 }
 
 function validateArtifact(target, relative, label) {
-  const file = artifactPath(target, relative, label);
+  let file;
+  if (target.materializedRoot) {
+    if (relative === target.artifacts.sdkFunctions)
+      file = path.join(target.materializedRoot, 'shared', 'sdk-functions.json');
+    else if (relative === target.artifacts.sdkLayout)
+      file = path.join(target.materializedRoot, 'shared', 'sdk-layout.json');
+    else {
+      const app = Object.entries(target.artifacts.app || {})
+        .find(([, source]) => source === relative);
+      if (!app) throw Error(`Unknown materialized artifact: ${relative}`);
+      file = path.join(target.materializedRoot, 'switch2', 'app', app[0]);
+    }
+  } else file = artifactPath(target, relative, label);
   const value = readJson(file, label);
   if (!value || Array.isArray(value) || typeof value !== 'object')
     throw Error(`Invalid ${label}: ${file}`);
@@ -152,8 +168,20 @@ function validateArtifacts(target = loadTarget()) {
     if (requiredAppFunctions[name]) {
       if (!artifact.value.functions || typeof artifact.value.functions !== 'object')
         throw Error(`Missing functions table in ${artifact.file}`);
-      for (const functionName of requiredAppFunctions[name])
+      const functionNames = name === 'thread-code.json' && target.thread?.mode === 'raw-svc' ?
+        ['longjmp', 'loadTable', 'call4', 'saveResult64', 'sleep'] : requiredAppFunctions[name];
+      for (const functionName of functionNames)
         validateCodeEntry(artifact.value.functions[functionName], target, `${name} ${functionName}`);
+      if (name === 'thread-code.json' && target.thread?.mode === 'raw-svc') {
+        const rawSvc = required(artifact.value.rawSvc, `${target.name} raw-svc worker code`);
+        for (const functionName of rawSvcWorkerFunctions)
+          validateCodeEntry(rawSvc.functions?.[functionName], target, `raw-svc ${functionName}`);
+        const manager = required(rawSvc.managerList, `${target.name} raw-svc thread manager layout`);
+        for (const field of ['globalPointerOffset', 'managerBias', 'listSentinelOffset',
+          'nodeHandleOffset', 'maxNodes'])
+          if (!Number.isInteger(manager[field]) || manager[field] < 0)
+            throw Error(`Unresolved raw-svc thread manager ${field}`);
+      }
     } else if (name === 'hash-code.json') validateCodeEntry(artifact.value, target, 'SHA-256 function');
     else if (name === 'sdk-proxy-code.json') {
       validateCodeEntry({offset: artifact.value.functionOffset, bytes: artifact.value.bytes}, target, 'SDK proxy getter');
@@ -187,14 +215,85 @@ function assertAppSupported(target = loadTarget()) {
 }
 
 function assertFullSupported(target = loadTarget()) {
-  assertAppSupported(target);
+  if (target.name === 'gravcirc') {
+    assertCanarySupported(target);
+    const geometry = target.canaryGeometry;
+    if (!Number.isInteger(geometry.fieldCopies) || geometry.fieldCopies <= 0 ||
+        target.fieldCopies !== geometry.fieldCopies)
+      throw Error('Unsupported gravcirc measured cache-copy repetition count');
+  } else assertAppSupported(target);
   for (const name of nativeNames.slice(transportNames.length + 1)) nativeEntry(name, target);
   required(target.romMount, `${target.name} RomFS mount layout`);
-  required(target.retainedCaptureBytes, `${target.name} retained capture size`);
-  required(target.retainedCaptureOffset, `${target.name} retained capture offset`);
+  if (!Number.isInteger(target.retainedCaptureBytes) || target.retainedCaptureBytes <= 0)
+    throw Error(`Unsupported ${target.name} retained capture size`);
+  if (!Number.isInteger(target.retainedCaptureOffset) || target.retainedCaptureOffset <= 0)
+    throw Error(`Unsupported ${target.name} retained capture offset`);
   required(target.smServiceOffset, `${target.name} SM service offset`);
   programId(target);
   required(target.programIds.host, `${target.name} host program IDs`);
+  return target;
+}
+
+function assertWorkerSupported(target = loadTarget()) {
+  if (target.name !== 'gravcirc') return assertAppSupported(target);
+  required(target.artifacts?.sdkFunctions, 'gravcirc SDK function artifact');
+  required(target.artifacts?.sdkLayout, 'gravcirc SDK layout artifact');
+  for (const name of transportNames) nativeEntry(name, target);
+  required(target.hello?.sdkCrc32, 'gravcirc HELLO SDK CRC-32');
+  required(target.crc32?.expected, 'gravcirc SDK CRC-32 value');
+  required(target.memoryMap, 'gravcirc bounded memory-map policy');
+  validateArtifacts(target);
+  required(target.crc32?.function, 'gravcirc qualified native CRC-32 call');
+  nativeEntry('crc32', {...target, nativeFunctions: {...target.nativeFunctions,
+    crc32: target.crc32.function}});
+  if (!Number.isInteger(target.timing?.nativeFrequency) || target.timing.nativeFrequency <= 0)
+    throw Error('Unsupported gravcirc measured native counter frequency');
+  required(target.timing?.mode, 'gravcirc qualified timing mode');
+  required(target.thread?.mode, 'gravcirc qualified worker lifecycle');
+  required(target.affinity?.mode, 'gravcirc qualified worker affinity');
+  for (const name of ['thread-code.json', 'event-code.json', 'timing-code.json',
+    'hash-code.json', 'sdk-proxy-code.json', 'thread-scheduling-reference.json',
+    ...(target.affinity?.mode === 'compat' ? ['compat-affinity-reference.json'] : [])])
+    required(target.artifacts.app?.[name], `gravcirc ${name} artifact`);
+  for (const name of ['allocate', 'free', 'getService', 'send', 'close', 'memset'])
+    validateCodeEntry(sdkFunctions(target)[name], target, `gravcirc SDK ${name}`);
+  required(target.sessionManager, 'gravcirc SDK session-manager layout');
+  required(target.romMount, 'gravcirc RomFS mount layout');
+  return assertAppSupported(target);
+}
+
+function assertCanarySupported(target = loadTarget()) {
+  if (target.name !== 'gravcirc') return assertFullSupported(target);
+  assertWorkerSupported(target);
+  const qualification = target.appWorkerQualification;
+  if (qualification?.qualified !== true ||
+      !/^sha256:[0-9a-f]{64}$/.test(qualification.proof || ''))
+    throw Error('Unsupported gravcirc integrated app worker qualification');
+  const relative = required(target.artifacts.app?.['worker-qualification.json'],
+    'gravcirc integrated app worker qualification artifact');
+  const file = target.materializedRoot ?
+    path.join(target.materializedRoot, 'switch2', 'app', 'worker-qualification.json') :
+    artifactPath(target, relative, 'gravcirc integrated app worker qualification artifact');
+  const bytes = fs.readFileSync(file);
+  if (crypto.createHash('sha256').update(bytes).digest('hex') !== qualification.proof.slice(7))
+    throw Error('Gravcirc integrated app worker qualification proof hash differs');
+  const proof = readJson(file, 'gravcirc integrated app worker qualification');
+  if (proof.schemaVersion !== 1 || proof.target !== 'gravcirc' ||
+      proof.sdkCodeSha256 !== target.sdkSha256 || proof.verified !== true ||
+      proof.cleanedUp !== true || proof.nativeFrequency !== target.timing.nativeFrequency ||
+      !/^switch2-[A-Za-z0-9]+$/.test(proof.sourceSession || '') ||
+      !/^[0-9a-f]{64}$/.test(proof.sourceQualificationSha256 || '') ||
+      !/^[0-9a-f]{64}$/.test(proof.transferSha256 || '') ||
+      proof.worker?.joined !== true || !Number.isInteger(proof.worker.core) ||
+      proof.worker.core < 0 || proof.worker.core > 15 || proof.worker.tpidrroObserved !== true)
+    throw Error('Gravcirc integrated app worker qualification evidence is incomplete');
+  const geometry = target.canaryGeometry;
+  if (!Number.isInteger(geometry?.pinningAllocationBytes) || geometry.pinningAllocationBytes <= 0 ||
+      !Number.isInteger(geometry.heapJitterBytes) || geometry.heapJitterBytes < 0 ||
+      geometry.qualified !== true ||
+      target.pinningAllocationBytes !== geometry.pinningAllocationBytes ||
+      target.heapJitterBytes !== geometry.heapJitterBytes)
+    throw Error('Unsupported gravcirc measured canary allocation geometry');
   return target;
 }
 
@@ -213,4 +312,4 @@ async function materializeTarget(target, directory) {
 
 module.exports = {TARGETS, selectedTarget, loadTarget, readJson, required, sdkFunctionPath, sdkFunctions,
   nativeEntry, nativeOffset, programId, validateArtifacts, assertAppSupported, assertFullSupported,
-  materializeTarget};
+  assertWorkerSupported, assertCanarySupported, materializeTarget};

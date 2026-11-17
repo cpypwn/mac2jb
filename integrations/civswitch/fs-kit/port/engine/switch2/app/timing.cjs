@@ -5,6 +5,7 @@ const {loadTarget, required} = require('../../shared/target.cjs');
 const target = loadTarget();
 const code = require("./timing-code.json").functions;
 const nativeFrequencyCode = target.timing.nativeFrequencyCode || null;
+const {validatedGravityCircuitProof} = require('./timing-proof.cjs');
 
 async function verify(s) {
   for (const [name, expected] of Object.entries(code))
@@ -14,6 +15,15 @@ async function verify(s) {
     check(legacyFrequency === target.timing.sdkFrequency, 'Unexpected legacy SDK counter frequency');
     const sleep = require('./thread-code.json').functions.sleep;
     await s.verifyCode(sleep, 'Timing sleep');
+    if (target.name === 'gravcirc') {
+      const proof = validatedGravityCircuitProof(process.env.NS2_GC_TIMING_PROOF, live, target);
+      await s.record({operation: 'counterFrequency', mode: 'atomic-repl',
+        frequency: target.timing.nativeFrequency, measuredFrequency: proof.measuredFrequency,
+        legacyFrequency, measurementNs: proof.intervalNs, elapsedTicks: proof.elapsedTicks,
+        tolerancePpm: proof.tolerancePpm, sdkBase: proof.sdkBase, scratch: proof.scratch,
+        sdkCrc32: proof.sdkCrc32, nonce: proof.nonce});
+      return target.timing.nativeFrequency;
+    }
     const measurementNs = target.timing.measurementNs;
     check(Number.isSafeInteger(measurementNs) && measurementNs >= 100000000,
       'Invalid counter measurement interval');

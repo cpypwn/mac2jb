@@ -11,22 +11,32 @@ const {spawn} = require('node:child_process');
 const {createOverlay, buildLauncherPackage} = require('./civhomebrew-catalog-overlay.cjs');
 
 const PREFIX = 'MAC2JB_CIVHOMEBREW ';
-const COMMIT = 'ebb3857ebd2c80e4978ab7934651f2bcbefa78b7';
-const ARCHIVE_SHA256 = 'c38cb1c193362fb8b1599b6776b4315b5c64aa8dada3d21944de4e67cd68a542';
-const TREE_SHA256 = 'fe5b5c4891261c45cf869873169b01d34fec0187051b58feb0e5d9f3524045d5';
+const COMMIT = 'e6627ce1573950a54efc2fe59fe5ad93b2877bf3';
+const ARCHIVE_SHA256 = '941903d509bce8d528f4e29ec700c054318e436600e8d950ac850ec35867fe61';
+const TREE_SHA256 = 'd21e7b0384bafa9fc8e5bcc1cc0390fcd248b8a28a9b29d3081c4a5913636eef';
+const COMPATIBLE_COMMIT = 'ebb3857ebd2c80e4978ab7934651f2bcbefa78b7';
+const COMPATIBLE_ARCHIVE_SHA256 = 'c38cb1c193362fb8b1599b6776b4315b5c64aa8dada3d21944de4e67cd68a542';
+const COMPATIBLE_TREE_SHA256 = 'fe5b5c4891261c45cf869873169b01d34fec0187051b58feb0e5d9f3524045d5';
 const MAX_ARCHIVE = 16 * 1024 * 1024;
-const MAX_FRAME = 1024 * 1024;
+const MAX_FRAME = 48 * 1024 * 1024;
 
 function emit(type, fields = {}) {
   process.stdout.write(PREFIX + JSON.stringify({type, ...fields}) + '\n');
 }
 
 function sourceMetadata(runtimeRoot, options = {}) {
+  const flavor = options.sourceFlavor || 'native';
+  if (!['native', 'compatible'].includes(flavor)) throw Error('Unknown CivHomebrew launcher choice');
+  const pin = flavor === 'native'
+    ? {commit: COMMIT, archive: ARCHIVE_SHA256, tree: TREE_SHA256, count: 186, version: '1.3.8'}
+    : {commit: COMPATIBLE_COMMIT, archive: COMPATIBLE_ARCHIVE_SHA256,
+      tree: COMPATIBLE_TREE_SHA256, count: 107, version: '0.4.3'};
+  const filename = flavor === 'native' ? 'CivHomebrew-source.json' : 'CivHomebrew-compatible-source.json';
   const metadata = options.metadata || JSON.parse(fs.readFileSync(
-    path.join(runtimeRoot, 'packaging/CivHomebrew-source.json'), 'utf8'));
-  if (!options.metadata && (metadata.commit !== COMMIT || metadata.archiveSha256 !== ARCHIVE_SHA256 ||
-      metadata.treeSha256 !== TREE_SHA256 || metadata.fileCount !== 107 || metadata.version !== '0.4.3' ||
-      metadata.url !== 'https://codeload.github.com/XITRIX/CivHomebrew/zip/' + COMMIT)) {
+    path.join(runtimeRoot, 'packaging', filename), 'utf8'));
+  if (!options.metadata && (metadata.commit !== pin.commit || metadata.archiveSha256 !== pin.archive ||
+      metadata.treeSha256 !== pin.tree || metadata.fileCount !== pin.count || metadata.version !== pin.version ||
+      metadata.url !== 'https://codeload.github.com/XITRIX/CivHomebrew/zip/' + pin.commit)) {
     throw Error('The bundled CivHomebrew source pin does not match this app');
   }
   if (!/^[0-9a-f]{40}$/.test(metadata.commit) ||
@@ -348,7 +358,9 @@ async function refreshRunningLauncher(runtimeRoot, address, options = {}) {
   const prepared = await prepareSource(runtimeRoot, {...options, emit: report});
   const built = options.testLauncherPackage
     ? {package: options.testLauncherPackage, cleanup: async () => {}}
-    : await buildLauncherPackage(prepared.path);
+    : await buildLauncherPackage(prepared.path, options.sourceFlavor === 'compatible' ? {} : {
+      python: pythonExecutable(runtimeRoot), environment: pythonEnvironment(runtimeRoot)
+    });
   try {
     report('refresh-start', {message: 'Updating CivHomebrew on the Switch'});
     await companionRequest(address, {op: 'update', package: built.package}, options);
@@ -506,12 +518,18 @@ async function launchTemporary(runtimeRoot, address, source, options = {}) {
 }
 
 async function main(args = process.argv.slice(2), options = {}) {
-  const [action, rootArg, address] = args;
+  const [action, rootArg, addressOrFlavor, requestedFlavor] = args;
+  const localAction = ['--self-test', 'status', 'prepare'].includes(action);
+  const address = localAction ? undefined : addressOrFlavor;
+  const flavor = localAction ? addressOrFlavor : requestedFlavor;
   if (!['--self-test', 'status', 'prepare', 'probe', 'launch', 'install', 'restore', 'shutdown'].includes(action) ||
-      !rootArg || (['--self-test', 'status', 'prepare'].includes(action) ? args.length !== 2 :
-        args.length !== 3 || !(validAddress(address) || options.allowLoopback && address === '127.0.0.1'))) {
-    throw Error('usage: gui-civhomebrew.cjs --self-test|status|prepare RUNTIME_ROOT or probe|launch|install|restore|shutdown RUNTIME_ROOT SWITCH_IPV4');
+      !rootArg || (localAction ? args.length < 2 || args.length > 3 :
+        args.length < 3 || args.length > 4 ||
+        !(validAddress(address) || options.allowLoopback && address === '127.0.0.1')) ||
+      flavor && !['native', 'compatible'].includes(flavor)) {
+    throw Error('usage: gui-civhomebrew.cjs --self-test|status|prepare RUNTIME_ROOT [native|compatible] or probe|launch|install|restore|shutdown RUNTIME_ROOT SWITCH_IPV4 [native|compatible]');
   }
+  options = {...options, sourceFlavor: options.sourceFlavor || flavor || 'native'};
   const runtimeRoot = path.resolve(rootArg);
   const report = options.emit || emit;
   if (action === '--self-test') {
@@ -526,21 +544,10 @@ async function main(args = process.argv.slice(2), options = {}) {
     return status;
   }
   if (action === 'probe') {
-    const initial = await probeCompanion(address, options);
-    let state = initial, refreshError = null;
-    if (initial.mode === 'launcher' && !initial.busy && initial.launcher) {
-      try {
-        state = await refreshRunningLauncher(runtimeRoot, address, {...options, initialState: initial});
-      } catch (error) {
-        refreshError = error;
-        state = await probeCompanion(address, options).catch(() => initial);
-      }
-    }
+    const state = await probeCompanion(address, options);
     report('probe-ready', {mode: state.mode, launcher: state.launcher, ftp: state.ftp});
     if (state.mode !== 'launcher' || state.busy || !state.launcher) {
-      report('refresh-deferred', {message: 'Return to the CivHomebrew launcher, then connect again to update it'});
-    } else if (refreshError) {
-      report('refresh-failed', {message: 'CivHomebrew is connected, but its UI update failed: ' + refreshError.message});
+      report('refresh-deferred', {message: 'Return to the CivHomebrew launcher to use its options'});
     }
     return state;
   }
@@ -554,7 +561,9 @@ async function main(args = process.argv.slice(2), options = {}) {
     version: prepared.metadata.version, commit: prepared.metadata.commit});
   if (action === 'prepare') return prepared;
   if (action === 'restore') return finiteAction(action, runtimeRoot, address, prepared.path, options);
-  const overlay = await createOverlay(prepared.path);
+  const overlay = await createOverlay(prepared.path, options.sourceFlavor === 'compatible' ? {} : {
+    python: pythonExecutable(runtimeRoot), environment: pythonEnvironment(runtimeRoot)
+  });
   try {
     if (action === 'launch') return await launchTemporary(runtimeRoot, address, overlay.path, options);
     return await finiteAction(action, runtimeRoot, address, overlay.path, options);

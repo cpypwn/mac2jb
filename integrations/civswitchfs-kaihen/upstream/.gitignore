@@ -1,0 +1,7 @@
+# Node
+node_modules/
+dist/
+npm-debug.log*
+
+# Generated compression output
+*.hex

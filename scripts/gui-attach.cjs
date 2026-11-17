@@ -225,6 +225,7 @@ async function main(options = {}) {
     ({application, config} = selection);
     const ouncecakeMode = application === 'ouncecake' ||
       application === 'custom-homebrew' && config.customHomebrewKind === 'rpc-app' && config.adapter === 'ouncecake';
+    const civ7OunceCake = application === 'ouncecake' && context.profileId === 'civswitch-fs';
     let retrySafeFailure, cleanStopProof;
     claiming = true;
     try {
@@ -279,8 +280,10 @@ async function main(options = {}) {
       if (settled) {protocolFailure('The selected app sent activity after shutdown.'); return;}
       if (ouncecakeMode && event.type === 'running' &&
           (awaitingGame || gameTitles.size === 0 || event.host !== config.consoleAddress || event.port !== 2121 ||
-           event.httpURL !== `http://${config.consoleAddress}:2121/` ||
-           config.mode === 'ftp' && !validLocalFTPURL(event.ftpURL))) {
+           (civ7OunceCake ?
+             event.mode !== 'civ7-ftp' || event.ftpURL !== `ftp://${config.consoleAddress}:2121/` || event.httpURL !== undefined :
+             event.httpURL !== `http://${config.consoleAddress}:2121/` ||
+             config.mode === 'ftp' && !validLocalFTPURL(event.ftpURL)))) {
         protocolFailure('OunceCake did not confirm the selected file-service endpoint.'); return;
       }
       if (event.cleanupBlocked === true) fail('The selected app could not confirm native shutdown.', true);
@@ -298,8 +301,10 @@ async function main(options = {}) {
       if (retrySafeFailure) return;
       safeEmit('homebrew-' + event.type, {path: context.directory, message: event.message,
         ...(['mintbrew','native-hblauncher'].includes(application) ? {cleanupBlocked} : {}),
-        ...(ouncecakeMode ? {host: event.host, port: event.port, httpURL: event.httpURL,
-          ...(event.ftpURL && validLocalFTPURL(event.ftpURL) ? {ftpURL:event.ftpURL} : {}),cleanupBlocked} : {})});
+        ...(ouncecakeMode ? {host: event.host, port: event.port,
+          ...(civ7OunceCake ? {ftpURL:event.ftpURL,mode:'civ7-ftp'} :
+            {httpURL:event.httpURL,...(event.ftpURL && validLocalFTPURL(event.ftpURL) ? {ftpURL:event.ftpURL} : {})}),
+          cleanupBlocked} : {})});
     };
     lines(owned.stdout, observe, 1024 * 1024); lines(owned.stderr, observe);
     if (configurable) {
@@ -838,6 +843,14 @@ async function main(options = {}) {
       }
       let selection;
       try {selection = launchConfiguration(command);} catch (error) {safeEmit('action-rejected', {message: error.message}); return;}
+      if (context.profileId === 'civswitch-fs' && selection.application === 'ouncecake') {
+        if (command.mode === 'webdav') {
+          safeEmit('action-rejected', {action:command.action,message:'CivSwitch OunceCake offers direct FTP only.'});
+          return;
+        }
+        selection.script = 'scripts/gui-ouncecake-civ7.cjs';
+        selection.config.mode = 'ftp';
+      }
       if (launchAttempted || statusBusy || preflightBusy || dumpBusy || savekitSelected ||
           savekitBusy || toolBusy || cleanupBlocked || failure) {
         safeEmit('action-rejected', {message:savekitSelected || savekitBusy || toolBusy ?

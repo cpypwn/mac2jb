@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/BlafKing/OunceCake-Civ7",
+  "commit": "a645d48802146c2d0da23da19efadb74b66c117f",
+  "license": "GPLv2",
+  "distributionManifest": "OunceCake-Civ7-SHA256SUMS",
+  "nativeImage": {
+    "path": "engine/oz-code/native-civ7.bin",
+    "bytes": 18820,
+    "sha256": "e5f07bb69d0672ab1f195b8c6387ea4aa728c3b7bbbc7f80568ec1eb7288212a"
+  }
+}

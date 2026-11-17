@@ -1,0 +1,72 @@
+{
+  "gameProfile": "balatro-physical-base-v1.0.1f",
+  "runtimeVersion": "1.0.1f-FULL",
+  "capturedSdkBase": "0x19618b4000",
+  "sdkCodeSha256": "47cbfaea43e00261b05dc2327299637890727b476eeac7f42aaba397b108d5f9",
+  "status": "offline signatures and mangled argument types only; native call outcomes unqualified",
+  "allocatorManagerGlobalSdkOffset": 13936520,
+  "functions": {
+    "allocate": {
+      "symbol": "_ZN2nn2os19AllocateMemoryBlockEPmm",
+      "offset": 1255536,
+      "size": 24,
+      "arguments": [
+        "uint64_t *",
+        "uint64_t"
+      ],
+      "return": "unqualified",
+      "returnEvidence": "The Balatro wrapper propagates imported x0 without interpretation. The 32-bit qualifier view is diagnostic only; another Nintendo SDK header declares this symbol void, while the Gravity Circuit wrapper normalizes x0 as Result",
+      "sha256": "e18b167029f39be882616a5d16d408bea5e83e05dc6386b04812b295572c5019",
+      "bytes": "c8600090e20301aa08c543f9e10300aa00a10f91eb691214"
+    },
+    "free": {
+      "symbol": "_ZN2nn2os15FreeMemoryBlockEmm",
+      "offset": 1255568,
+      "size": 68,
+      "arguments": [
+        "uint64_t",
+        "uint64_t"
+      ],
+      "return": "void",
+      "sha256": "042a7526a689354ebf8e7cabdfb48df123985f49afc300c1db37bc19222644e5",
+      "bytes": "fd7bbfa9fd030091c86000902900008b08c543f9e20301aa0af541f90bf941f96b010a8b5f0100eb22914bfaa8000054e10300aa00a10f91fd7bc1a8dd69121488481294"
+    },
+    "getService": {
+      "symbol": "_ZN2nn2sm16GetServiceHandleEPNS_3svc6HandleEPKcm",
+      "offset": 1339088,
+      "size": 368,
+      "arguments": [
+        "uint32_t *",
+        "const char *",
+        "uint64_t"
+      ],
+      "return": "uint32_t",
+      "sha256": "f18196e445bef827a20dbe6584b475f73d32f99b4497e8167df4dd3e8251f2de",
+      "bytes": "fd7bbea9f44f01a9fd030091f30300aa020100b4280040395f0400f181050054ed031faaeb031faaea031faa05000014ed031faaeb031faaea031faae8031f2ae9031faaec031faaee031faaef031faa6b010daae803082a74d03bd56a010aaa490109aa280108aa290280d208010caa4900c0f208010eaa08010faa892200a9a86000b0005d45b9ac600094a0000034680200b9f44f41a9fd7bc2a8c0035fd6280280d22800c0f20800f0f2880200f908048052880a00b988824129680200b9f44f41a9fd7bc2a8c0035fd6290440395f0c00f129dd78d3030100542a0840395f0c00f14abd70d301010054ed031faaeb031faad4ffff17ed031faaeb031faaea031faad0ffff172b0c40395f1400f16c9d68d3e30000542b1040395f1400f16b7d60d3c1000054ed031faac7ffff17ed031faaeb031faac4ffff172d1440395f1c00f1ae5d58d3030100542d1840395f1c00f1ad3d50d3a0f7ff542f1c4039ef1d48d3bbffff17ed031faab8ffff17"
+    },
+    "queryMemory": {
+      "symbol": null,
+      "offset": 1437896,
+      "size": 16,
+      "arguments": [
+        "void *",
+        "void *",
+        "uint64_t"
+      ],
+      "return": "uint32_t",
+      "sha256": "07e786184a0455743abc053ee428d7e68a49e824a37f98f46f0fc3803d9628d8",
+      "bytes": "e10f1ff8c10000d4e20340f9410000b9"
+    },
+    "closeHandle": {
+      "symbol": null,
+      "offset": 1438112,
+      "size": 8,
+      "arguments": [
+        "uint32_t"
+      ],
+      "return": "uint32_t",
+      "sha256": "deece32043f3736d68d757a1b01501d4f9a43a053fa3049fbfb1fdcbc0a13965",
+      "bytes": "c10200d4c0035fd6"
+    }
+  }
+}

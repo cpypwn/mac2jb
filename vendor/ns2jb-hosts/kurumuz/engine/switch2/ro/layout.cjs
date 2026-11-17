@@ -1,8 +1,9 @@
+const {runPath} = require('../../shared/paths.cjs');
 // Use the current boot's captured heap as an index, then validate live objects.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const directory = __dirname;
+const directory = runPath('switch2', 'ro');
 const check = (ok, message) => { if (!ok) throw Error(message); };
 const ptr = (bytes, offset = 0) => Number(bytes.readBigUInt64LE(offset));
 const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');

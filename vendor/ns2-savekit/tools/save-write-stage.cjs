@@ -10,6 +10,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const net = require('node:net');
 const {hashFile} = require('./lib/verified-file-hash.cjs');
+let writeStarted = false;
 
 function request(socketPath, command) {
   return new Promise((resolve, reject) => {
@@ -35,9 +36,9 @@ const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const u32 = value => {const b = Buffer.alloc(4); b.writeUInt32LE(value); return b;};
 const u64 = value => {const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(value)); return b;};
 const check = (ok, message) => {if (!ok) throw Error(message);};
-const safePath = value => typeof value === 'string' && value.startsWith('/') &&
+const safePath = (value, limit = 0x301) => typeof value === 'string' && value.startsWith('/') &&
   value !== '/' && value === path.posix.normalize(value) &&
-  !/[\x00-\x1f\x7f\\]/.test(value) && Buffer.byteLength(value) < 0x301 &&
+  !/[\x00-\x1f\x7f\\]/.test(value) && Buffer.byteLength(value) < limit &&
   value.slice(1).split('/').every(part => part && part !== '.' && part !== '..');
 
 async function ensureParentDirectories(filePaths, inspect, mutate, created = () => {}) {
@@ -68,6 +69,7 @@ async function ensureParentDirectories(filePaths, inspect, mutate, created = () 
 }
 
 async function main() {
+  writeStarted = false;
   const [runDirectory, programText, uidText, verifyDirectory, manifestPath] =
     process.argv.slice(2);
   if (!runDirectory || !programText || !uidText || !verifyDirectory || !manifestPath) {
@@ -90,6 +92,7 @@ async function main() {
   const space = option('--space') ?? 1;
   const type = option('--type') ?? 1;
   const restore = flag('--restore');
+  check(!flag('--no-backup'), 'A verified backup is required before writing');
   if (restore) check(flag('--confirm-restore'),
     '--restore overwrites live save data; pass --confirm-restore after the backup');
   const run = path.resolve(runDirectory);
@@ -130,46 +133,45 @@ async function main() {
 
   const idText = programId.toString(16).padStart(16, '0');
   check(/^[a-f0-9]{16}$/.test(idText), 'Use a 16-digit program ID');
-  check(verifyDirectory, 'A backup directory is required (pass the earlier save-pull output)');
   const backupManifest = JSON.parse(await fs.readFile(path.join(verifyDirectory,
     'manifest.json'), 'utf8'));
-  const backupId = backupManifest.titleId ?? backupManifest.programId;
-  const selected = backupManifest.selection ?? {space: backupManifest.space,
-    type: backupManifest.type, rank: backupManifest.rank, index: backupManifest.index,
-    staticId: 0, uid: backupManifest.uid};
-  const spaceName = {1: 'User', 4: 'SdUser'}[space] ?? space;
-  const typeName = {1: 'Account', 3: 'Device'}[type] ?? type;
-  const archiveLabel = `space=${spaceName} type=${typeName} rank=0 index=0 ` +
-    `uid=${uid.toString('hex').slice(0, 16)}`;
-  check(backupId === idText && selected.space === space &&
-    selected.type === type && selected.rank === 0 &&
-    selected.index === 0 && selected.staticId === 0 &&
-    selected.uid === uid.toString('hex') &&
-    backupManifest.archive === archiveLabel &&
-    backupManifest.partial !== true &&
-    Array.isArray(backupManifest.entries) && backupManifest.entries.length === backupManifest.files,
-    'The backup does not prove the selected title, archive and account');
-  if (Object.hasOwn(backupManifest, 'titleId') && Object.hasOwn(backupManifest, 'programId'))
-    check(backupManifest.titleId === backupManifest.programId,
-      'The backup has conflicting program IDs');
-  for (const [key, value] of Object.entries({programId: idText,
-    uid: uid.toString('hex'), space, type, rank: 0, index: 0}))
-    if (Object.hasOwn(backupManifest, key))
-      check(backupManifest[key] === value, 'The backup has conflicting ' + key + ' fields');
   const backupPaths = new Set();
-  for (const entry of backupManifest.entries) {
-    check(safePath(entry.path) && !backupPaths.has(entry.path) &&
-      Number.isSafeInteger(entry.size) && entry.size >= 0 &&
-      /^[a-f0-9]{64}$/.test(entry.sha256), 'Invalid backup manifest entry');
-    backupPaths.add(entry.path);
-    const local = path.join(verifyDirectory, entry.path.slice(1));
-    const info = await fs.lstat(local);
-    check(info.isFile() && !info.isSymbolicLink() && info.size === entry.size &&
-      sha(await fs.readFile(local)) === entry.sha256,
-      'Backup file failed verification: ' + entry.path);
-  }
-  const backupFiles = await fs.readdir(verifyDirectory).catch(() => []);
-  check(backupFiles.length > 0, 'Backup directory is empty: ' + verifyDirectory);
+    const backupId = backupManifest.titleId ?? backupManifest.programId;
+    const selected = backupManifest.selection ?? {space: backupManifest.space,
+      type: backupManifest.type, rank: backupManifest.rank, index: backupManifest.index,
+      staticId: 0, uid: backupManifest.uid};
+    const spaceName = {1: 'User', 4: 'SdUser'}[space] ?? space;
+    const typeName = {1: 'Account', 3: 'Device'}[type] ?? type;
+    const archiveLabel = `space=${spaceName} type=${typeName} rank=0 index=0 ` +
+      `uid=${uid.toString('hex').slice(0, 16)}`;
+    check(backupId === idText && selected.space === space &&
+      selected.type === type && selected.rank === 0 &&
+      selected.index === 0 && selected.staticId === 0 &&
+      selected.uid === uid.toString('hex') &&
+      backupManifest.archive === archiveLabel &&
+      backupManifest.partial !== true &&
+      Array.isArray(backupManifest.entries) && backupManifest.entries.length === backupManifest.files,
+      'The backup does not prove the selected title, archive and account');
+    if (Object.hasOwn(backupManifest, 'titleId') && Object.hasOwn(backupManifest, 'programId'))
+      check(backupManifest.titleId === backupManifest.programId,
+        'The backup has conflicting program IDs');
+    for (const [key, value] of Object.entries({programId: idText,
+      uid: uid.toString('hex'), space, type, rank: 0, index: 0}))
+      if (Object.hasOwn(backupManifest, key))
+        check(backupManifest[key] === value, 'The backup has conflicting ' + key + ' fields');
+    for (const entry of backupManifest.entries) {
+      check(safePath(entry.path, 0x800) && !backupPaths.has(entry.path) &&
+        Number.isSafeInteger(entry.size) && entry.size >= 0 &&
+        /^[a-f0-9]{64}$/.test(entry.sha256), 'Invalid backup manifest entry');
+      backupPaths.add(entry.path);
+      const local = path.join(verifyDirectory, entry.path.slice(1));
+      const info = await fs.lstat(local);
+      check(info.isFile() && !info.isSymbolicLink() && info.size === entry.size &&
+        sha(await fs.readFile(local)) === entry.sha256,
+        'Backup file failed verification: ' + entry.path);
+    }
+    const backupFiles = await fs.readdir(verifyDirectory).catch(() => []);
+    check(backupFiles.length > 0, 'Backup directory is empty: ' + verifyDirectory);
   for (const job of jobs) {
     const inBackup = backupPaths.has(job.path);
     if (job.replace) {
@@ -269,8 +271,8 @@ async function main() {
         continue;
       }
       check(job.replace, 'Refusing to overwrite existing save file ' + job.path);
-      // Replace-mode compares against the backup; restore-mode deliberately does not.
       check(!opened.result, 'Cannot open ' + job.path + ' to compare it');
+      // Replace-mode compares against the backup; restore-mode deliberately does not.
       try {
         const size = Number(await filesystem.fileSize(s, opened.handle));
         const liveHash = await hashFile(s, filesystem, opened.handle, size);
@@ -296,6 +298,7 @@ async function main() {
     await s.close(save); save = null;
 
     save = await openSave(51);
+    writeStarted = true;
     await ensureParentDirectories(jobs.map(job => job.path),
       prefix => filesystem.pathMethod(s, save, 7, prefix),
       (command, prefix, input) => mutablePath(save, command, prefix, input),
@@ -356,4 +359,8 @@ async function main() {
 
 module.exports = {ensureParentDirectories, main};
 if (require.main === module)
-  main().catch(error => { console.error('FAILED:', error.message); process.exit(1); });
+  main().catch(error => {
+    if (!writeStarted) console.log('save write did not start');
+    console.error('FAILED:', error.message);
+    process.exitCode = 1;
+  });

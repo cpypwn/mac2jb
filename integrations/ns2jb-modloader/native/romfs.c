@@ -1,6 +1,7 @@
 #include "namespace.h"
 #include "lazy.h"
 #include "trace.h"
+extern __attribute__((visibility("hidden"))) const uintptr_t lfs_mutex_lock_address,lfs_mutex_unlock_address;
 static void add(uint64_t *p,int64_t n){ __atomic_fetch_add(p,n,__ATOMIC_RELAXED); }
 int lfs_equal(const void *left,const void *right,uint64_t n){
  const uint8_t *a=left,*b=right;
@@ -26,8 +27,7 @@ void lfs_mutex_lock(uint32_t *mutex){
  uintptr_t tls;__asm__ volatile("mrs %0, tpidrro_el0":"=r"(tls));
  uint32_t tag=*(const uint32_t *)(tls+0x110),expected=0;
  if(!__atomic_compare_exchange_n(mutex,&expected,tag,0,__ATOMIC_ACQUIRE,__ATOMIC_RELAXED)){
-  uintptr_t base=(uintptr_t)lfs_context()->original_read-0x1077b0;
-  ((void (*)(uint32_t *,uint32_t,uint32_t))(base+0x2187d0))(mutex,expected,tag);
+  ((void (*)(uint32_t *,uint32_t,uint32_t))lfs_mutex_lock_address)(mutex,expected,tag);
  }
 #else
  while(__atomic_exchange_n(mutex,1,__ATOMIC_ACQUIRE))lfs_pause();
@@ -38,8 +38,7 @@ void lfs_mutex_unlock(uint32_t *mutex){
  uintptr_t tls;__asm__ volatile("mrs %0, tpidrro_el0":"=r"(tls));
  uint32_t tag=*(const uint32_t *)(tls+0x110),expected=tag;
  if(!__atomic_compare_exchange_n(mutex,&expected,0,0,__ATOMIC_RELEASE,__ATOMIC_RELAXED)){
-  uintptr_t base=(uintptr_t)lfs_context()->original_read-0x1077b0;
-  ((void (*)(uint32_t *,uint32_t,uint32_t))(base+0x218870))(mutex,expected,tag);
+  ((void (*)(uint32_t *,uint32_t,uint32_t))lfs_mutex_unlock_address)(mutex,expected,tag);
  }
 #else
  __atomic_store_n(mutex,0,__ATOMIC_RELEASE);

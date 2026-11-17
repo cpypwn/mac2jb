@@ -44,18 +44,23 @@ function nameServiceUnavailable(error) {
 
 async function lookup(runDirectory, options = {}) {
   const projectRoot = options.root || root;
-  const ouncecake = options.ouncecake || require('./gui-ouncecake.cjs');
   const validateRun = options.validateRun || require('./gui-homebrew.cjs').validateRun;
   const verifiedSession = options.verifiedSession || require('./gui-dump.cjs').verifiedSession;
-  const session = options.session || require(path.join(projectRoot, 'vendor/OunceCake/engine/session.cjs'));
-  const content = options.content || require(path.join(projectRoot, 'vendor/OunceCake/engine/content.cjs'));
-  await ouncecake.verifySnapshot(projectRoot);
   const run = await validateRun(projectRoot, runDirectory, verifiedSession);
+  const civ7 = run.connection?.addresses?.target === 'civ7';
+  const vendor = civ7 ? 'OunceCake-Civ7' : 'OunceCake';
+  const ouncecake = (civ7 ? options.civ7Ouncecake : options.ouncecake) ||
+    require(civ7 ? './gui-ouncecake-civ7.cjs' : './gui-ouncecake.cjs');
+  const session = (civ7 ? options.civ7Session : options.session) ||
+    require(path.join(projectRoot, 'vendor', vendor, 'engine/session.cjs'));
+  const content = (civ7 ? options.civ7Content : options.content) ||
+    require(path.join(projectRoot, 'vendor', vendor, 'engine/content.cjs'));
+  await ouncecake.verifySnapshot(projectRoot);
   await ouncecake.validateAttachment(run);
   let attachment, names, failure;
   let cleanupConfirmed = false;
   try {
-    attachment = await session.attachGame(run.directory);
+    attachment = await session.attachGame(run.directory, civ7 ? {bulkDownloads: false} : undefined);
     check(attachment?.live?.session === run.proof.session,
       'The title list attached to a different held session.');
     names = namesFromGames(await content.discoverGames({...attachment, shouldStop: () => false}));

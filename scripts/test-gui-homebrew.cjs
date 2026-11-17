@@ -380,6 +380,25 @@ test('foreign runs, wrong native identity and public connection files cannot att
   fs.writeFileSync(connection,JSON.stringify(original));fs.chmodSync(connection,0o644);
   await assert.rejects(validateRun(f.root,f.directory,f.api.verifySession),/private owned/);
 });
+test('a pristine host without SaveKit support can run homebrew',async t=>{
+  const repository=path.resolve(__dirname,'..');
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-pristine-homebrew-')));
+  t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+  const profile=require('./host-profiles.cjs').profileById('pepsipu');
+  const host=path.join(root,'vendor/ns2jb');
+  fs.mkdirSync(path.dirname(host),{mode:0o700});
+  fs.cpSync(path.join(repository,profile.sourceDirectory),host,{recursive:true});
+  fs.chmodSync(host,0o755);
+  fs.writeFileSync(path.join(root,'selected-host.json'),JSON.stringify(profile),{mode:0o600});
+  const directory=path.join(host,'runs/switch2-pristine');
+  fs.mkdirSync(directory,{recursive:true,mode:0o700});
+  const addresses={session:'switch2-pristine',target:'switch2',platform:2,
+    scratch:4096,main:8192,sdk:12288,backing:16384,controller:20480};
+  fs.writeFileSync(path.join(directory,'connection.json'),JSON.stringify({port:12345,addresses}),{mode:0o600});
+  const verified=async candidate=>({root:candidate,session:path.basename(candidate)});
+  const accepted=await validateRun(root,directory,verified);
+  assert.equal(accepted.trustedSource,undefined);
+});
 for(const hostId of ['kurumuz','cellenseres','astral'])
 test('SaveKit-patched '+hostId+' run is trusted only with its pinned source and digest',async t=>{
   const repository=path.resolve(__dirname,'..');
@@ -387,6 +406,8 @@ test('SaveKit-patched '+hostId+' run is trusted only with its pinned source and 
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const vendor=path.join(root,'vendor');fs.mkdirSync(vendor,{mode:0o700});
   fs.cpSync(path.join(repository,'vendor/ns2jb-hosts',hostId),path.join(vendor,'ns2jb'),{recursive:true});
+  fs.cpSync(path.join(repository,'vendor/ns2jb-hosts',hostId),
+    path.join(vendor,'ns2jb-hosts',hostId),{recursive:true});
   fs.cpSync(path.join(repository,'vendor/ns2-savekit'),path.join(vendor,'ns2-savekit'),{recursive:true});
   const profile=require('./host-profiles.cjs').profileById(hostId);
   fs.writeFileSync(path.join(root,'selected-host.json'),JSON.stringify(profile),{mode:0o600});

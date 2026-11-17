@@ -61,6 +61,11 @@ async function readPackage(file) {
 
 async function install(address, file, options = {}) {
   const item = await readPackage(file);
+  const launcher = options.launcher || 'compatible';
+  if (launcher !== 'compatible' && launcher !== 'native')
+    throw Error('Choose a supported CivHomebrew launcher');
+  if (launcher === 'native' && item.metadata?.extensions?.nativeUi?.api !== 1)
+    throw Error('This app needs native UI support for CivHomebrew 1.3.8. Choose the compatible launcher for this package');
   const companion = await (options.probe || probe)(address, options);
   if (companion.state.busy || companion.state.mode !== 'launcher' || companion.state.closed)
     throw Error('Return to the CivHomebrew launcher before installing a package');
@@ -83,12 +88,12 @@ async function main(args = process.argv.slice(2), options = {}) {
     report('self-test', {message: 'CivHomebrew package helper ready'});
     return true;
   }
-  if (args.length !== 4 || args[0] !== 'install')
-    throw Error('Usage: gui-civswitch-package.cjs install RUNTIME_ROOT SWITCH_IP CIVAPP_FILE');
-  const [, , address, file] = args;
+  if ((args.length !== 4 && args.length !== 5) || args[0] !== 'install')
+    throw Error('Usage: gui-civswitch-package.cjs install RUNTIME_ROOT SWITCH_IP CIVAPP_FILE [compatible|native]');
+  const [, , address, file, launcher = 'compatible'] = args;
   if (!validAddress(address, options.allowLoopback)) throw Error('Enter a private Switch IPv4 address');
   report('status', {message: 'Checking the selected CivHomebrew package'});
-  const result = await install(address, file, options);
+  const result = await install(address, file, {...options, launcher});
   report('installed', {id: result.id, message: result.name + ' installed in CivHomebrew'});
   return result;
 }

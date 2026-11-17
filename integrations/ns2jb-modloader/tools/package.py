@@ -29,7 +29,7 @@ def main():
                 continue  # Internal investigation notes are not release documentation.
             if name.startswith("contents/") or name.endswith("/.gitkeep"):
                 continue
-            if name.startswith("sd-card-root/") or name in ("README.md", "LICENSE"):
+            if name.startswith("sd-card-root/") or name in ("README.md", "LICENSE", "WINDOWS.md", "MACOS.md"):
                 target = name
             else:
                 target = f"ModLoader/{name}"

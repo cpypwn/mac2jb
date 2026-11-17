@@ -64,9 +64,18 @@ async function main() {
       check(!code.result, 'Native RO CodeFS did not open');
       for (const name of ['main.npdm', 'main'])
         await memory.request({command: 'root-native-file-capture', handle: code.handle, name});
-      const result = await memory.request({command: 'root-native-donor-prepare'});
-      check(result.ready && result.files.every(item => item.verified), 'The payload files did not verify');
-      return result;
+      const packageFile = path.join(__dirname, 'ro', 'payload', 'exefs.nsp');
+      await require('./ro/package-build.cjs').build(
+        path.join(__dirname, 'ro', 'payload', 'main'),
+        path.join(__dirname, 'ro', a.session + '-code-0400000000000037', 'main.npdm'),
+        packageFile);
+      const retained = await read(acquisition.report);
+      const root = retained.ownedRoot.clones[0];
+      await memory.request({command: 'root-native-package-stage', root, kind: 'ro', source: packageFile});
+      const result = await memory.request({command: 'root-native-package-open', root,
+        kind: 'ro', selectDonor: true});
+      check(!result.result && result.entries.length === 2, 'RO package did not expose its ExeFS files');
+      return {ready: true, files: result.entries, ...result};
     });
     await script('ro', 'bind-sessions');
     await script('ro', 'prepare-event');
@@ -75,6 +84,31 @@ async function main() {
     const launch = await script('ro', 'launch', [], 300000);
     check(launch.imageAccepted && launch.restored && launch.pid, 'PM did not accept the payload');
     const activation = await stage('Start RO payload', () => runtime.activate(launch.file));
+    if (process.env.NS2_RO_IMAGE) {
+      const handoff = await stage('Restore Loader session', () => runtime.handoff());
+      console.log('4/4 Connecting to the ldr:ro frontend');
+      const probe = await stage('Connect to the RO frontend',
+        () => require('./ro/ready.cjs').main());
+      const resultFile = path.join(__dirname, 'ro-frontend-current.json');
+      const result = {session: a.session, pid: activation.pid, launch: launch.file,
+        handoff: handoff.file, probe, verified: true, restored: true};
+      const memory = await connect();
+      const donorCleanup = await stage('Remove RO donor files',
+        () => memory.request({command: 'root-native-donor-cleanup'}));
+      if (holdRpc) {
+        result.cleanup = {deferred: true, donor: donorCleanup};
+        result.retainedEndpoint = {ready: true, socketPath: acquisition.socketPath};
+        await save(resultFile, result);
+        const release = require('./hold.cjs').waitForRelease();
+        process.send({type: 'held-ready', session: a.session});
+        await release;
+      }
+      result.cleanup = await stage('Release FS resources', () => acquisition.retire());
+      await save(resultFile, result);
+      record.verified = true;
+      record.result = result;
+      return;
+    }
     const proof = await stage('RO instruction challenges', () => runtime.probe(activation.pid));
     const handoff = await stage('Restore Loader session', () => runtime.handoff());
     const payload = donor.files.find(item => item.name === 'main');

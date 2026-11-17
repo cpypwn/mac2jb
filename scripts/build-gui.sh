@@ -59,7 +59,6 @@ fi
 "$NODE_BINARY" --test scripts/test-gui-civswitch-sw2nes.cjs
 "$NODE_BINARY" --test scripts/test-gui-civswitch-jellyfin.cjs
 "$NODE_BINARY" --test scripts/test-gui-civswitch-package.cjs
-"$NODE_BINARY" --test integrations/civ-stremio/test.cjs
 if ! NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh --check >/dev/null; then
   NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh
 fi
@@ -78,6 +77,10 @@ done
 "$NODE_BINARY" scripts/prepare-seedsow-host.cjs --check
 "$NODE_BINARY" scripts/gui-dnswitch.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-dnswitch.cjs
+"$NODE_BINARY" scripts/gui-offline-ethernet.cjs --self-test
+"$NODE_BINARY" --test scripts/test-gui-offline-ethernet.cjs
+bash -n integrations/offline-ethernet/helper.sh
+perl -c integrations/offline-ethernet/Responder.pl
 "$NODE_BINARY" scripts/gui-webkit-research.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-webkit-research.cjs
 "$NODE_BINARY" scripts/gui-bundled-browser-probes.cjs --self-test
@@ -89,12 +92,16 @@ bash scripts/test-usb-typing-timing.sh
 bash scripts/test-typing-preferences.sh
 bash scripts/test-network-selection.sh
 osacompile -o "$BUILD/dnswitch.scpt" scripts/dnswitch-launch.applescript
+osacompile -o "$BUILD/offline-ethernet.scpt" scripts/offline-ethernet-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
 civswitch_tests=(integrations/civswitch/probe.test.cjs integrations/civswitch/send-payload.test.cjs integrations/civswitch/install-persistent.test.cjs integrations/civswitch/fs-host.test.cjs scripts/test-civswitch-hid.cjs)
 if [ -f integrations/civswitch/send-hello.test.cjs ] && [ -f integrations/civswitch/send-hello.cjs ]; then
     civswitch_tests+=(integrations/civswitch/send-hello.test.cjs)
 fi
 "$NODE_BINARY" --test "${civswitch_tests[@]}"
+"$NODE_BINARY" --test integrations/kaihen/launch.test.cjs integrations/kaihen/ns2jb-launch.test.cjs
+"$NODE_BINARY" --test integrations/seedsow-kaihen/launch.test.cjs
+"$NODE_BINARY" --test integrations/civswitchfs-kaihen/launch.test.cjs
 "$NODE_BINARY" --test integrations/artemis-fs/fs-host.test.cjs
 "$NODE_BINARY" --test scripts/test-cli-usb-fallback.cjs
 "$NODE_BINARY" --test scripts/test-gui-discover-rpc.cjs
@@ -125,8 +132,9 @@ bash scripts/test-artemis-http.sh
 "$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --check
 "$NODE_BINARY" scripts/prepare-mintbrew.cjs --check-source
 "$NODE_BINARY" scripts/gui-ouncecake.cjs --self-test
+"$NODE_BINARY" scripts/gui-ouncecake-civ7.cjs --self-test
 PATH="$BUILD/homebrew/python/bin:$BUILD/homebrew/bin:$PATH" "$NODE_BINARY" --test \
-  scripts/test-gui-ouncecake.cjs scripts/test-mintbrew-ouncecake.cjs scripts/test-ouncecake-server.cjs \
+  scripts/test-gui-ouncecake.cjs scripts/test-gui-ouncecake-civ7.cjs scripts/test-mintbrew-ouncecake.cjs scripts/test-ouncecake-server.cjs \
   integrations/mintbrew-ouncecake/ftp-bridge.test.cjs
 shasum -a 256 -c assets/bootstrap.bas.sha256
 bash scripts/install-driver.sh --verify
@@ -178,6 +186,9 @@ chmod 700 "$PAYLOAD/node" "$PAYLOAD/mac2jb-send" "$PAYLOAD/mac2jb-commands" "$PA
 python3 scripts/package-gui-payload.py verify-minimum "$PAYLOAD"
 python3 scripts/package-gui-payload.py stage "$ROOT" "$PAYLOAD" "$NODE_BINARY"
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-dnswitch.cjs" --self-test
+"$NODE_BINARY" "$PAYLOAD/scripts/gui-offline-ethernet.cjs" --self-test
+bash -n "$PAYLOAD/integrations/offline-ethernet/helper.sh"
+perl -c "$PAYLOAD/integrations/offline-ethernet/Responder.pl"
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-webkit-research.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-bundled-browser-probes.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-sw2nes.cjs" --self-test "$PAYLOAD"
@@ -191,6 +202,9 @@ fi
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-payload.cjs"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/install-persistent.cjs"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/backup-single.js"
+"$NODE_BINARY" --check "$PAYLOAD/integrations/civswitchfs-kaihen/launch.cjs"
+"$NODE_BINARY" -e 'require(process.argv[1]).verifyAssets(process.argv[2]); require(process.argv[1]).verifyAssets(process.argv[2], {sd: true})' \
+  "$PAYLOAD/integrations/civswitchfs-kaihen/launch.cjs" "$PAYLOAD"
 if [ -f "$PAYLOAD/integrations/civswitch/hello.js" ]; then
     "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/hello.js"
 fi
@@ -208,19 +222,25 @@ fi
 "$NODE_BINARY" "$PAYLOAD/scripts/prepare-mintbrew.cjs" --check-runtime "$PAYLOAD"
 "$NODE_BINARY" "$PAYLOAD/integrations/mintbrew-native/verify-native.cjs" --all \
   "$PAYLOAD/integrations/mintbrew-native/upstream" >/dev/null
+python3 scripts/package-gui-payload.py verify-runtime "$ROOT" "$PAYLOAD"
 
 python3 scripts/package-gui-payload.py archive "$PAYLOAD" "$BUILD" "$SOURCE_ARCHIVE"
 
 xcrun clang -target arm64-apple-macos14.0 -O2 -c gui/EmbeddedPayload.c -o "$BUILD/EmbeddedPayload.o"
 mkdir -p "$STAGE/mac2jb.app/Contents/MacOS" "$STAGE/mac2jb.app/Contents/Resources"
 GUI_SOURCES=()
+GUI_SWIFT_FLAGS=(-D MAC2JB_GUI_BUILD)
+TEST_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :MAC2JBTestBuild' "$ROOT/gui/Info.plist")"
 for source in gui/*.swift; do
-  [[ "$source" == gui/CivStremioModel.swift ]] || GUI_SOURCES+=("$source")
+  if [[ "$source" != gui/CivStremioModel.swift ]]; then
+    GUI_SOURCES+=("$source")
+  fi
 done
+if [[ "$TEST_BUILD" == true ]]; then GUI_SWIFT_FLAGS+=(-D MAC2JB_TEST_BUILD); fi
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 -O \
   -module-cache-path "$BUILD/module-cache" \
   -framework SwiftUI -framework AppKit -framework CryptoKit \
-  "${GUI_SOURCES[@]}" "$BUILD/PayloadMetadata.swift" "$BUILD/EmbeddedPayload.o" \
+  "${GUI_SWIFT_FLAGS[@]}" "${GUI_SOURCES[@]}" "$BUILD/PayloadMetadata.swift" "$BUILD/EmbeddedPayload.o" \
   -Xlinker -sectcreate -Xlinker __DATA -Xlinker __mac2jb -Xlinker "$BUILD/runtime.tar.gz" \
   -o "$STAGE/mac2jb.app/Contents/MacOS/mac2jb"
 cp gui/Info.plist "$STAGE/mac2jb.app/Contents/Info.plist"

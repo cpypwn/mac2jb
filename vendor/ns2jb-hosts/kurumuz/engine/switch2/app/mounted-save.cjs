@@ -1,3 +1,4 @@
+const {runPath} = require('../../shared/paths.cjs');
 // Copy an existing application filesystem; never close its borrowed session.
 const {live, check, u32} = require("./session.cjs");
 const domain = require("./domain.cjs");
@@ -5,7 +6,7 @@ const layout = require("../../shared/sdk-layout.json");
 
 async function inspectMountedFilesystem(s, name = 'save') {
   check(['save', 'tmp'].includes(name), 'Only the inspected application mounts are supported');
-  const captured = require("./mounts.json");
+  const captured = require(runPath('switch2', 'app', 'mounts.json'));
   check(captured.session === live.session, 'Save mount inspection belongs to another boot');
   const mount = captured.mounts.find(m => m.name === name);
   check(mount, 'Save mount was not inspected');

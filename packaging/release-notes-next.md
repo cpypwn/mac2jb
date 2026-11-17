@@ -1,0 +1,5 @@
+- make kaiHEN the main jailbreak flow with Civilization VII, SmileBASIC 4, and Seedsow Lullaby entry points.
+- add guided SD card preparation and first-time setup for the Civilization VII and SmileBASIC 4 routes.
+- add direct offline Ethernet setup for a Switch connected to a dedicated Mac adapter.
+- move advanced held-RPC and research controls into developer options, and organize host, console, timeout, and keyboard settings around the jailbreak flow.
+- remove bundled game save installers while keeping SaveKit available for user-supplied saves.

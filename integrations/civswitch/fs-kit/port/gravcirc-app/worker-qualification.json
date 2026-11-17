@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "target": "gravcirc",
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCodeSha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52",
+  "sourceSession": "switch2-Jxzt9g",
+  "sourceQualificationSha256": "978ab7e53444c59858fd26ad922a8c197bee3c0cd2d309df27e32e0cc14cf264",
+  "verified": true,
+  "cleanedUp": true,
+  "nativeFrequency": 31250000,
+  "transferSha256": "399a6f3230299a628637cedb1a357c7ac6afc7899e5670170d3d7153d62ca37c",
+  "worker": {
+    "joined": true,
+    "core": 0,
+    "tpidrroObserved": true
+  }
+}

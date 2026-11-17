@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "name": "gravcirc",
+  "displayName": "Gravity Circuit v1.2.1",
+  "sdkBytes": 6148096,
+  "sdkSha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52",
+  "hello": {
+    "scratchBytes": 524288,
+    "gotOffsetFromMain": null,
+    "sdkCrc32": 4209895763,
+    "zeroFields": ["got", "backing", "controller"]
+  },
+  "nativeFunctions": {
+    "memcpy": "memcpy",
+    "memmove": "memmove",
+    "queryMemory": "svcQueryMemory",
+    "crc32": "crc32",
+    "cancelSynchronization": "svcCancelSynchronization",
+    "eventSyscallScan": 1411704,
+    "threadId": "svcGetThreadId",
+    "waitZero": "svcWaitSynchronization",
+    "processInfo": "svcGetProcessInfo",
+    "syscallCapture": 1409024
+  },
+  "sdkMapping": {
+    "type": 3,
+    "permissions": 5,
+    "attributes": 0
+  },
+  "crc32": {
+    "function": "crc32",
+    "expected": 4209895763
+  },
+  "importRestoration": false,
+  "sessionManager": {
+    "stateSize": 2048,
+    "stateOffset": 92,
+    "stateValue": 3
+  },
+  "romMount": {
+    "implementationVtableOffset": 13205392,
+    "storageWrapperVtableOffset": 13208352,
+    "serviceVtableOffset": 13211816
+  },
+  "keepAwake": {
+    "enabled": false
+  },
+  "heartbeat": {
+    "intervalMs": 5000,
+    "keepAwakeAfterMs": 30000
+  },
+  "timing": {
+    "mode": "measured",
+    "nativeFrequency": 31250000,
+    "sdkFrequency": 19200000,
+    "measurementNs": 1000000000,
+    "tolerancePpm": 100000
+  },
+  "affinity": {
+    "mode": "raw-svc"
+  },
+  "memoryMap": {
+    "attempts": 5,
+    "retryDelayMs": 250,
+    "maxRegions": 4096
+  },
+  "pinningAllocationBytes": 13616,
+  "holeDelayNs": 3400000,
+  "receiveOrderAbortLimit": 3,
+  "heapJitterBytes": 0,
+  "fieldCopies": 1,
+  "canaryGeometry": {
+    "pinningAllocationBytes": 13616,
+    "heapJitterBytes": 0,
+    "fieldCopies": 1,
+    "qualified": true
+  },
+  "thread": {
+    "mode": "raw-svc",
+    "priority": "borrowed",
+    "stackBytes": 65536
+  },
+  "worker": {
+    "joinTimeoutMs": 30000,
+    "joinPollMs": 10
+  },
+  "appWorkerQualification": {
+    "qualified": true,
+    "proof": "sha256:a0a5c0e88a2dc44af18e810222442280358491cb60c2c87e0932f060227c3e43"
+  },
+  "retainedCaptureBytes": 0,
+  "retainedCaptureOffset": 0,
+  "smServiceOffset": 0,
+  "programIds": {
+    "host": ["01008d9019128000"],
+    "ro": "0x01008d9019128000",
+    "allowedRo": ["0x01008d9019128000"]
+  },
+  "artifacts": {
+    "sdkFunctions": "sdk-functions.gravcirc.json",
+    "sdkLayout": "sdk-layout.gravcirc.json",
+    "app": {
+      "thread-code.json": "gravcirc-app/thread-code.json",
+      "event-code.json": "gravcirc-app/event-code.json",
+      "timing-code.json": "gravcirc-app/timing-code.json",
+      "hash-code.json": "gravcirc-app/hash-code.json",
+      "sdk-proxy-code.json": "gravcirc-app/sdk-proxy-code.json",
+      "thread-scheduling-reference.json": "gravcirc-app/thread-scheduling-reference.json",
+      "worker-qualification.json": "gravcirc-app/worker-qualification.json"
+    }
+  }
+}

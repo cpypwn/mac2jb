@@ -46,6 +46,42 @@ function fixture(t, options = {}) {
   fs.mkdirSync(host,{recursive:true});fs.mkdirSync(path.join(root,'scripts'));
   for(const name of ['gui-host.cjs','usb-controllers.cjs','gui-session.cjs','host-profiles.cjs','homebrew-reentry.cjs'])
     fs.copyFileSync(path.join(__dirname,name),path.join(root,'scripts',name));
+  if (options.savekitPreflightFailure || options.savekitWriteFailure) {
+    fs.writeFileSync(path.join(root,'scripts/prepare-seedsow-host.cjs'),
+      "exports.prepare=root=>require('node:path').join(root,'vendor/ns2jb');");
+  }
+  if (options.savekitPreflightFailure) {
+    fs.writeFileSync(path.join(root,'scripts/gui-savekit.cjs'),[
+      "const emit=(type,fields={})=>console.log('MAC2JB_SAVEKIT '+JSON.stringify({type,game:'balatro',...fields}));",
+      "emit('progress',{stage:'checking',message:'Checking bundled Balatro save'});",
+      "emit('progress',{stage:'backup',message:'Backing up Balatro save'});",
+      "emit('failed',{reason:'save-preflight',safeToContinue:true,backupPath:'/tmp/incomplete-backup',",
+      "message:'The Balatro backup failed: path longer than 768 bytes. No save write was attempted.'});",
+      'process.exitCode=1;'
+    ].join('\n'));
+  }
+  if (options.savekitWriteFailure) {
+    fs.writeFileSync(path.join(root,'scripts/gui-savekit-tools.cjs'),[
+      "const fs=require('node:fs'),path=require('node:path');",
+      "const root=path.dirname(__dirname),record=path.join(root,'savekit-write-invocations.txt');",
+      "const emit=(type,fields={})=>console.log('MAC2JB_SAVEKIT '+JSON.stringify({type,message:'test '+type,...fields}));",
+      "exports.request=value=>{if(value?.action!=='write'||value.titleId!=='0100cd801ce5e000'||value.noBackup!==undefined||value.allowReplace!==true)throw Error('write must keep verified backup');return value;};",
+      "if(require.main===module){let input='';process.stdin.setEncoding('utf8');process.stdin.on('data',chunk=>input+=chunk);process.stdin.on('end',()=>{",
+      "const value=exports.request(JSON.parse(input));fs.appendFileSync(record,JSON.stringify(value)+'\\n');",
+      "const attempt=fs.readFileSync(record,'utf8').trim().split('\\n').length;",
+      "const backupPath=path.join(root,'savekit-exports','write-backup-'+attempt);fs.mkdirSync(backupPath,{recursive:true});",
+      "emit('progress',{stage:'backup',message:'Backing up live Balatro save before writing'});",
+      ...(options.savekitWriteFailure === 'backup' ? [
+        "if(attempt===1){emit('failed',{safeToContinue:true,backupPath,message:'Save backup failed after cleanup; no write was attempted'});process.exitCode=1;return;}"
+      ] : []),
+      "emit('backup',{backupPath,files:1,bytes:4,message:'Original save backed up and verified'});",
+      ...(options.savekitWriteFailure === 'uncertain' ? [
+        "emit('failed',{backupPath,message:'Save writer stopped after starting; cleanup is uncertain'});process.exitCode=1;return;"
+      ] : []),
+      "emit('complete',{action:'write',backupPath,files:1,message:'Save write committed and verified'});",
+      "});}"
+    ].join('\n'));
+  }
   fs.mkdirSync(path.join(root,'integrations/mintbrew-native'),{recursive:true});
   fs.copyFileSync(path.join(__dirname,'../integrations/mintbrew-native/sd-roms.cjs'),
     path.join(root,'integrations/mintbrew-native/sd-roms.cjs'));
@@ -64,7 +100,7 @@ function fixture(t, options = {}) {
     "const fs=require('fs'),path=require('path'),{fork}=require('child_process');",
     'const options='+JSON.stringify(options)+';',
     "fs.writeFileSync('host-pid',String(process.pid));",
-    "fs.writeFileSync('settings.json',JSON.stringify({args:process.argv.slice(2),arity:process.env.NS2_BASIC_ARITY,rpc:process.env.NS2_RPC_MODE,dump:process.env.NS2_FIRMWARE_DUMP_DIR}));",
+    "fs.writeFileSync('settings.json',JSON.stringify({args:process.argv.slice(2),arity:process.env.NS2_BASIC_ARITY,rpc:process.env.NS2_RPC_MODE,dump:process.env.NS2_FIRMWARE_DUMP_DIR,timeout:process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS}));",
     "if(options.bindFailure){fs.appendFileSync('host-invocations.txt','once\\n');const evidence={pairing:'V=START(39380,127,0,0,1)\\n',connected:'Connected. Checking the application\\n',native:'1/4 native work\\n',typing:'Sending: LOAD\\n'}[options.bindEvidence]||'';",
     "process.stdout.write(evidence+'Error: listen EADDRNOTAVAIL: address not available 127.0.0.1:39380\\n    at Server.setupListenHandle (node:net:1:1)\\n'+(options.latePairing?'V=START(39380,127,0,0,1)\\n':''));setInterval(()=>{},1000);",
     "}else{",
@@ -166,7 +202,10 @@ function fixture(t, options = {}) {
     "if(folder!=='/tmp/compatible-izmodule')throw Error('The module is incompatible');",
     "return {id:'my-module',name:'My Module',version:'1.0.0',cleanup:async()=>{fs.writeFileSync(path.join(root,'izmodule-preflight-cleaned'),'yes');}};};"
   ].join('\n'));
-  const child=spawn(process.execPath,[path.join(root,'scripts/gui-host.cjs'),'host','127.0.0.1','--post-run-options'],{
+  const hostArgs = [path.join(root,'scripts/gui-host.cjs'),'host','127.0.0.1','--post-run-options'];
+  if (options.savekitPreflightFailure || options.savekitWriteFailure) hostArgs.push('--savekit-tools');
+  if (options.hostStageTimeoutMinutes) hostArgs.push('--host-stage-timeout-minutes', String(options.hostStageTimeoutMinutes));
+  const child=spawn(process.execPath,hostArgs,{
     detached:true,stdio:['pipe','pipe','pipe'],env:{...process.env,NS2_BASIC_ARITY:'9',NS2_RPC_MODE:'1'}
   });
   let output='',error='';
@@ -220,6 +259,84 @@ test('held proof requires restoration, a live endpoint and deferred donor cleanu
     value=>{value.error='failed';},value=>{value.completed='done';},value=>{value.cleanupErrors=[{error:'failed'}];}]){
     const value=held();modify(value);assert.equal(heldResult(value),false);
   }
+});
+test('held RPC runner receives the selected host stage timeout', {timeout:10000}, async t => {
+  const session=fixture(t,{hostStageTimeoutMinutes:25});
+  await session.wait('post-run-ready');
+  const settings=JSON.parse(fs.readFileSync(path.join(session.host,'settings.json'),'utf8'));
+  assert.equal(settings.timeout,'1500000');
+  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});
+  await session.wait('rpc-held');
+  session.send({action:'finish'});
+  assert.equal((await session.done).code,0);
+});
+test('Balatro backup failure leaves held RPC and other actions available after a ready check', {timeout:10000}, async t => {
+  const session=fixture(t,{savekitPreflightFailure:true});
+  await session.wait('post-run-ready');
+  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});
+  await session.wait('rpc-held');
+  session.send({action:'install-balatro-save',variant:'upstream'});
+  const result=await session.wait('savekit-recoverable');
+  assert.match(result.message,/path longer than 768 bytes/);
+  assert.equal(fs.existsSync(path.join(session.host,'runner-signals.txt')),false);
+  session.send({action:'launch-mintbrew'});
+  await session.wait('homebrew-running');
+  session.send({action:'finish'});
+  assert.equal((await session.done).code,0);
+});
+test('manual Balatro backup failure keeps held RPC and permits another backed-up write', {timeout:10000}, async t => {
+  const session=fixture(t,{savekitWriteFailure:'backup'});
+  const request={action:'write',titleId:'0100cd801ce5e000',
+    uid:'19c0599802d6001091142b00cc83d4b3',sourceFolder:'/tmp/balatro-save',allowReplace:true};
+  await session.wait('post-run-ready');
+  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});
+  await session.wait('rpc-held');
+  session.send({action:'start-savekit'});
+  await session.wait('savekit-selected');
+  session.send({action:'savekit-tool',request});
+  const failed=await session.wait('savekit-tool-failed');
+  assert.equal(failed.safeToContinue,true);
+  assert.equal(session.events().some(event=>event.type==='rpc-finishing'),false);
+  assert.equal(fs.existsSync(path.join(session.host,'runner-signals.txt')),false);
+  session.send({action:'savekit-tool',request});
+  await session.wait('savekit-tool-backup');
+  await session.wait('savekit-tool-complete');
+  const writes=fs.readFileSync(path.join(session.root,'savekit-write-invocations.txt'),'utf8')
+    .trim().split('\n').map(JSON.parse);
+  assert.equal(writes.length,2);
+  assert.ok(writes.every(write=>write.allowReplace===true && write.noBackup===undefined));
+  assert.equal(fs.existsSync(path.join(session.host,'runner-signals.txt')),false);
+  session.send({action:'finish-savekit'});
+  await session.wait('savekit-done');
+  session.send({action:'finish'});
+  assert.equal((await session.done).code,0);
+});
+test('uncertain SaveKit write retains held RPC but blocks another write', {timeout:10000}, async t => {
+  const session=fixture(t,{savekitWriteFailure:'uncertain'});
+  const request={action:'write',titleId:'0100cd801ce5e000',
+    uid:'19c0599802d6001091142b00cc83d4b3',sourceFolder:'/tmp/balatro-save',allowReplace:true};
+  await session.wait('post-run-ready');
+  session.send({action:'post-run',keepRPC:true,dumpFirmware:false});
+  await session.wait('rpc-held');
+  session.send({action:'start-savekit'});
+  await session.wait('savekit-selected');
+  session.send({action:'savekit-tool',request});
+  await session.wait('savekit-tool-backup');
+  const failed=await session.wait('savekit-tool-failed');
+  assert.equal(failed.safeToContinue,false);
+  assert.equal(fs.existsSync(path.join(session.host,'runner-signals.txt')),false);
+  session.send({action:'rpc-status'});
+  assert.equal((await session.wait('rpc-status')).ready,true);
+  session.send({action:'savekit-tool',request});
+  const rejected=await session.wait('action-rejected');
+  assert.equal(rejected.action,'savekit-tool');
+  assert.match(rejected.message,/failed|restart|finish|uncertain/i);
+  const writes=fs.readFileSync(path.join(session.root,'savekit-write-invocations.txt'),'utf8')
+    .trim().split('\n').map(JSON.parse);
+  assert.equal(writes.length,1);
+  assert.equal(session.events().some(event=>event.type==='rpc-finishing'),false);
+  session.send({action:'finish'});
+  await session.done;
 });
 for(const hostId of ['kurumuz','cellenseres']) {
 test('Modloader waits for held '+hostId+' RPC, then leaves a verified game handoff for Finish',{timeout:10000},async t=>{

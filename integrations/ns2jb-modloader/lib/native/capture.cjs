@@ -10,7 +10,7 @@ async function objectForMount(a,b,mount){
   check(!reply.result,'Cannot locate native capture object');const id=reply.data.readUInt32LE();check(id>0&&id<=layout.count,'Invalid native capture domain');
   const row=await b.m.read(layout.table+(id-1)*0x30,0x30),object=row.readBigUInt64LE(32);check(object>=0x100000000n&&object<0x8000000000n,'Invalid native capture object');
   const vptr=(await b.m.read(Number(object),8)).readBigUInt64LE(),release=(await b.m.read(Number(vptr)+8,8)).readBigUInt64LE();
-  check(release===b.base+BigInt(mount.kind==='storage'?0x107490:0x103390),'Native capture object type differs');return{object,clone};
+  check(release===b.address(mount.kind==='storage'?0x107490:0x103390),'Native capture object type differs');return{object,clone};
  }catch(error){if(b.c.pending||isUncertain(error))b.c.pending=true;else await a.s.close(clone);throw error;}
 }
 async function readOutput(b,pointer,length){
@@ -31,7 +31,7 @@ async function captureMount(a,bootstrap,mount){
  const b=bootstrap.bridge,owned=await objectForMount(a,b,mount);let allocation,pointer,capacity,initialized=false;
  try{
   allocation=await b.call(0x694c0,[4096],'allocate-native-capture');check(allocation>=0x100000000n&&allocation<0x8000000000n,'Cannot allocate native capture context');
-  const data=Buffer.alloc(128),values=[owned.object+(mount.kind==='filesystem'?8n:0n),b.base+0x1048c0n,b.base+0x105800n,b.base+0x105720n,b.base+0x1045b0n,b.base+0x104ef0n,b.base+0x104e10n,b.base+0x107570n,b.base+0x694c0n,b.base+0x69580n];
+  const data=Buffer.alloc(128),values=[owned.object+(mount.kind==='filesystem'?8n:0n),b.address(0x1048c0),b.address(0x105800),b.address(0x105720),b.address(0x1045b0),b.address(0x104ef0),b.address(0x104e10),b.address(0x107570),b.address(0x694c0),b.address(0x69580)];
   values.forEach((value,i)=>data.writeBigUInt64LE(value,i*8));data.writeBigUInt64LE(BigInt(mount.size||0),120);await b.writeData(Number(allocation),await b.m.read(Number(allocation),data.length),data);initialized=true;
   const result=await b.callRuntime(runtime(0n,0n).offsets[mount.kind==='storage'?'lfs_capture_romfs':'lfs_capture_codefs'],[allocation],'capture-'+mount.kind+'-metadata');
   const reply=await b.m.read(Number(allocation)+80,48);pointer=reply.readBigUInt64LE();const length=reply.readBigUInt64LE(8);capacity=reply.readBigUInt64LE(16);const count=reply.readBigUInt64LE(24),error=reply.readUInt32LE(32);

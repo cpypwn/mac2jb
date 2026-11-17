@@ -1,0 +1,22 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "function": {
+    "sourceSymbol": "nnutilZlib_crc32",
+    "offset": 458576,
+    "bytes": "e203022a5f301514",
+    "abi": "uint64_t crc32(uint64_t seed, const uint8_t *data, uint32_t length)"
+  },
+  "vector": {
+    "ascii": "123456789",
+    "seed": 0,
+    "expected": 3421780262
+  },
+  "sdkCheck": {
+    "seed": 0,
+    "expected": 4209895763
+  }
+}

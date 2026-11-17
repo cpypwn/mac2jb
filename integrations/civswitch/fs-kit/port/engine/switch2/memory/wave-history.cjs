@@ -1,5 +1,16 @@
 'use strict';
 
+function holeDelayForProfile(profile, configuredDelayNs) {
+  if (!Number.isInteger(configuredDelayNs) || configuredDelayNs < 300000 ||
+      configuredDelayNs > 3400000) throw Error('Invalid hole-read delay');
+  return profile === 'abort-control' || profile === 'abort-hole-control'
+    ? 300000 : configuredDelayNs;
+}
+
+function canaryWorkerDelayNs(targetName) {
+  return targetName === 'gravcirc' ? 2200000 : 1700000;
+}
+
 function hasWindow(row) {
   return row?.restored === true && row.triggerAborted === false && row.allPending === true &&
     Number.isFinite(row.receiveOrderMarginUs) && row.receiveOrderMarginUs >= 300 &&
@@ -9,6 +20,18 @@ function hasWindow(row) {
 function markerHit(row) {
   return hasWindow(row) && row.canaryResult === 0 && row.canaryType === 0 &&
     Array.isArray(row.changedPaths) && row.changedPaths.length === 1 && row.changedPaths[0] === 'canary';
+}
+
+function receiveOrderAbort(rows, limit) {
+  if (!Number.isInteger(limit) || limit < 2 || limit > 8) throw Error('Invalid receive-order abort limit');
+  if (rows.length < limit) return null;
+  const recent = rows.slice(-limit);
+  if (!recent.every(row => row.profile === 'extent-present' && row.triggerAborted === true &&
+      row.nativeGuard?.completed === 0 && row.nativeGuard?.earlyHole === 1 &&
+      Array.isArray(row.changedPaths) && row.changedPaths.length === 0 &&
+      Number.isFinite(row.receiveOrderMarginUs) && row.receiveOrderMarginUs < 300)) return null;
+  return {count: limit, bestMarginUs: Math.max(...recent.map(row => row.receiveOrderMarginUs)),
+    worstMarginUs: Math.min(...recent.map(row => row.receiveOrderMarginUs))};
 }
 
 function summarize(rows) {
@@ -22,7 +45,13 @@ function summarize(rows) {
     const hit = markerHit(row);
     if (hit) result.markerHits++;
     if (row.triggerAborted === false && !hit) result.executedWithoutMarker++;
-    if (row.restored !== true) result.restorationFailures++;
+    // Aborted waves fired no trigger: we wrote nothing, so there is nothing to
+    // restore. Their restored=false reflects external heap drift (RUN 73:
+    // baseline 3569616 -> after 3541280, diff -28336, known-magnitude) — not an
+    // un-restored write. An aborted wave that DID change bytes is still vetoed
+    // via unexpectedChanges below (changedPaths non-empty on triggerAborted).
+    // Unknown rows (triggerAborted undefined) stay conservative and count.
+    if (row.restored !== true && row.triggerAborted !== true) result.restorationFailures++;
     if (!Array.isArray(row.changedPaths) || row.changedPaths.some(name => name !== 'canary') ||
         row.triggerAborted === true && row.changedPaths.length > 0) result.unexpectedChanges++;
   }
@@ -93,4 +122,5 @@ function failureSummary(report, error) {
     inconsistentCleanup: retainResources && report.cleanedUp === true};
 }
 
-module.exports = {hasWindow, markerHit, summarize, positiveOutcome, describe, failureSummary};
+module.exports = {holeDelayForProfile, canaryWorkerDelayNs, hasWindow, markerHit, receiveOrderAbort, summarize,
+  positiveOutcome, describe, failureSummary};

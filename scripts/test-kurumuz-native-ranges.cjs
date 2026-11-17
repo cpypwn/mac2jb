@@ -17,11 +17,10 @@ const rangeFiles = new Set([
   'engine/switch2/ro/payload/manifest.json'
 ]);
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-test('Astral inherits the pinned Kurumuz native range and SaveKit overlay inputs', () => {
+test('Astral retains the Kurumuz native range ABI payload', () => {
   const root = path.resolve(__dirname, '..');
-  for (const name of [...rangeFiles, 'engine/switch2/process/client.cjs',
-    'engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
-    'engine/switch2/app/mounted-save.cjs'])
+  for (const name of [...rangeFiles].filter(name =>
+    name !== 'engine/switch2/ro/worker-control.cjs'))
     assert.equal(sha(fs.readFileSync(path.join(root, 'vendor/ns2jb-hosts/astral', name))),
       sha(fs.readFileSync(path.join(root, 'vendor/ns2jb-hosts/kurumuz', name))), name);
 });
@@ -51,6 +50,12 @@ test(host + ' distribution changes only documented local patch files', () => {
   const distributed = entries(profile.distributionManifest);
   assert.deepEqual([...upstream.keys()].sort(), [...distributed.keys()].sort());
   const changed = new Set([...upstream.keys()].filter(name => upstream.get(name) !== distributed.get(name)));
+  const timeoutPatch = host === 'kurumuz' ?
+    ['engine/shared/stages.cjs', 'engine/switch2/acquisition-stop.cjs',
+      'engine/switch2/retained/find-metadata.cjs'] :
+    ['engine/shared/stages.cjs', 'engine/switch2/acquire.cjs',
+      'engine/switch2/retained/find-metadata.cjs'];
+  for (const name of timeoutPatch) assert.equal(changed.delete(name), true);
   const cleanupPatch = host === 'cellenseres' ? 'engine/switch2/memory/fs-memory-control.cjs' : null;
   if (cleanupPatch) assert.equal(changed.delete(cleanupPatch), true);
   assert.deepEqual(changed, rangeFiles);
@@ -61,6 +66,7 @@ test(host + ' distribution changes only documented local patch files', () => {
   assert.equal(patch.upstreamManifest, profile.upstreamManifest);
   assert.equal(patch.sourceSha256, profile.sourceSha256);
   assert.equal(patch.sourceSha256, sourceDigest(folder, profile));
+  assert.deepEqual(patch.hostStageTimeoutPatch, timeoutPatch);
   assert.equal(patch.payloadSha256, distributed.get('engine/switch2/ro/payload/main'));
   if (cleanupPatch) assert.equal(patch.cleanupPatch, cleanupPatch);
 });

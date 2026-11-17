@@ -26,14 +26,14 @@ async function scanSd(run,source,directory,options={}){
  async function releaseRuntime(){
   check(!b.c.pending,'Preparation runtime is pending');
   for(const page of [...mapped.pages].reverse())if(page.mapped){check(!(await b.c.unmap(b.h,b.pid,BigInt(page.source),BigInt(page.address))).result,'Cannot release SD inventory code alias');page.mapped=false;}
-  await b.call(0x215800,[b.base+0x11ee960n,BigInt(mapped.source),mapped.allocationBytes],'free-SD-inventory-code');mapped.released=true;await b.releaseControl();await b.close();r.released=true;save();
+  await b.call(0x215800,[b.address(0x11ee960),BigInt(mapped.source),mapped.allocationBytes],'free-SD-inventory-code');mapped.released=true;await b.releaseControl();await b.close();r.released=true;save();
  }
  try{
   await b.open(run,{captureFile:capture,client:options.client,processHandle:options.processHandle});sd=await openSource(run,b);
   allocation=await b.call(0x694c0,[4096],'allocate-SD-inventory',{clearAllocation:true});check(allocation>=0x100000000n&&allocation<0x8000000000n,'Native SD inventory allocation failed');b.control=allocation;b.resultAddress=allocation+896n;r.context=String(allocation);save();
-  const input=Buffer.alloc(4096),values=[BigInt(sd.filesystem.object)+8n,b.base+0x1048c0n,b.base+0x105800n,b.base+0x105720n,b.base+0x694c0n,b.base+0x69580n,allocation+1024n];
-  values.forEach((value,i)=>input.writeBigUInt64LE(value,i*8));[b.base+0x11ee960n,b.base+0x215620n,b.base+0x215800n].forEach((value,i)=>input.writeBigUInt64LE(value,864+i*8));input.write(source,1024);await b.writeData(Number(allocation),Buffer.alloc(input.length),input);initialized=true;
-  native=runtime(0n,0n);const code=Buffer.alloc((native.code.length+4095)&~4095);native.code.copy(code);
+  const input=Buffer.alloc(4096),values=[BigInt(sd.filesystem.object)+8n,b.address(0x1048c0),b.address(0x105800),b.address(0x105720),b.address(0x694c0),b.address(0x69580),allocation+1024n];
+  values.forEach((value,i)=>input.writeBigUInt64LE(value,i*8));[b.address(0x11ee960),b.address(0x215620),b.address(0x215800)].forEach((value,i)=>input.writeBigUInt64LE(value,864+i*8));input.write(source,1024);await b.writeData(Number(allocation),Buffer.alloc(input.length),input);initialized=true;
+  native=runtime(0n,0n,0n,{base:b.base,layout:b.layout});const code=Buffer.alloc((native.code.length+4095)&~4095);native.code.copy(code);
   mapped=await b.mapRuntime(code,record=>{r.runtime=record;save();},allocation+4088n);
   output=await b.callRuntime(native.offsets.lfs_inventory,[allocation],'walk-SD-mod-directories');
   const header=await b.m.read(Number(allocation),864),pointer=header.readBigUInt64LE(56),length=header.readBigUInt64LE(64),capacity=header.readBigUInt64LE(72),count=header.readBigUInt64LE(80),error=header.readUInt32LE(88);

@@ -212,11 +212,16 @@ async function validRun(runDirectory) {
   }
   const vendor = await fsp.realpath(path.join(root, 'vendor'));
   const relative = path.relative(vendor, run).split(path.sep);
-  check(relative.length === 3 && /^ns2-savekit-host-[A-Za-z0-9]+$/.test(relative[0]) &&
+  check(relative.length === 3 && (relative[0] === 'ns2jb' ||
+    /^ns2-savekit-host-[A-Za-z0-9]{6}$/.test(relative[0])) &&
     relative[1] === 'runs' && /^switch2-[A-Za-z0-9_-]+$/.test(relative[2]),
-    'SaveKit tools need this session’s patched SaveKit host run.');
+    'SaveKit tools need a verified held RPC run from this session.');
   const info = await fsp.lstat(run);
   check(info.isDirectory() && !info.isSymbolicLink(), 'The RPC run folder is invalid.');
+  const patched = await require('./gui-homebrew.cjs').patchedHostSource(root, run);
+  check(patched, 'SaveKit tools need a verified SaveKit-capable host run.');
+  const result = JSON.parse(await fsp.readFile(path.join(run, 'result.json'), 'utf8'));
+  check(result.sourceSha256 === patched.digest, 'The SaveKit run does not match its patched host.');
   return run;
 }
 
@@ -313,12 +318,16 @@ async function privateFolder(prefix) {
 }
 async function pull(run, value, all = false) {
   const folder = await privateFolder(value.titleId + '-' + value.uid.slice(0, 8) + '-');
+  let nativeCleanupConfirmed = false;
   try {
     const args = [run, value.titleId, folder, value.uid,
       ...selectedArchiveArgs(value.archiveSelection ?? value.archive ?? archive(undefined), all),
       ...(all ? ['--all'] : [])];
     const result = await runTool('save-pull-root.cjs', args, 600000);
-    check(result.code === 0 && !result.signal, 'The save pull did not finish. Keep the partial export and restart the console.');
+    nativeCleanupConfirmed = Number.isInteger(result.code) && !result.signal && result.stdout.split(/\r?\n/)
+      .includes('MAC2JB_SAVE_PULL_CLEANUP_OK');
+    check(result.code === 0 && !result.signal,
+      'The save pull did not finish. Check the partial export and log.');
     if (!all) {
       const manifest = await verifyPull(folder, {titleId: value.titleId, uid: value.uid,
         selection: value.archive ?? archive(undefined),
@@ -335,6 +344,7 @@ async function pull(run, value, all = false) {
       bytes: manifests.reduce((n, item) => n + item.bytes, 0), manifests};
   } catch (error) {
     error.backupPath = folder;
+    error.nativeCleanupConfirmed = nativeCleanupConfirmed;
     throw error;
   }
 }
@@ -590,7 +600,13 @@ async function execute(runDirectory, raw, emitEvent = emit) {
       const files = await stageFiles(value.sourceFolder, stage);
       emitEvent('progress', {stage: 'backup', message: 'Backing up the live save before writing'});
       localPreflight = false;
-      const saved = await pull(run, value);
+      let saved;
+      try { saved = await pull(run, value); }
+      catch (error) {
+        if (error.nativeCleanupConfirmed && !error.unsafe) error.safeToContinue = true;
+        error.message = 'The required backup did not finish. No save write was attempted. ' + error.message;
+        throw error;
+      }
       backupPath = saved.folder;
       localPreflight = true;
       check(saved.manifests[0].selection.uid === value.uid,
@@ -611,9 +627,15 @@ async function execute(runDirectory, raw, emitEvent = emit) {
       localPreflight = false;
       const result = await runTool('save-write-stage.cjs',
         [run, value.titleId, value.uid, backupPath, manifestPath], 1800000);
-      check(result.code === 0 && !result.signal &&
-        result.stdout.includes('verified ' + files.length + ' written files after commit'),
-        'Save writing was not fully verified. Keep the backup and restart the console.');
+      if (result.code !== 0 || result.signal ||
+          !result.stdout.includes('verified ' + files.length + ' written files after commit')) {
+        const beforeWrite = result.code === 1 && !result.signal &&
+          result.stdout.includes('save write did not start');
+        const error = Error(beforeWrite
+          ? 'Save write did not start. The original backup was kept.'
+          : 'Save writing was not fully verified. Keep the backup and inspect the log.');
+        throw error;
+      }
       emitEvent('complete', {action: value.action, titleId: value.titleId, uid: value.uid,
         backupPath, files: files.length, replaced: replacements.length,
         message: 'Save write committed and verified; keep the original backup'});

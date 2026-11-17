@@ -12,6 +12,7 @@ async function serve(native) {
   async function handle(request) {
     const {command} = request;
     if (command === 'status') return {ready: !native.connection.error, calls: native.calls};
+    if (command === 'progress') return native.progress(request.step);
     if (command === 'call') {
       const reply = await native.call(request.offset, ...request.args);
       return {result: reply.result.toString(), output: reply.output.toString('base64')};

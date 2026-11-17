@@ -1,0 +1,12 @@
+{
+  "source": "https://github.com/ouncebrew/kaihen",
+  "civ7Host": {
+    "source": "https://github.com/s8n/civ7-fs-kaihen",
+    "commit": "0b6906a829286630255af2842a7b83946091f933",
+    "sha256": "d3efb5b29594040dbc2c86df167923e707669d91ec34ab5bd79fc166498f97c5"
+  },
+  "release": "20261117.1",
+  "archive": "kaiHEN-20261117.1.zip",
+  "url": "https://github.com/ouncebrew/kaihen/releases/download/20261117.1/kaiHEN-20261117.1.zip",
+  "sha256": "3f7ded0b360b2f0bf97f8e958c3bfe93a8d76dd8d43ce2e8f7d060e647ad0978"
+}

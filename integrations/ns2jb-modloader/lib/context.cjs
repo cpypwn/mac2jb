@@ -16,7 +16,7 @@ function layout(plan){
 }
 function buildContext(plan,source,base,address,native,active=0,payload){
  if(plan.lazy)return require('./lazy-context.cjs').buildContext(plan,source,base,address,native,active);
- base=BigInt(base);address=BigInt(address);const l=layout(plan),b=Buffer.alloc(l.bytes),u64=(n,at)=>b.writeBigUInt64LE(BigInt(n),at),pool=new Map(),sources=new Map(plan.sources.map(s=>[s.sdPath,s]));
+ base=BigInt(base);address=BigInt(address);const resolve=reference=>require('./native/fs-layout.cjs').offset(native.fsLayout,reference);const l=layout(plan),b=Buffer.alloc(l.bytes),u64=(n,at)=>b.writeBigUInt64LE(BigInt(n),at),pool=new Map(),sources=new Map(plan.sources.map(s=>[s.sdPath,s]));
  let stringAt=l.stringsOffset;
  for(const text of strings(plan)){pool.set(text,address+BigInt(stringAt));b.write(text,stringAt);stringAt+=Buffer.byteLength(text)+1;}
  check(Buffer.isBuffer(payload)&&payload.length===plan.payload.size,'Resident metadata payload is incomplete');payload.copy(b,l.inlineOffset);
@@ -34,7 +34,7 @@ function buildContext(plan,source,base,address,native,active=0,payload){
  b.write('NS2LFS02');b.writeUInt32LE(active,8);b.writeUInt32LE(plan.views.length,12);u64(address+BigInt(l.inlineOffset),32);u64(source.filesystem.object,40);u64(base+BigInt(native.sdk.original.fileRead),48);u64(plan.payload.size,72);
  for(const [i,name]of ['fileRead','fileSize','fileRelease','filesystemRelease','storageRelease','directoryRead','directoryCount','directoryRelease'].entries())u64(base+BigInt(native.sdk.original[name]),304+i*8);
  if(l.exefs)u64(address+BigInt(l.romfs),56);
- u64(base+0x694c0n,104);u64(base+0x1077b0n,112);u64(base+BigInt(native.originalSize),120);u64(base+BigInt(native.namespace.original.open),128);u64(base+0x69580n,136);
+ u64(base+BigInt(resolve(0x694c0)),104);u64(base+BigInt(resolve(0x1077b0)),112);u64(base+BigInt(native.originalSize),120);u64(base+BigInt(native.namespace.original.open),128);u64(base+BigInt(resolve(0x69580)),136);
  let next=HEADER+VIEW*plan.views.length;const seen=new Set();
  for(let i=0;i<plan.views.length;i++){
   const v=plan.views[i],at=HEADER+i*VIEW,identity=[v.storageSize,v.headerHex,v.fingerprintFileEntryOffset,v.originalFileEntryHex,v.fingerprintDataOffset,v.originalPrefixHex,v.fingerprintLength].join(':');

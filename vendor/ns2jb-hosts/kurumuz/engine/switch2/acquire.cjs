@@ -6,21 +6,22 @@ const { a } = require('../shared/rpc.cjs');
 const { request } = require('./tools/endpoint.cjs');
 const { verifyProof } = require('./memory/verify-proof.cjs');
 const { save, read } = require('./ro/runtime.cjs');
+const {stopChildAtDeadline, ACQUISITION_TIMEOUT_MS} = require('./acquisition-stop.cjs');
+const {readLiveReport} = require('./memory/live-report-read.cjs');
+const {qualifyCleanCandidateRetry} = require('./memory/clean-acquisition-retry.cjs');
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // The acquisition owns native allocations until retire() completes.
 async function start() {
-  // This is flaky right now, so run 3x for now
+  // Only the exact clean, pre-cache candidate-cost miss may retry. All other
+  // failures consume the application session, including deadline stops.
   const MAX_ATTEMPTS = 3;
+  const overallDeadline = Date.now() + ACQUISITION_TIMEOUT_MS;
+  const attemptRows = [];
   let lastError;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
-    const logFile = path.join(__dirname, 'acquisition.log');
-
-    try {
-      await fs.promises.unlink(logFile);
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
-    }
+    const logFile = path.join(__dirname,
+      attempt === 0 ? 'acquisition.log' : 'acquisition-' + (attempt + 1) + '.log');
 
     const log = fs.createWriteStream(logFile, { flags: 'wx', mode: 0o600 });
     await new Promise((resolve, reject) => { log.once('open', resolve); log.once('error', reject); });
@@ -42,12 +43,13 @@ async function start() {
       if (!exited) child.kill('SIGKILL');
       await done;
     };
+    let deadlineHandled = false;
     try {
-      const deadline = Date.now() + 10 * 60 * 1000;
+      const deadline = overallDeadline;
       let report, recorded = false;
       for (; ;) {
         if (reportFile) {
-          report = await read(reportFile);
+          report = await readLiveReport(reportFile, read);
           if (!recorded) {
             // Keep the scratch owner discoverable even if acquisition later fails.
             await save(path.join(__dirname, 'current-acquisition.json'), { session: a.session, report: reportFile });
@@ -55,15 +57,41 @@ async function start() {
           }
         }
         if (report?.memoryControl?.ready) break;
-        if (exited || spawnError || Date.now() >= deadline)
+        if (exited || spawnError)
           throw Error('FS acquisition did not complete. Inspect ' + logFile + '; restart the console before another launch.');
+        if (Date.now() >= deadline) {
+          deadlineHandled = true;
+          const stop = await stopChildAtDeadline(child, done);
+          let finalReport = null, reportReadError = null;
+          if (stop.closed && reportFile) {
+            try { finalReport = await read(reportFile); }
+            catch (error) { reportReadError = error.message; }
+          }
+          const ownedCleanupReported = Boolean(stop.termination === 'closed-after-sigterm' &&
+            finalReport?.cleanedUp === true && finalReport.control?.mode === 'closed' &&
+            finalReport.finished &&
+            !finalReport.cleanupError && !finalReport.placementUncertain &&
+            finalReport.retained?.base === 0 && finalReport.retained?.handles?.length === 0 &&
+            finalReport.retained?.threads?.length === 0 &&
+            finalReport.retained?.created?.length === 0 &&
+            finalReport.retained?.cacheNeedsRestore === false);
+          await save(path.join(__dirname, 'acquisition-supervisor.json'), {
+            stage: 'deadline-expired', timeoutMs: ACQUISITION_TIMEOUT_MS,
+            stop, report: reportFile || null, reportReadError,
+            ownedCleanupReported, consoleRestartRequired: true,
+          });
+          throw Error('FS acquisition exceeded its 25-minute deadline; ' +
+            (ownedCleanupReported ? 'the probe reported owned cleanup' : 'owned cleanup is unverified') +
+            '. Inspect ' + logFile + '; restart the console before another launch.');
+        }
         await delay(500);
       }
       if (report.session !== a.session || report.error || report.cleanupError)
         throw Error('FS acquisition has an error or belongs to another session');
       const proof = await verifyProof(reportFile, a.session);
       const supervisorReport = path.join(__dirname, 'acquisition-supervisor.json');
-      await save(supervisorReport, { stage: 'memory-ready', attempts: [{ report: reportFile }] });
+      await save(supervisorReport, { stage: 'memory-ready',
+        attempts: [...attemptRows, {report: reportFile, log: logFile, exit: null}] });
       const current = {
         session: a.session, report: reportFile, supervisorReport,
         socketPath: report.memoryControl.socketPath, proof, finished: new Date().toISOString()
@@ -91,8 +119,26 @@ async function start() {
           return { cleanedUp: true, report: reportFile };
         },
       };
-    } catch (error) { await abandon(); lastError = error; }
-    if (attempt < MAX_ATTEMPTS - 1) await delay(1000);
+    } catch (error) {
+      if (!deadlineHandled) await abandon();
+      lastError = error;
+      let retry = {eligible: false, reasons: ['no-final-report']};
+      if (!deadlineHandled && !spawnError && exited && reportFile) {
+        try {
+          const final = await read(reportFile);
+          retry = qualifyCleanCandidateRetry(final, a.session, exited);
+        } catch (readError) {
+          retry = {eligible: false, reasons: ['final-report-read: ' + readError.message]};
+        }
+      }
+      attemptRows.push({report: reportFile || null, log: logFile, exit: exited || null,
+        retry, error: error.message});
+      if (attempt === MAX_ATTEMPTS - 1 || !retry.eligible ||
+          Date.now() + 1000 >= overallDeadline) break;
+      await save(path.join(__dirname, 'acquisition-supervisor.json'),
+        {stage: 'guarded-retry', attempts: attemptRows, maxAttempts: MAX_ATTEMPTS});
+      await delay(1000);
+    }
   }
   throw lastError;
 }

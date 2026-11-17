@@ -1,0 +1,20 @@
+{
+  "format": "mac2jb-local-host-patch-v1",
+  "upstreamRevision": "28f03b5895e5569d8fbc35cbed84906b8f0a65b2",
+  "upstreamManifest": "packaging/ns2jb-kurumuz-28f03b5-SHA256SUMS.upstream",
+  "scope": "held RO process native ABI 3 range mapping for HBLauncher",
+  "commands": {
+    "mapRX": "0x524f001a",
+    "mapRW": "0x524f001b",
+    "unmap": "0x524f001c"
+  },
+  "target": "transferred SmileBASIC current-process handle only",
+  "maximumPagesPerRequest": 16384,
+  "payloadSha256": "5d71430cd8ded9db849232c04649948c437a296f44385b2dded36938d0427bd2",
+  "sourceSha256": "72a6f3ce0925d8a6d4533d5a226001a1835af7c9cb3220a90008e48134b9d997",
+  "hostStageTimeoutPatch": [
+    "engine/shared/stages.cjs",
+    "engine/switch2/acquisition-stop.cjs",
+    "engine/switch2/retained/find-metadata.cjs"
+  ]
+}

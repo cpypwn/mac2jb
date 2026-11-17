@@ -26,7 +26,8 @@ function fixture(t, options = {}) {
     async validateRun() {
       calls.push('validate-run');
       if (options.validateError) throw options.validateError;
-      return {directory: run, proof: {session: 'switch2-fixture'}};
+      return {directory: run, proof: {session: 'switch2-fixture'},
+        connection: {addresses: {target: options.target || 'switch2'}}};
     },
     verifiedSession() {},
     session: {async attachGame() {
@@ -56,7 +57,7 @@ test('read-only discovery emits bounded title names only after native cleanup', 
     {titleId: '010042d022aea000', name: 'Seedsow Lullaby'}
   ]);
   assert.deepEqual(state.calls,
-    ['snapshot', 'validate-run', 'validate-attachment', 'attach', 'discover', 'close']);
+    ['validate-run', 'snapshot', 'validate-attachment', 'attach', 'discover', 'close']);
   assert.equal(output.length, 1);
   assert.deepEqual(JSON.parse(output[0].slice('MAC2JB_TITLE_NAMES '.length)),
     {cleanupConfirmed: true, titles: names});
@@ -70,6 +71,30 @@ test('unavailable name service safely returns ids-only fallback after cleanup', 
   assert.deepEqual(JSON.parse(output[0].slice('MAC2JB_TITLE_NAMES '.length)),
     {cleanupConfirmed: true, titles: []});
   assert.equal(state.calls.at(-1), 'close');
+});
+
+test('CivSwitch title names use its native session and confirm cleanup', async t => {
+  const state = fixture(t, {target: 'civ7'});
+  const calls = state.calls;
+  const dependencies = {...state.dependencies,
+    civ7Ouncecake: {
+      async verifySnapshot() { calls.push('civ7-snapshot'); },
+      async validateAttachment() { calls.push('civ7-validate-attachment'); }
+    },
+    civ7Session: {async attachGame(_run, options) {
+      assert.deepEqual(options, {bulkDownloads: false});
+      calls.push('civ7-attach');
+      return {live: {session: 'switch2-fixture'}, async close() { calls.push('civ7-close'); }};
+    }},
+    civ7Content: {async discoverGames() {
+      calls.push('civ7-discover');
+      return [{title: '010012900d38a000', name: 'Nora Princess 2'}];
+    }}
+  };
+  const names = await lookup(state.run, dependencies);
+  assert.deepEqual(names, [{titleId: '010012900d38a000', name: 'Nora Princess 2'}]);
+  assert.deepEqual(calls, ['validate-run', 'civ7-snapshot', 'civ7-validate-attachment',
+    'civ7-attach', 'civ7-discover', 'civ7-close']);
 });
 
 test('timeout or uncertain discovery never emits a safe result', async t => {
@@ -95,7 +120,7 @@ test('failed cleanup blocks title listing even when names were read', async t =>
 test('a failed source check cannot attach to the console', async t => {
   const state = fixture(t, {validateError: Error('Changed host code')});
   await assert.rejects(lookup(state.run, state.dependencies), /Changed host code/);
-  assert.deepEqual(state.calls, ['snapshot', 'validate-run']);
+  assert.deepEqual(state.calls, ['validate-run']);
 });
 
 test('untrusted names and duplicate ids are rejected before output', () => {

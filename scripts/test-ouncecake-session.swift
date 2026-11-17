@@ -32,6 +32,16 @@ import Foundation
         check(!session.receiveEndpoint(host: "192.168.1.20", port: 2121, httpURL: "ftp://192.168.1.20:2121"), "FTP URL rejected")
         check(session.receiveEndpoint(host: "192.168.1.20", port: 2121, httpURL: "http://192.168.1.20:2121/"), "confirmed endpoint accepted")
         check(session.endpoint?.address == "http://192.168.1.20:2121/", "copy address uses console IP")
+        var civSession = OunceCakeSession()
+        check(civSession.begin(consoleAddress: "192.168.1.20", service: .civFTP), "capture CivSwitch FTP service")
+        check(civSession.receiveCatalog([game]) && civSession.select(titleId: "0100abcdef123456"), "CivSwitch game selected")
+        check(!civSession.receiveEndpoint(host: "192.168.1.20", port: 2121,
+                                          httpURL: "http://192.168.1.20:2121/"), "CivSwitch WebDAV endpoint rejected")
+        check(!civSession.receiveEndpoint(host: "192.168.1.21", port: 2121,
+                                          httpURL: nil, ftpURL: "ftp://192.168.1.21:2121/"), "other console FTP rejected")
+        check(civSession.receiveEndpoint(host: "192.168.1.20", port: 2121,
+                                         httpURL: nil, ftpURL: "ftp://192.168.1.20:2121/"), "CivSwitch FTP endpoint accepted")
+        check(civSession.endpoint?.address == "ftp://192.168.1.20:2121/", "copy CivSwitch FTP address")
         session.stop(cleanupBlocked: true)
         check(session.endpoint == nil && session.stage == .cleanupBlocked, "uncertain cleanup hides endpoint")
         session.stop()

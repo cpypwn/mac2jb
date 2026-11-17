@@ -35,6 +35,17 @@ async function readNativeText(c,handle,base,identity,mappings=[]){
  }
  return bytes;
 }
+async function readExecutableText(c,handle,base,identity,mappings=[]){
+ base=BigInt(base);
+ const info=await c.info(handle,base,identity.pid),memory=info.memory;
+ check(!info.result&&!info.queryResult&&info.pid===String(identity.pid)&&info.programId===identity.programId&&memory&&BigInt(memory.address)===base&&[4,5].includes(memory.permissions)&&[3,4].includes(memory.type)&&!memory.attributes,'Cannot qualify native FS executable segment');
+ const size=Number(memory.size);check(Number.isSafeInteger(size)&&size>=4096&&size<=64*1024*1024&&size%4096===0,'Invalid native FS executable segment size');
+ const bytes=Buffer.alloc(size);mappings.push({offset:0,end:size,permissions:memory.permissions});
+ for(let at=0;at<size;){
+  const n=Math.min(0x200000,size-at),reply=await c.readBulk(handle,identity.pid,base+BigInt(at),n),part=verifyBulk(reply,identity,n,{partial:true});part.copy(bytes,at);at+=part.length;
+ }
+ return bytes;
+}
 async function finishFailedCapture(c,error){
  if(!c.pending){try{await c.close();error.retrySafe=true;return true;}catch{}}
  return false;
@@ -47,10 +58,19 @@ async function captureNative(run,directory,options={}){
  let transferred=false,closed=false,identity;
  try{
   const handle=await c.fsProcess();identity=await identifyFs(c,handle,proof.identity);
-  const mappings=[],bytes=await readNativeText(c,handle,BigInt(proof.mapping.memory.address),identity,mappings);
-  await fs.writeFile(output,bytes,{mode:0o600});
-  const validation=validateCapture(bytes);
-  const mappingValidation=validateFsMappings(mappings);
+  let mappings=[],bytes,validation;
+  try{bytes=await readNativeText(c,handle,BigInt(proof.mapping.memory.address),identity,mappings);await fs.writeFile(output,bytes,{mode:0o600});validation=validateCapture(bytes,{relocate:false});}
+  catch(error){
+   if(!['native-functions','capture-mapping'].includes(error.fsCompatibility?.stage))throw error;
+   mappings=[];bytes=await readExecutableText(c,handle,BigInt(proof.mapping.memory.address),identity,mappings);
+   await fs.writeFile(output,bytes,{mode:0o600});
+   validation=validateCapture(bytes);
+  }
+  const mappingValidation=validateFsMappings(mappings,validation.layout);
+  for(const reference of require('./native/fs-contract.json').data){
+   const offset=require('./native/fs-layout.cjs').offset(validation.layout,reference.offset),address=BigInt(proof.mapping.memory.address)+BigInt(offset),info=await c.info(handle,address,identity.pid);
+   check(!info.result&&!info.queryResult&&info.pid===String(identity.pid)&&info.programId===identity.programId&&info.memory?.permissions===3&&[3,4,5].includes(info.memory.type)&&!info.memory.attributes&&BigInt(info.memory.address)<=address&&address+16n<=BigInt(info.memory.address)+BigInt(info.memory.size),'Native FS global is not backed by writable memory: FS+0x'+offset.toString(16));
+  }
   writeJson(path.join(directory,'native-fs/manifest.json'),{session,verified:true,pid:String(identity.pid),programId:identity.programId,size:bytes.length,mappings,...validation,...mappingValidation,runtimeLoggingCompatible:validation.runtimeLoggingCompatible&&mappingValidation.loggingExecutable});
   if(options.retainClient){transferred=true;return{file:output,client:c,processHandle:handle};}return output;
  }catch(error){
@@ -59,4 +79,4 @@ async function captureNative(run,directory,options={}){
   throw error;
  }finally{if(!transferred&&!closed&&!c.pending)await c.close();}
 }
-module.exports={captureNative,readNativeText,finishFailedCapture};
+module.exports={captureNative,readNativeText,readExecutableText,finishFailedCapture};

@@ -1,0 +1,12 @@
+{
+  "name": "ouncecake-civ7",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Civ7-optimized tool to dump unencrypted romFS and exeFS for Switch 2 games",
+  "engines": {"node": ">=22"},
+  "scripts": {
+    "start": "node ouncecake.cjs",
+    "build": "node engine/build-ftp.cjs",
+    "test": "node --test"
+  }
+}

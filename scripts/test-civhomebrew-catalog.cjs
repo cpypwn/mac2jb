@@ -10,7 +10,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 const overlay = require('./civhomebrew-catalog-overlay.cjs');
 
-function harness(responses = {}, initial = null, installed = []) {
+function harness(responses = {}, initial = null, installed = [], options = {}) {
   let saved = initial, committed = 0;
   const submitted = [];
   const g = {
@@ -55,7 +55,7 @@ function harness(responses = {}, initial = null, installed = []) {
     },
     io: {ensureDirectory: async () => {}}
   };
-  const catalog = g.CivCatalog.create({native, api: {
+  const catalog = g.CivCatalog.create({native, requireNativeUi: !!options.requireNativeUi, api: {
     list: () => installed.slice(),
     submit: async (name, bytes) => {submitted.push({name, bytes});}
   }});
@@ -161,6 +161,48 @@ test('catalog packages require exact size, SHA-256, ID and release before instal
   responses[app.package] = {status: 200, body: packageBytes.replace('test-app', 'bad-app-')};
   await assert.rejects(h.catalog.install(app), /SHA-256 differs/);
   assert.equal(h.submitted.length, 1);
+});
+
+test('native launcher only installs packages that declare its UI API', async () => {
+  async function packageInstall(metadata, requireNativeUi) {
+    const packageBytes = JSON.stringify({id: 'test-app', metadata});
+    const sha256 = crypto.createHash('sha256').update(packageBytes).digest('hex');
+    const manifest = JSON.stringify({format: 'civhomebrew-catalog', version: 1, apps: [{
+      id: 'test-app', name: 'Test', release: '1.0.0', description: 'Test package',
+      package: 'https://example.org/test.civapp', bytes: packageBytes.length, sha256
+    }]});
+    const h = harness({
+      'https://raw.githubusercontent.com/cpypwn/civapp-db/main/catalog.json': {status: 200, body: manifest},
+      'https://example.org/test.civapp': {status: 200, body: packageBytes}
+    }, null, [], {requireNativeUi});
+    const [app] = await h.catalog.fetch(0);
+    return {h, app, install: () => h.catalog.install(app)};
+  }
+
+  const compatible = await packageInstall({release: '1.0.0'}, false);
+  await compatible.install();
+  assert.equal(compatible.h.submitted.length, 1);
+
+  const missing = await packageInstall({release: '1.0.0'}, true);
+  await assert.rejects(missing.install(), /does not support the native launcher/);
+  assert.equal(missing.h.submitted.length, 0);
+  const ui = catalogUiHarness(missing.app, () => missing.install());
+  await ui.ui.open();
+  ui.ui.action('accept', 0);
+  await new Promise(setImmediate);
+  assert.equal(ui.ui.active(), true);
+  assert.match(ui.stage.children[0].children[5].textContent, /Choose Compatible 0\.4\.3/);
+  assert.equal(missing.h.submitted.length, 0);
+
+  const wrongApi = await packageInstall({release: '1.0.0', extensions: {nativeUi: {api: 2}}}, true);
+  await assert.rejects(wrongApi.install(), /does not support the native launcher/);
+  assert.equal(wrongApi.h.submitted.length, 0);
+
+  const native = await packageInstall({release: '1.0.0', extensions: {nativeUi: {
+    api: 1, library: 'civapps-native-ui'
+  }}}, true);
+  await native.install();
+  assert.equal(native.h.submitted.length, 1);
 });
 
 test('catalog identifies available updates and verifies the installed app before replacing it', async () => {

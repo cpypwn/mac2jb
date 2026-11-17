@@ -7,7 +7,7 @@ import Combine
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var status = ""
     @Published private(set) var log = ""
-    @Published private(set) var progressStep = 0
+    @Published private(set) var progressStep = 0.0
     @Published private(set) var runPath: String?
     @Published private(set) var diagnosticLogURL: URL?
     @Published private(set) var failureLogURL: URL?
@@ -21,9 +21,11 @@ import Combine
     private var stopRequested = false
     private var stoppedConfirmed = false
 
-    func start(consoleAddress: String, macAddress: String, runtimeRoot: URL?, waitForLoader: Bool = false) {
+    func start(consoleAddress: String, macAddress: String, runtimeRoot: URL?, waitForLoader: Bool = false,
+               stageTimeoutMinutes: Int = 10) {
         guard !isRunning, let runtimeRoot,
-              Self.validIPv4(consoleAddress), Self.validIPv4(macAddress) else { return }
+              Self.validIPv4(consoleAddress), Self.validIPv4(macAddress),
+              (1...60).contains(stageTimeoutMinutes) else { return }
         diagnosticLogURL = Self.makeDiagnosticLog()
         failureLogURL = nil
         let script = runtimeRoot.appendingPathComponent("integrations/civswitch/fs-host.cjs")
@@ -39,7 +41,8 @@ import Combine
         let output = Pipe()
         task.executableURL = node
         task.arguments = [script.path, consoleAddress, macAddress, runtimeRoot.path] +
-            (waitForLoader ? ["--wait-for-loader"] : [])
+            (waitForLoader ? ["--wait-for-loader"] : []) +
+            ["--host-stage-timeout-minutes", String(stageTimeoutMinutes)]
         task.currentDirectoryURL = runtimeRoot
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = output
@@ -117,7 +120,7 @@ import Combine
             if let message, message.count >= 3,
                message.dropFirst().hasPrefix("/4"),
                let step = Int(message.prefix(1)), (1...4).contains(step) {
-                progressStep = max(progressStep, step - 1)
+                progressStep = max(progressStep, Double(step - 1) + 0.1)
             }
         case "bridge-sent": status = "CivSwitch bridge sent; waiting for FS verification"
         case "held-ready":

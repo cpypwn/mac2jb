@@ -1,0 +1,70 @@
+{
+  "capturedAt": "2026-11-13T03:27:46Z",
+  "target": "Balatro physical base 1.0.1f-FULL",
+  "transport": "existing Lua REPL on port 9026",
+  "qualification": "read-only live profile; no save write, commit, allocation, thread creation, race, or canary",
+  "identity": {
+    "runtimeState": "serving",
+    "runtimeVersion": "1.0.1f-FULL",
+    "nativeReady": true,
+    "sdkBase": "0x19618b4000",
+    "pinnedCodeHeadsMatched": 41
+  },
+  "mappings": {
+    "sdkCode": {
+      "base": "0x19618b4000",
+      "size": "0x5e8000",
+      "type": 3,
+      "attributes": 0,
+      "permissions": 5
+    },
+    "sdkData": {
+      "base": "0x1962599000",
+      "size": "0x74000",
+      "type": 4,
+      "attributes": 0,
+      "permissions": 3
+    },
+    "allocatorManager": {
+      "base": "0x196260e000",
+      "size": "0xab000",
+      "type": 4,
+      "permissions": 3
+    },
+    "mountNodes": {
+      "base": "0x4964000000",
+      "size": "0x6cc000",
+      "type": 5,
+      "permissions": 3
+    }
+  },
+  "mountTable": {
+    "sdkOffset": "0xce7848",
+    "head": "0x196259b848",
+    "nodeToAccessorBias": -8,
+    "accessorNameOffset": 24,
+    "accessorImplementationOffset": 40,
+    "circularOrder": ["rom", "save"],
+    "rom": {
+      "node": "0x4964647158",
+      "implementation": "0x4964647000",
+      "vtableSdkOffset": "0xceadf0",
+      "firstEightEntryCodeOffsets": ["0xe9d8c", "0xe9f90", "0xea8f8", "0xea904", "0xea910", "0xea91c", "0xea928", "0xea934"]
+    },
+    "save": {
+      "node": "0x49646472a8",
+      "implementation": "0x4964689680",
+      "vtableSdkOffset": "0xcea7c8",
+      "firstEightEntryCodeOffsets": ["0xcea84", "0xceab0", "0xceae0", "0xcebc0", "0xcec80", "0xced40", "0xcee00", "0xceec0"]
+    }
+  },
+  "fsProxy": {
+    "initialized": true,
+    "objectSdkOffset": "0xd524c0",
+    "vtableSdkOffset": "0xce84d0",
+    "managerSdkOffset": "0xd52940",
+    "objectId": 153,
+    "managerStateSize": 2048,
+    "managerState": 3
+  }
+}

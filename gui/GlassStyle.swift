@@ -54,15 +54,17 @@ struct AnimatedExpansionLayout: AnimatableModifier {
 struct PrimaryActionStyle: ButtonStyle {
     @Environment(\.isEnabled) private var enabled
     var large = false
+    var compact = false
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: large ? 17 : 13, weight: .semibold, design: .rounded))
+            .font(.system(size: large ? 17 : compact ? 11 : 13, weight: .semibold, design: .rounded))
             .foregroundStyle(enabled ? Mac2jbTheme.background : Mac2jbTheme.muted)
-            .frame(minWidth: large ? 240 : 140, minHeight: large ? 54 : 40)
+            .frame(minWidth: large ? 240 : compact ? 110 : 140,
+                   minHeight: large ? 54 : compact ? 32 : 40)
             .frame(maxWidth: large ? .infinity : nil)
-            .padding(.horizontal, large ? 26 : 16)
+            .padding(.horizontal, large ? 26 : compact ? 12 : 16)
             .background(enabled ? Mac2jbTheme.mint.opacity(configuration.isPressed ? 0.76 : 1) : .white.opacity(0.07),
-                        in: RoundedRectangle(cornerRadius: large ? 17 : 12, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: large ? 17 : compact ? 10 : 12, style: .continuous))
             .scaleEffect(configuration.isPressed && enabled ? 0.985 : 1)
     }
 }

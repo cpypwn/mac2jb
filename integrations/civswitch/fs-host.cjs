@@ -11,6 +11,14 @@ const {spawn} = require('node:child_process');
 const PREFIX = 'MAC2JB_CIVSWITCH_FS ';
 const SOURCE_PORT = path.join(__dirname, 'fs-kit', 'port');
 const LOADER_WAIT_MS = 5 * 60 * 1000;
+const DEFAULT_STAGE_TIMEOUT_MINUTES = 10;
+
+function stageTimeoutMinutes(value = DEFAULT_STAGE_TIMEOUT_MINUTES) {
+  const minutes = Number(value);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60)
+    throw Error('Host stage timeout must be between 1 and 60 minutes');
+  return minutes;
+}
 
 function emitLine(event) {
   process.stdout.write(PREFIX + JSON.stringify(event) + '\n');
@@ -227,6 +235,7 @@ async function runFsHost(options) {
   const verifyPrepared = options.verifyPrepared || preparation.verifyPreparedRun;
   const loaderPort = options.loaderPort || 9026;
   if (!Number.isInteger(loaderPort) || loaderPort < 1 || loaderPort > 65535) throw Error('Invalid CivSwitch loader port');
+  const hostStageTimeout = stageTimeoutMinutes(options.stageTimeoutMinutes) * 60 * 1000;
 
   let child, loader, staged;
   let host;
@@ -254,7 +263,9 @@ async function runFsHost(options) {
     event(emit, 'host-starting', {message: 'Waiting for the CivSwitch FS host', stagePath: staged.root});
     child = (options.spawn || spawn)(process.execPath,
       [path.join(staged.stagedPort, 'engine', 'run.cjs'), '--target', 'civ7', '--rpc', macIp],
-      {cwd: staged.stagedPort, env: {...process.env, NS2_TARGET: 'civ7'}, stdio: ['ignore', 'pipe', 'pipe']});
+      {cwd: staged.stagedPort,
+        env: {...process.env, NS2_TARGET: 'civ7', MAC2JB_HOST_STAGE_TIMEOUT_MS: String(hostStageTimeout)},
+        stdio: ['ignore', 'pipe', 'pipe']});
     host = monitor(child, emit);
     await host.until(state => Boolean(state.runPath), 30000);
     const runPath = host.state.runPath;
@@ -306,13 +317,21 @@ async function runFsHost(options) {
 }
 
 async function main(args = process.argv.slice(2)) {
-  if (args.length < 3 || args.length > 4 || (args.length === 4 && args[3] !== '--wait-for-loader'))
-    throw Error('usage: node fs-host.cjs SWITCH_IPV4 MAC_IPV4 RUNTIME_ROOT [--wait-for-loader]');
+  const flags = args.slice(3);
+  let waitForLoader = false;
+  let minutes = DEFAULT_STAGE_TIMEOUT_MINUTES;
+  for (let index = 0; index < flags.length; index++) {
+    if (flags[index] === '--wait-for-loader' && !waitForLoader) waitForLoader = true;
+    else if (flags[index] === '--host-stage-timeout-minutes' && flags[index + 1] !== undefined) {
+      minutes = stageTimeoutMinutes(flags[++index]);
+    } else throw Error('usage: node fs-host.cjs SWITCH_IPV4 MAC_IPV4 RUNTIME_ROOT [--wait-for-loader] [--host-stage-timeout-minutes 1..60]');
+  }
+  if (args.length < 3) throw Error('usage: node fs-host.cjs SWITCH_IPV4 MAC_IPV4 RUNTIME_ROOT [--wait-for-loader] [--host-stage-timeout-minutes 1..60]');
   await runFsHost({consoleIp: args[0], macIp: args[1], runtimeRoot: args[2],
-    waitForLoader: args[3] === '--wait-for-loader'});
+    waitForLoader, stageTimeoutMinutes: minutes});
 }
 
 if (require.main === module) main().catch(() => {process.exitCode = 1;});
 
 module.exports = {runFsHost, stage, monitor, sendBridge, verifiedRun, verifiedStop,
-  failureDetails, waitForLoader, PREFIX};
+  failureDetails, waitForLoader, stageTimeoutMinutes, PREFIX};

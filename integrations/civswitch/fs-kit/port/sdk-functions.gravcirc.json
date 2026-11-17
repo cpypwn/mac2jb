@@ -1,0 +1,98 @@
+{
+  "memcpy": {
+    "offset": 5804440,
+    "bytes": "e80301cb090940923f0102eb22040054a90700b4ea0301aaeb0300aaa8091037"
+  },
+  "memmove": {
+    "offset": 5805280,
+    "bytes": "fd7bbea9f30b00f9fd030091f30300aa1f0001eb800300542800028b1f0113eb"
+  },
+  "svcQueryMemory": {
+    "offset": 1411552,
+    "bytes": "e10f1ff8c10000d4e20340f9410000b9ff430091c0035fd6"
+  },
+  "crc32": {
+    "offset": 458576,
+    "bytes": "e203022a5f301514"
+  },
+  "allocate": {
+    "offset": 1226768,
+    "bytes": "fd7bbfa9fd030091685e00f008cd41f9e20301aae10300aa00a10f912d571294087c40921f000071e003889afd7bc1a8c0035fd6",
+    "size": 52,
+    "prefixSize": 52,
+    "sha256": "abb7e6304458d01db8d82475952a05fcdc327200ce75051d5f0015f74c3aed4f",
+    "sourceSymbol": "_ZN2nn2os19AllocateMemoryBlockEPmm",
+    "qualification": "captured SDK instruction signature; call ABI not yet live-qualified"
+  },
+  "free": {
+    "offset": 1226832,
+    "bytes": "fd7bbfa9fd030091685e00f008cd41f909f541f93f0100eb680100540bf941f9e20301aae10300aa4a00008b6901098b5f0109eb8800005400a10f91fd7bc1a8",
+    "size": 92,
+    "prefixSize": 64,
+    "sha256": "64425c5834cf84f33cfe3d8ac42944aef346e4f9d72e265f7fe83997534e23ef",
+    "sourceSymbol": "_ZN2nn2os15FreeMemoryBlockEmm",
+    "qualification": "captured SDK instruction signature; call ABI not yet live-qualified"
+  },
+  "getService": {
+    "offset": 1312512,
+    "bytes": "fd7bbea9f44f01a9fd030091f30300aa420100b4280040395f0400f1c1010054ed031f2aec031f2aeb031f2aea031f2ae9031f2a16000014ed031f2aec031f2a",
+    "size": 356,
+    "prefixSize": 64,
+    "sha256": "feac4b05f9377368f685b0389ea1000988817702ba09bfdc2a8b7feca56c0e6f",
+    "sourceSymbol": "_ZN2nn2sm16GetServiceHandleEPNS_3svc6HandleEPKcm",
+    "qualification": "captured SDK instruction signature; call ABI not yet live-qualified"
+  },
+  "memset": {
+    "offset": 5805968,
+    "bytes": "620600b44800008b5f0c00f10100003901f11f38c30500545f1c00f1010400390108003901e11f3801d11f38030500545f2400f1010c003901c11f3883040054",
+    "size": 208,
+    "prefixSize": 64,
+    "sha256": "3afe65c0520f32df8f9e2549dcea47675202dfa8703f461e0329d0370d666533",
+    "sourceSymbol": "memset",
+    "qualification": "captured SDK instruction signature; call ABI not yet live-qualified"
+  },
+  "send": {
+    "offset": 1411880,
+    "bytes": "410400d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "8c600ae781d1bcf3333dddb93ecff26d714231bd4bf0ab962a16e8f374e845cb",
+    "qualification": "captured SVC wrapper; call ABI not yet live-qualified"
+  },
+  "close": {
+    "offset": 1411768,
+    "bytes": "c10200d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "deece32043f3736d68d757a1b01501d4f9a43a053fa3049fbfb1fdcbc0a13965",
+    "qualification": "captured SVC wrapper; call ABI not yet live-qualified"
+  },
+  "svcCancelSynchronization": {
+    "offset": 1411808,
+    "bytes": "210300d4c0035fd6",
+    "size": 8,
+    "prefixSize": 8,
+    "sha256": "ecf02b83ffb0b0183d5c754637189b41dc67a6237b7f34ce119775cd0b03917e"
+  },
+  "svcWaitSynchronization": {
+    "offset": 1411784,
+    "bytes": "e00f1ff8010300d4e20340f9410000b9ff430091c0035fd6",
+    "size": 24,
+    "prefixSize": 24,
+    "sha256": "c21ce9ebd6f850c74271da02d514754994b1757019d4a70ec5316f16ecfc5992"
+  },
+  "svcGetThreadId": {
+    "offset": 1411912,
+    "bytes": "e00f1ff8a10400d4e20340f9410000f9ff430091c0035fd6",
+    "size": 24,
+    "prefixSize": 24,
+    "sha256": "2e3ed32a70825cd9209298d9b65ebb3f1f8ccd080832a7d4630b898b8e955034"
+  },
+  "svcGetProcessInfo": {
+    "offset": 1411960,
+    "bytes": "e00f1ff8210500d4e20340f9410000f9ff430091c0035fd6",
+    "size": 24,
+    "prefixSize": 24,
+    "sha256": "5703311bd1517f2c9c06229d1193143359fdcfec4ba4fa5a653e97765dc0edce"
+  }
+}

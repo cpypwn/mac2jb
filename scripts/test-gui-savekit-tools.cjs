@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const vm = require('node:vm');
 const {spawnSync} = require('node:child_process');
 const {request, archive, archiveArgs, selectedArchiveArgs, verifyPull,
   stageFiles, stageRestoredFiles, parseListing, parseInventory, parseTitleNames, validRun} =
@@ -13,6 +14,23 @@ const {assertPreservedFiles, assertMatchingFiles, verifyBackupFiles, safeRootNam
 const {listApplications} = require('../vendor/ns2-savekit/tools/list-apps.cjs');
 const {listSystem} = require('../vendor/ns2-savekit/overlay/engine/switch2/ro/ncm.cjs');
 const saveTree = require('../vendor/ns2-savekit/tools/lib/save-tree.cjs');
+
+async function loadSaveFilesystem() {
+  const source = await fs.readFile(path.join(__dirname,
+    '../vendor/ns2-savekit/overlay/engine/switch2/app/filesystem.cjs'), 'utf8');
+  const patched = {exports: {}};
+  vm.runInNewContext(source, {module: patched, Buffer, require: name => {
+    if (name === 'node:crypto') return crypto;
+    if (name === './session.cjs') return {live: {}, check: (condition, message) => {
+      if (!condition) throw Error(message);
+    }};
+    if (name === './domain.cjs' || name === './hash-code.json') return {};
+    if (name === '../../shared/ipc.cjs')
+      return require('../vendor/ns2-savekit/overlay/engine/shared/ipc.cjs');
+    throw Error('Unexpected native dependency: ' + name);
+  }});
+  return patched.exports;
+}
 
 test('Artemis SaveKit run requires a prepared source and a separate filesystem proof', async t => {
   const made = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-artemis-savekit-'));
@@ -36,6 +54,84 @@ test('Artemis SaveKit run requires a prepared source and a separate filesystem p
 test('save traversal rejects directory names that could escape an export', async () => {
   const api = {list: async () => [{name: '..', type: saveTree.DIRECTORY, size: 0}]};
   await assert.rejects(saveTree.walk({}, '/', api, {file: async () => {}}), /unsafe file name/);
+});
+
+test('save traversal accepts 791-byte paths and rejects paths over the native limit', async () => {
+  const deep = '/' + ['a'.repeat(250), 'b'.repeat(250), 'c'.repeat(250)].join('/');
+  const accepted = saveTree.join(deep, 'd'.repeat(37));
+  assert.equal(Buffer.byteLength(accepted), 791);
+  const overlong = '/' + Array.from({length: 8}, () => 'a'.repeat(250)).join('/');
+  let opened = false;
+  const api = {list: async () => [{name: 'b'.repeat(40), type: saveTree.FILE, size: 0}],
+    open: async () => {opened = true;}};
+  await assert.rejects(saveTree.walk({}, overlong, api,
+    {file: async () => {opened = true;}}), /2047 bytes/);
+  assert.equal(opened, false);
+});
+
+test('native SaveKit paths retain the short descriptor and expand for deep backups', async () => {
+  const native = await loadSaveFilesystem();
+  const short = native.pathBuffer('/short');
+  assert.equal(short.size, 0x301);
+  assert.equal(short.buffer.length, 0x304);
+  const deep = native.pathBuffer('/' + 'x'.repeat(790));
+  assert.equal(deep.size, 0x600);
+  assert.equal(deep.buffer.length, 0x603);
+  const packet = native.pathPacket(8, Buffer.alloc(4), 0x12000, deep.size);
+  assert.equal(packet.readUInt32LE(8) >>> 16, 0x600);
+  assert.throws(() => native.pathBuffer('/' + 'x'.repeat(2047)),
+    /Invalid filesystem path/);
+});
+
+test('remote Balatro backup walks nested .lovegame files through expanded native paths', async t => {
+  const native = await loadSaveFilesystem();
+  const backup = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-balatro-pull-'));
+  t.after(() => fs.rm(backup, {recursive: true, force: true}));
+  const deep = '/.lovegame/' + ['a'.repeat(250), 'b'.repeat(250), 'c'.repeat(250)].join('/');
+  const payload = deep + '/payload.lua';
+  const files = new Map([
+    ['/.lovegame/main.lua', Buffer.from('return true')],
+    [payload, Buffer.from('return "nested"')]
+  ]);
+  const directories = new Map([
+    ['/', [{name: '.lovegame', type: saveTree.DIRECTORY}]],
+    ['/.lovegame', [{name: 'main.lua', type: saveTree.FILE},
+      {name: 'a'.repeat(250), type: saveTree.DIRECTORY}]],
+    ['/.lovegame/' + 'a'.repeat(250), [{name: 'b'.repeat(250), type: saveTree.DIRECTORY}]],
+    ['/.lovegame/' + ['a'.repeat(250), 'b'.repeat(250)].join('/'),
+      [{name: 'c'.repeat(250), type: saveTree.DIRECTORY}]],
+    [deep, [{name: 'payload.lua', type: saveTree.FILE}]]
+  ]);
+  const visited = [];
+  const api = {
+    list: async (_, directory) => {
+      native.pathBuffer(directory);
+      return directories.get(directory) || [];
+    },
+    open: async (_, name) => {
+      const descriptor = native.pathBuffer(name);
+      visited.push({name, size: descriptor.size});
+      return {name};
+    },
+    size: opened => files.get(opened.name).length,
+    read: (opened, offset, size) => files.get(opened.name).subarray(offset, offset + size),
+    close: async () => {}
+  };
+  await saveTree.walk({}, '/', api, {
+    directory: full => fs.mkdir(path.join(backup, full), {recursive: true}),
+    file: async full => {
+      const opened = await api.open(null, full);
+      const bytes = await api.read(opened, 0, await api.size(opened));
+      await fs.writeFile(path.join(backup, full), bytes);
+      await api.close(opened);
+    }
+  });
+  assert.deepEqual(visited, [
+    {name: '/.lovegame/main.lua', size: 0x301},
+    {name: payload, size: 0x600}
+  ]);
+  for (const [name, expected] of files)
+    assert.deepEqual(await fs.readFile(path.join(backup, name)), expected);
 });
 
 test('title names require a confirmed cleanup and stay within the title inventory', () => {
@@ -145,6 +241,8 @@ test('developer requests keep title, account and archive parameters bounded', ()
     allowReplace: true}).allowReplace, true);
   assert.equal(request({action: 'write', titleId, uid, sourceFolder: '/tmp/demo'}).allowReplace,
     false);
+  assert.throws(() => request({action: 'write', titleId: '0100cd801ce5e000', uid,
+    sourceFolder: '/tmp/balatro', allowReplace: true, noBackup: true}), /Unknown field/);
   assert.throws(() => request({action: 'delete', titleId, uid,
     fileName: 'save.dat'}), /Confirm/);
   assert.throws(() => request({action: 'delete', titleId, uid,
@@ -201,6 +299,12 @@ test('an arbitrary title reaches backup verification in the staged writer', asyn
     assert.equal(result.status, 1);
     assert.match(result.stderr, /The backup does not prove the selected title/);
   }
+  const unbacked = spawnSync(process.execPath,
+    [writer, run, '0100cd801ce5e000', uid, backup, manifest, '--no-backup'],
+    {encoding: 'utf8'});
+  assert.equal(unbacked.status, 1);
+  assert.match(unbacked.stderr, /A verified backup is required before writing/);
+  assert.match(unbacked.stdout, /save write did not start/);
   const bytes = Buffer.from('test');
   const entry = {path: '/nora_01.dat', size: bytes.length,
     sha256: crypto.createHash('sha256').update(bytes).digest('hex')};

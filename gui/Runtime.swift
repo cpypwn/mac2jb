@@ -7,6 +7,11 @@ private func embeddedPayloadBytes() -> UnsafePointer<UInt8>?
 @_silgen_name("mac2jb_payload_size")
 private func embeddedPayloadSize() -> UInt
 
+private struct RuntimeFileManifest: Decodable {
+    let requiredPaths: [String]
+    let testRequiredPaths: [String]
+}
+
 struct BundledRuntime {
     let root: URL
     var host: HostProfile {
@@ -82,7 +87,7 @@ struct BundledRuntime {
                          "--no-same-owner", "--no-same-permissions"])
             try manager.removeItem(at: archive)
             let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid",
-                                       "tools/nxformat/1.0.3/bin/nxconvert",
+                                       "tools/nxformat/1.0.4/bin/nxconvert",
                                        "homebrew/bin/spirv-val", "homebrew/bin/glslangValidator", "homebrew/python/bin/python3",
                                        "homebrew/python/bin/python3.13"])
             if let walker = manager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
@@ -104,170 +109,20 @@ struct BundledRuntime {
                     try manager.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
                 }
             }
-            var requiredPaths = ["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid", "vendor/libusbd/libusbd.dylib",
-                         "integrations/civswitch/payload.txt", "integrations/civswitch/provenance.json",
-                         "integrations/civswitch/verify.cjs", "integrations/civswitch/probe.cjs",
-                         "integrations/civswitch/send-payload.cjs",
-                         "integrations/civswitch/fs-host.cjs",
-                         "integrations/artemis-fs/fs-host.cjs",
-                         "integrations/artemis-fs/runtime-host.cjs",
-                         "integrations/artemis-fs/kit/port/engine/run.cjs",
-                         "integrations/artemis-fs/kit/port/nora/nora_bridge.lua",
-                         "integrations/artemis-fs/kit/port/engine/shared/target.artemis-seedsow.json",
-                         "integrations/civswitch/fs-kit/provenance.json",
-                         "integrations/civswitch/fs-kit/LICENSE",
-                         "integrations/civswitch/fs-kit/port/civ_bridge.js",
-                         "integrations/civswitch/fs-kit/port/engine/run.cjs",
-                         "integrations/civswitch/fs-kit/port/engine/shared/target.civ7.json",
-                         "integrations/civswitch/fs-kit/port/engine/switch2/ro/payload/main",
-                         "scripts/prepare-civswitch-savekit.cjs",
-                         "scripts/prepare-artemis-fs.cjs",
-                         "integrations/civswitch/install-persistent.cjs", "integrations/civswitch/backup-single.js",
-                         "vendor/CivSwitch/core.js", "vendor/CivSwitch/installer-creator/install.py",
-                         "vendor/CivSwitch/installer-creator/compress_stage.js",
-                         "vendor/CivSwitch/installer-creator/save_template.bin",
-                         "vendor/CivSwitch/installer-creator/node_modules/terser/lib/minify.js",
-                         "scripts/gui-keyboard.cjs", "scripts/usb-controllers.cjs",
-                         "scripts/gui-dnswitch.cjs", "scripts/gui-webkit-research.cjs",
-                         "scripts/gui-bundled-browser-probes.cjs", "integrations/browser-probes/manifest.json",
-                         "scripts/gui-nxformat.cjs", "packaging/NXFormat-source.json",
-                         "tools/nxformat/1.0.3/bin/nxconvert", "tools/nxformat/1.0.3/LICENSE",
-                         "scripts/gui-nup.cjs", "packaging/NUP-source.json",
-                         "scripts/gui-civhomebrew.cjs", "scripts/civhomebrew-catalog-overlay.cjs",
-                         "integrations/civhomebrew-catalog/catalog.js", "integrations/civhomebrew-catalog/catalog-ui.js",
-                         "packaging/CivHomebrew-source.json",
-                         "scripts/gui-civswitch-moonlight.cjs", "packaging/Moonlight-CivSwitch-source.json",
-                         "scripts/gui-civswitch-sw2nes.cjs", "packaging/SW2NES-source.json",
-                         "integrations/sw2nes/v1.0.1/sw2nes.civapp", "integrations/sw2nes/v1.0.1/LICENSE",
-                         "scripts/gui-civswitch-jellyfin.cjs", "packaging/Jellyfin-CivSwitch-source.json",
-                         "scripts/gui-civswitch-package.cjs",
-                         "integrations/jellyfin/0.0.1/jellyfin-civswitch.civapp",
-                         "integrations/jellyfin/0.0.1/THIRD_PARTY.md", "integrations/jellyfin/0.0.1/BRANDING.md",
-                         "integrations/nup-support/site-packages/zstandard/backend_c.cpython-313-darwin.so",
-                         "integrations/nup-support/site-packages/zstandard-0.25.0.dist-info/licenses/LICENSE",
-                         "integrations/browser-probes/index.html", "integrations/browser-probes/probes.js",
-                         "integrations/browser-probes/style.css",
-                         "scripts/check-webkit-research.cjs",
-                         "packaging/switch2-browser-research-provenance.json",
-                         "vendor/switch2-captive-portal-research/serve-switch2-browser-probe.py",
-                         "vendor/switch2-captive-portal-research/switch2-browser-probe.html",
-                         "vendor/switch2-captive-portal-research/switch2-probes-webkit.js",
-                         "vendor/switch2-captive-portal-research/probe-fixtures/probe-h264.mp4",
-                         "integrations/nsp-box/cli.py", "integrations/nsp-box/LICENSE.txt",
-                         "integrations/nsp-box/provenance.json",
-                         "integrations/nsp-box/src/engine.py", "integrations/nsp-box/src/container_format.py",
-                         "integrations/nsp-box/src/verify_format.py", "integrations/nsp-box/src/artwork.py",
-                         "integrations/nsp-box/src/compatibility.py", "integrations/nsp-box/src/dlc.py",
-                         "scripts/dnswitch-launch.applescript",
-                         "scripts/gui-host.cjs", "scripts/gui-session.cjs", "scripts/gui-dump.cjs",
-                         "scripts/gui-savekit.cjs", "scripts/gui-savekit-tools.cjs",
-                         "scripts/seedsow-full-save.cjs",
-                         "scripts/prepare-seedsow-host.cjs",
-                         "packaging/ArtemisLauncher-v2.json",
-                         "packaging/ArtemisLauncher-seedsow-full.json",
-                         "packaging/ArtemisLauncher-upstream-saves.json",
-                         "packaging/SeedsowEditorPro-v0.4.0.json",
-                         "packaging/ArtemisLauncher-nora1.json",
-                         "packaging/ArtemisLauncher-bundles.json",
-                         "integrations/artemis/upstream-v2/seedsow_save.zip",
-                         "integrations/artemis/upstream-v2/nora2_save.zip",
-                         "integrations/artemis/upstream-v2/hamidashi_save.zip",
-                         "integrations/artemis/upstream-nora1-save.zip",
-                         "integrations/seedsow-editor-pro/Seedsow_Pro_v2_JKSV.zip",
-                         "integrations/balatro-rce/balatro-switch-rce-1.1.0.zip",
-                         "integrations/balatro-rce/provenance.json",
-                         "integrations/balatro-rce/LICENSE",
-                         "integrations/gravcirc-rce/GC-v1.1.zip",
-                         "integrations/gravcirc-rce/LICENSE",
-                         "packaging/GravCirc-v1.1.json",
-                         "packaging/GravCirc-v1.1-SHA256SUMS",
-                         "vendor/ns2-savekit/Seedsow-Lua-Editor-Save.zip",
-                         "vendor/ns2-savekit/overlay/engine/shared/ipc.cjs",
-                         "vendor/ns2-savekit/overlay/engine/switch2/ro/ncm.cjs",
-                         "vendor/ns2-savekit/overlay/engine/switch2/app/mounted-save.cjs",
-                         "vendor/ns2-savekit/tools/save-pull-root.cjs",
-                         "vendor/ns2-savekit/tools/save-write-stage.cjs",
-                         "vendor/ns2-savekit/tools/lib/verified-file-hash.cjs",
-                         "vendor/ns2-savekit/tools/save-delete-root.cjs",
-                         "vendor/ns2-savekit/tools/lib/delete-result.cjs",
-                         "vendor/ns2-savekit/tools/artemis-http.cjs",
-                         "vendor/ns2-savekit/tools/transports/artemis-http.cjs",
-                         "vendor/ns2-savekit/tools/diagnose-ns2jb-acquisition.cjs",
-                         "vendor/ns2-savekit/tools/list-apps.cjs",
-                         "vendor/ns2-savekit/tools/save-inventory.cjs",
-                         "vendor/ns2-savekit/tools/save-restore.sh",
-                         "vendor/ns2-savekit/tools/lib/save-tree.cjs",
-                         "vendor/ns2-savekit/config/titles.json",
-                         "vendor/ns2-savekit/research/catalog.json",
-                         "vendor/ns2-savekit/research/current/README.md",
-                         "scripts/gui-attach.cjs", "scripts/gui-discover-rpc.cjs", "scripts/rpc-attachment.cjs",
-                         "scripts/homebrew-reentry.cjs",
-                         "scripts/host-profiles.cjs", "scripts/prepare-host-profiles.cjs", "packaging/host-profiles.json",
-                         "vendor/ns2jb-hosts/pepsipu/run.cjs", "vendor/ns2jb-hosts/kurumuz/run.cjs",
-                         "vendor/ns2jb-hosts/cellenseres/run.cjs",
-                         "scripts/gui-homebrew.cjs", "scripts/gui-stremio.cjs", "stremio/pipeline.cjs", "stremio/source-preferences.cjs", "stremio/app/app.json", "scripts/check-homebrew-runtime.cjs",
-                         "scripts/gui-hblauncher.cjs", "vendor/HBLauncher/homebrew-launcher/launcher.cjs",
-                         "scripts/gui-mintbrew.cjs", "scripts/prepare-mintbrew.cjs",
-                         "scripts/gui-modloader.cjs", "scripts/gui-modloader-sd.cjs",
-                         "integrations/ns2jb-modloader/install.cjs",
-                         "integrations/ns2jb-modloader/lib/mods.cjs",
-                         "integrations/ns2jb-modloader/lib/game-files/native-license.cjs",
-                         "integrations/ns2jb-modloader/native/prebuilt/manifest.json",
-                         "integrations/ns2jb-modloader/LICENSE",
-                         "integrations/ns2jb-modloader/provenance.json",
-                         "scripts/gui-native-hblauncher.cjs",
-                         "integrations/mintbrew-native/sd-roms.cjs",
-                         "integrations/mintbrew-native/build-report.json",
-                         "integrations/mintbrew-native/verify-native.cjs",
-                         "integrations/mintbrew-native/upstream/host/start.cjs",
-                         "integrations/mintbrew-native/upstream/sdk/abi.json",
-                         "integrations/mintbrew-native/upstream/launcher/build/report.json",
-                         "integrations/mintbrew-native/upstream/launcher/build/code.bin",
-                         "integrations/mintbrew-native/upstream/launcher/build/data.bin",
-                         "integrations/mintbrew-native/upstream/apps/hello-cpu/build/report.json",
-                         "integrations/mintbrew-native/upstream/apps/hello-cpu/build/code.bin",
-                         "integrations/mintbrew-native/upstream/apps/hello-cpu/build/data.bin",
-                         "integrations/mintbrew-native/upstream/apps/gpu-triangle/build/report.json",
-                         "integrations/mintbrew-native/upstream/apps/gpu-triangle/build/code.bin",
-                         "integrations/mintbrew-native/upstream/apps/gpu-triangle/build/data.bin",
-                         "integrations/mintbrew-native/upstream/apps/mintnes/manifest.json",
-                         "integrations/mintbrew-native/upstream/apps/mintnes/build/report.json",
-                         "integrations/mintbrew-native/upstream/apps/mintnes/build/code.bin",
-                         "integrations/mintbrew-native/upstream/apps/mintnes/build/data.bin",
-                         "integrations/mintbrew-native/upstream/apps/mintnes/assets/Diamond Chase.nes",
-                         "vendor/MintBrew/manifest.json", "vendor/MintBrew/homebrew-launcher/launcher.cjs", "vendor/MintBrew/apps/hello-world/app.json",
-                         "vendor/MintBrew/apps/froggy-road/app.json", "vendor/MintBrew/apps/cpu-gpu-probe/app.json",
-                         "vendor/MintBrew/apps/chip8-test/app.json", "vendor/MintBrew/apps/ftpd-sb/app.json",
-                         "vendor/MintBrew/apps/stremio/app.json",
-                         "vendor/MintBrew/apps/ouncecake/app.json",
-                         "integrations/mintbrew-stremio/adapter.cjs", "integrations/mintbrew-ouncecake/service.cjs",
-                         "integrations/mintbrew-ouncecake/ftp-bridge.cjs",
-                         "packaging/ftpd-sb-v0.1.0-SHA256SUMS", "packaging/ftpd-sb-v0.1.0-release-SHA256SUMS",
-                         "packaging/ftpd-sb-v0.1.0-provenance.json",
-                         "vendor/HBLauncher/apps/ftpd-sb/app.json", "packaging/HBLauncher-v0.2.0-SHA256SUMS",
-                         "scripts/gui-gpubrewlauncher.cjs", "vendor/GPUBrewLauncher/homebrew-launcher/launcher.cjs",
-                         "vendor/GPUBrewLauncher/CREDITS", "packaging/GPUBrewLauncher-SHA256SUMS",
-                         "packaging/runtime-homebrew.json",
-                         "scripts/gui-ouncecake.cjs", "vendor/OunceCake/LICENSE", "vendor/OunceCake/engine/oz-code/native.bin",
-                         "vendor/OunceCake/engine/zip-download.cjs",
-                         "packaging/OunceCake-provenance.json", "packaging/OunceCake-SHA256SUMS",
-                         "homebrew/manifest.json", "homebrew/fonts/DejaVuSans.ttf", "homebrew/bin/glslangValidator",
-                         "scripts/install-driver.sh", "drivers/SHA256SUMS",
-                         "drivers/usbgadget.kext/Contents/MacOS/usbgadget",
-                         "vendor/ns2jb/run.cjs", "assets/bootstrap.bas", "source/LICENSE"]
-            if AppBuildIdentity.isTestBuild {
-                requiredPaths += [
-                    "integrations/civswitch/send-hello.cjs",
-                    "integrations/civswitch/hello.js",
-                    "integrations/artemis/seedsowhax-v2-mac2jb.zip",
-                    "integrations/artemis/norahax-v2-mac2jb.zip",
-                    "integrations/artemis/norahax-nora1-mac2jb.zip",
-                    "integrations/artemis/hamihax-v2-mac2jb.zip",
-                    "integrations/balatro-rce/balatro-cpypwn-showcase.zip",
-                    "integrations/seedsow-lua/cpypwn.lua",
-                    "integrations/artemis/cpypwn-showcase.lua",
-                    "integrations/artemis/cpypwn-kaleidoscope.lua"
-                ]
+            let manifestURL = root.appendingPathComponent("packaging/runtime-files.json")
+            guard let manifestData = try? Data(contentsOf: manifestURL),
+                  let manifest = try? JSONDecoder().decode(RuntimeFileManifest.self, from: manifestData) else {
+                throw RuntimeError.invalid("The embedded runtime file manifest is missing or invalid.")
+            }
+            let requiredPaths = manifest.requiredPaths +
+                (AppBuildIdentity.isTestBuild ? manifest.testRequiredPaths : [])
+            guard !requiredPaths.isEmpty && requiredPaths.allSatisfy({ path in
+                !path.hasPrefix("/") && !path.contains("\\") &&
+                path.split(separator: "/", omittingEmptySubsequences: false).allSatisfy {
+                    !$0.isEmpty && $0 != "." && $0 != ".."
+                }
+            }) else {
+                throw RuntimeError.invalid("The embedded runtime file manifest contains an unsafe path.")
             }
             for path in requiredPaths {
                 guard manager.fileExists(atPath: root.appendingPathComponent(path).path) else {

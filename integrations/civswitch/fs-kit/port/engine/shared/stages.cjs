@@ -4,25 +4,38 @@ const {spawn} = require('node:child_process');
 
 // A stage is never retried after a timeout or incomplete cleanup. Each stage
 // keeps its native ownership records in the current launch directory.
-async function run(directory, name, args = [], timeout = 10 * 60 * 1000) {
+function configuredTimeout() {
+  const timeout = Number(process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS);
+  return Number.isSafeInteger(timeout) && timeout >= 60_000 && timeout <= 3_600_000
+    ? timeout : 10 * 60 * 1000;
+}
+
+async function run(directory, name, args = [], timeout = configuredTimeout(), options = {}) {
   if (!/^[a-z0-9-]+$/.test(name)) throw Error('Invalid stage name');
+  if (options.cooperative &&
+      (!Number.isSafeInteger(options.graceMs) || options.graceMs <= 0))
+    throw Error('A cooperative stage needs a positive cleanup grace period');
   console.log(name.replaceAll('-', ' ') + (args.length ? ': ' + args.join(' ') : ''));
   const file = path.join(directory, name + '-' + Date.now() + '.log');
   const log = await fs.open(file, 'wx+', 0o600);
-  let timedOut = false, timer, killTimer;
+  let timedOut = false, forceKilled = false, timer, killTimer;
   try {
     const child = spawn(process.execPath, [path.join(directory, name + '.cjs'), ...args.map(String)],
       {cwd: directory, stdio: ['ignore', log.fd, log.fd], windowsHide: true});
     timer = setTimeout(() => {
       timedOut = true; child.kill('SIGTERM');
-      killTimer = setTimeout(() => child.kill('SIGKILL'), 5000);
+      killTimer = setTimeout(() => {
+        forceKilled = true;
+        child.kill('SIGKILL');
+      }, options.cooperative ? options.graceMs : 5000);
     }, timeout);
     const code = await new Promise((resolve, reject) => {
       child.once('error', reject);
       child.once('close', resolve);
     });
     if (code !== 0 || timedOut)
-      throw Error(`${name} ${timedOut ? 'timed out' : 'failed'}. Inspect ${file}; restart the application before a new launch.`);
+      throw Error(`${name} ${timedOut ? forceKilled ? 'timed out before cleanup completed' :
+        'stopped at its timeout' : 'failed'}. Inspect ${file}; restart the application before a new launch.`);
     const {size} = await log.stat();
     const tail = Buffer.alloc(Math.min(size, 1024 * 1024));
     await log.read(tail, 0, tail.length, size - tail.length);

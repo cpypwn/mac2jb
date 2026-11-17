@@ -2,6 +2,7 @@
 // Pointer inspection over the retained two-cache FS memory endpoint.
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const {runPath} = require('../../shared/paths.cjs');
 const {request: requestOnce} = require('./endpoint.cjs');
 const rpc = require('../../shared/rpc.cjs');
 const crypto = require('node:crypto');
@@ -121,7 +122,7 @@ class Memory {
 
 async function connect(reportFile) {
   if (!reportFile) {
-    const current = JSON.parse(await fs.readFile(path.join(__dirname, '../current-acquisition.json')));
+    const current = JSON.parse(await fs.readFile(runPath('switch2', 'current-acquisition.json')));
     reportFile = current.report;
   }
   reportFile = path.resolve(reportFile);
@@ -136,7 +137,8 @@ async function connect(reportFile) {
     // A full CodeFS file can require hundreds of bounded console reads inside
     // one serialized controller request. Keep its host deadline above that
     // expected transfer time without changing ordinary request deadlines.
-    const timeoutMs = command.command === 'root-native-file-capture' ? 15 * 60 * 1000 : 60000;
+    const timeoutMs = ['root-native-file-capture', 'root-native-file-stage'].includes(command.command) ?
+      15 * 60 * 1000 : 60000;
     const result = queue.then(() => requestOnce(socketPath, command, timeoutMs));
     queue = result.catch(() => {});
     return result;

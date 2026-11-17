@@ -39,6 +39,31 @@ test('a user selected CivHomebrew package installs once into an idle launcher', 
   assert.equal(calls[0].package.scripts[0].source, 'console.log("hello");');
 });
 
+test('native launcher rejects packages without native UI support before contacting the console', async t => {
+  const file = await fixture(t);
+  let contacted = false;
+  await assert.rejects(packageHelper.main(['install', ROOT, '127.0.0.1', file, 'native'], {
+    allowLoopback: true,
+    emit: () => {},
+    probe: async () => { contacted = true; return {}; }
+  }), /native UI support.*compatible launcher/);
+  assert.equal(contacted, false);
+});
+
+test('native launcher accepts a package declaring native UI api 1', async t => {
+  const item = sample();
+  item.metadata.extensions = {nativeUi: {api: 1}};
+  const file = await fixture(t, item);
+  const events = [];
+  await packageHelper.main(['install', ROOT, '127.0.0.1', file, 'native'], {
+    allowLoopback: true,
+    emit: (type, fields) => events.push({type, ...fields}),
+    probe: async () => ({state: {busy: false, closed: false, mode: 'launcher'}}),
+    request: async () => ({entry: {id: 'sample-app'}})
+  });
+  assert.equal(events.at(-1).type, 'installed');
+});
+
 test('generic validation accepts both bundled CivHomebrew package shapes', async () => {
   for (const file of [
     'integrations/sw2nes/v1.0.1/sw2nes.civapp',

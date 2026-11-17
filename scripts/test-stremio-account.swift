@@ -77,6 +77,7 @@ struct StremioAccountFixtureTests {
         account.signIn()
         try await wait { account.libraryCount == 1 }
         try expect(account.signedIn && !account.signingIn && opened.count == 1, "browser sign-in finishes with account data")
+        try expect(account.signInQRCodeURL == nil, "approved sign-in clears its QR code")
         try expect(vault.saved == ["ACCOUNT_KEY"], "only exchanged account key is stored")
         let exchange = requests.filter { $0.url!.path == "/api/loginWithToken" }
         try expect(exchange.count == 1 && exchange[0].httpMethod == "POST", "link token is exchanged exactly once")
@@ -87,7 +88,7 @@ struct StremioAccountFixtureTests {
         let payload = account.libraryPayload()
         try expect(payload.count == 1 && payload[0]["unknown"] == nil && (payload[0]["state"] as? [String: Any])?["unknownState"] == nil, "helper library projection excludes unknown raw fields")
         account.signOut()
-        try expect(!account.signedIn && vault.value == nil && account.libraryPayload().isEmpty, "sign out removes only this Mac credential and clears profile")
+        try expect(!account.signedIn && vault.value == nil && account.libraryPayload().isEmpty && account.signInQRCodeURL == nil, "sign out removes only this Mac credential and clears profile and QR code")
 
         let ids = (1...16).map { "tt2934286:1:\($0)" }
         let marked = StremioAccountCodec.watched("tt2934286:1:5:5:eJyTZwAAAEAAIA==", videoIds: ids, selected: ids[5])!
@@ -142,9 +143,9 @@ struct StremioAccountFixtureTests {
         }, openBrowser: { _ in true }, pollNanoseconds: 1_000_000, restore: false)
         failed.signIn()
         try await wait { !failed.signingIn }
-        try expect(failedExchanges == 1 && !failed.signedIn && !failed.status.contains("LINK_SECRET"), "failed exchange is redacted and never retried")
+        try expect(failedExchanges == 1 && !failed.signedIn && !failed.status.contains("LINK_SECRET") && failed.signInQRCodeURL == nil, "failed exchange is redacted and clears its QR code without retrying")
 
-        var waitingForApproval = false, cancelledExchanges = 0
+        var waitingForApproval = false, cancelledExchanges = 0, qrBrowserOpens: [URL] = []
         let cancelled = StremioAccount(vault: MemoryVault(), transport: { request in
             if request.url!.path == "/api/v2/create" { return try json(["result": ["code": "ABCD", "link": "https://link.stremio.com/ABCD", "qrcode": "unused"]]) }
             if request.url!.path == "/api/v2/read" {
@@ -154,12 +155,30 @@ struct StremioAccountFixtureTests {
             }
             cancelledExchanges += 1
             throw StremioAccountError.response
-        }, openBrowser: { _ in true }, pollNanoseconds: 1_000_000, restore: false)
-        cancelled.signIn()
+        }, openBrowser: { qrBrowserOpens.append($0); return true }, pollNanoseconds: 1_000_000, restore: false)
+        cancelled.signInWithQRCode()
         try await wait { waitingForApproval }
+        try expect(cancelled.signInQRCodeURL?.absoluteString == "https://link.stremio.com/ABCD" && qrBrowserOpens.isEmpty, "QR sign-in shows the validated link without opening a browser")
+        cancelled.openSignInPage()
+        try expect(qrBrowserOpens.map(\.absoluteString) == ["https://link.stremio.com/ABCD"] && cancelled.signInQRCodeURL != nil, "browser fallback opens the same active sign-in link")
         cancelled.cancelSignIn()
         try await Task.sleep(for: .milliseconds(20))
-        try expect(!cancelled.signingIn && !cancelled.signedIn && cancelledExchanges == 0, "closing/cancelling stops the pending request before token exchange")
+        try expect(!cancelled.signingIn && !cancelled.signedIn && cancelledExchanges == 0 && cancelled.signInQRCodeURL == nil, "closing/cancelling stops the pending request and clears its QR code before token exchange")
+        waitingForApproval = false
+        cancelled.signInWithQRCode()
+        try await wait { waitingForApproval }
+        cancelled.signOut()
+        try expect(!cancelled.signingIn && cancelled.signInQRCodeURL == nil, "signing out during a pending sign-in clears its QR code")
+
+        let expiring = StremioAccount(vault: MemoryVault(), transport: { request in
+            if request.url!.path == "/api/v2/create" { return try json(["result": ["code": "ABCD", "link": "https://link.stremio.com/ABCD", "qrcode": "unused"]]) }
+            try await Task.sleep(for: .seconds(10))
+            throw StremioAccountError.response
+        }, openBrowser: { _ in true }, pollNanoseconds: 1_000_000, localTimeout: .milliseconds(150), restore: false)
+        expiring.signIn()
+        try await wait { expiring.signInQRCodeURL != nil }
+        try await wait { !expiring.signingIn }
+        try expect(expiring.signInQRCodeURL == nil && expiring.status.contains("five minutes"), "expired sign-in clears its QR code")
 
         var largeLibrary: [[String: Any]] = []
         for index in 0..<600 {

@@ -1,6 +1,8 @@
 {
   "upstream": "https://github.com/Gezine/CivSwitch",
   "commit": "10b38e9f5abfd13a4b0bec8af24b026e44567da3",
+  "installerUpstreamCommit": "b1aa49dfbad6858c83da7b471baa49603f686258",
+  "installerSha256": "e04dcc41c1ad85d5a9c138edd93bd2f7eb752fda872a258c1e1906eb1136c349",
   "license": "MIT",
   "payloadLines": 87,
   "payloadSha256": "6ea468ca392558ab2f8f2384200745a8619187cebc5357d5e985fd3ffdada37d",

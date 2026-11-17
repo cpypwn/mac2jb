@@ -217,6 +217,18 @@
       "size": 84,
       "sha256": "ed0d17305388aba04e03bc1633433d061d1bb5288eff2d81da37a6369bea11ce",
       "purpose": "program registry weak reference release"
+    },
+    {
+      "offset": 1232096,
+      "size": 64,
+      "purpose": "program registry global reference",
+      "sha256": "7ba3948b4f997154b0201000cf7a80e04c8e08a4fceceb0663a51f96d688314b"
+    },
+    {
+      "offset": 2157636,
+      "size": 64,
+      "purpose": "native block manager global reference",
+      "sha256": "1e5fc45c2db1237ab4f2cc0423bfdcfa220434abc1e269a58dc338fc6148f2fb"
     }
   ],
   "padding": {

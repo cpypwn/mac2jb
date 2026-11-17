@@ -11,6 +11,23 @@ import tarfile
 import zipfile
 from pathlib import Path
 
+RUNTIME_MANIFEST = 'packaging/runtime-files.json'
+PREPARED_RUNTIME_PATHS = {
+    'vendor/MintBrew/apps/ftpd-sb/app.json',
+    'vendor/MintBrew/apps/mintftp/app.json',
+    'vendor/MintBrew/apps/stremio/app.json',
+    'vendor/MintBrew/apps/ouncecake/app.json',
+    'vendor/HBLauncher/apps/ftpd-sb/app.json',
+    'vendor/GPUBrewLauncher/apps/ftpd-sb/app.json',
+}
+RESEARCH_ONLY_FOLDERS = (
+    'integrations/gravcirc-fs',
+    'integrations/balatro-fs',
+)
+EXCLUDED_PACKAGE_FOLDERS = (
+    'integrations/kaihen-stremio',
+)
+
 
 SOURCE_FILES = (
     'README.md', 'LICENSE', '.gitignore', 'Makefile', 'sender.c', 'commands.c',
@@ -25,7 +42,7 @@ RUNTIME_FOLDERS = (
     'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit', 'vendor/HBLauncher',
     'vendor/GPUBrewLauncher', 'vendor/MintBrew',
     'vendor/CivSwitch/installer-creator/node_modules',
-    'vendor/OunceCake', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
+    'vendor/OunceCake', 'vendor/OunceCake-Civ7', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
     'integrations',
 )
 OMITTED_RUNTIME_FOLDERS = (
@@ -60,71 +77,24 @@ PERSONAL_SHOWCASE_PATHS = (
     'integrations/gravcirc-rce/build-cpypwn-save.py',
     'integrations/gravcirc-rce/send-showcase.py',
 )
-RUNTIME_FILES = (
-    'scripts/gui-host.cjs', 'scripts/usb-controllers.cjs', 'scripts/gui-dnswitch.cjs',
-    'scripts/gui-webkit-research.cjs', 'scripts/gui-bundled-browser-probes.cjs',
-    'scripts/gui-nxformat.cjs', 'packaging/NXFormat-source.json',
-    'tools/nxformat/1.0.3/bin/nxconvert', 'tools/nxformat/1.0.3/LICENSE',
-    'scripts/gui-nup.cjs', 'packaging/NUP-source.json',
-    'scripts/gui-civhomebrew.cjs', 'scripts/civhomebrew-catalog-overlay.cjs',
-    'integrations/civhomebrew-catalog/catalog.js', 'integrations/civhomebrew-catalog/catalog-ui.js',
-    'packaging/CivHomebrew-source.json',
-    'scripts/gui-civswitch-moonlight.cjs', 'packaging/Moonlight-CivSwitch-source.json',
-    'scripts/gui-civswitch-sw2nes.cjs', 'packaging/SW2NES-source.json',
-    'scripts/gui-civswitch-jellyfin.cjs', 'packaging/Jellyfin-CivSwitch-source.json',
-    'scripts/gui-civswitch-package.cjs',
-    'scripts/check-webkit-research.cjs',
-    'packaging/switch2-browser-research-provenance.json',
-    'scripts/dnswitch-launch.applescript', 'scripts/gui-session.cjs', 'scripts/gui-dump.cjs',
-    'scripts/gui-savekit.cjs', 'scripts/gui-savekit-tools.cjs',
-    'scripts/seedsow-full-save.cjs',
-    'scripts/savekit-title-names.cjs', 'packaging/ArtemisLauncher-v2.json',
+UNBUNDLED_SAVE_COMPONENTS = (
+    'integrations/artemis',
+    'integrations/seedsow-editor-pro',
+    'integrations/seedsow-lua',
+    'integrations/balatro-rce/balatro-switch-rce-1.1.0.zip',
+    'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
+    'integrations/gravcirc-rce/GC-v1.1.zip',
+    'integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
+    'packaging/ArtemisLauncher-v1.json',
+    'packaging/ArtemisLauncher-v2.json',
     'packaging/ArtemisLauncher-seedsow-full.json',
     'packaging/ArtemisLauncher-upstream-saves.json',
-    'packaging/SeedsowEditorPro-v0.4.0.json',
     'packaging/ArtemisLauncher-nora1.json',
     'packaging/ArtemisLauncher-bundles.json',
+    'packaging/SeedsowEditorPro-v0.4.0.json',
     'packaging/GravCirc-v1.1.json',
     'packaging/GravCirc-v1.1-SHA256SUMS',
-    'scripts/check-savekit-research.cjs',
-    'scripts/prepare-seedsow-host.cjs',
-    'scripts/gui-attach.cjs', 'scripts/gui-discover-rpc.cjs', 'scripts/rpc-attachment.cjs',
-    'scripts/homebrew-reentry.cjs',
-    'scripts/host-profiles.cjs', 'scripts/prepare-host-profiles.cjs',
-    'packaging/host-profiles.json', 'scripts/gui-homebrew.cjs',
-    'scripts/gui-stremio.cjs', 'scripts/check-homebrew-runtime.cjs',
-    'scripts/gui-hblauncher.cjs', 'scripts/gui-mintbrew.cjs', 'scripts/prepare-mintbrew.cjs',
-    'scripts/gui-native-hblauncher.cjs',
-    'scripts/gui-modloader.cjs', 'scripts/gui-modloader-sd.cjs',
-    'scripts/gui-custom-homebrew.cjs', 'scripts/custom-rpc-package.cjs',
-    'packaging/HBLauncher-v0.2.0-SHA256SUMS',
-    'scripts/gui-gpubrewlauncher.cjs', 'packaging/GPUBrewLauncher-provenance.json',
-    'packaging/GPUBrewLauncher-SHA256SUMS',
-    'scripts/gui-keyboard.cjs',
-    'scripts/prepare-homebrew-apps.cjs', 'scripts/check-stremio-runtime.cjs',
-    'packaging/ftpd-sb-v0.1.0-SHA256SUMS',
-    'packaging/ftpd-sb-v0.1.0-release-SHA256SUMS',
-    'packaging/ftpd-sb-v0.1.0-provenance.json',
-    'scripts/gui-ouncecake.cjs', 'packaging/OunceCake-provenance.json',
-    'integrations/civswitch/fs-host.cjs',
-    'integrations/artemis-fs/fs-host.cjs',
-    'integrations/artemis-fs/runtime-host.cjs',
-    'integrations/artemis-fs/kit/port/engine/run.cjs',
-    'integrations/artemis-fs/kit/port/nora/nora_bridge.lua',
-    'integrations/artemis-fs/kit/port/engine/shared/target.artemis-seedsow.json',
-    'integrations/civswitch/fs-kit/provenance.json',
-    'integrations/civswitch/fs-kit/LICENSE',
-    'scripts/prepare-civswitch-savekit.cjs',
-    'scripts/prepare-artemis-fs.cjs',
-    'vendor/CivSwitch/LICENSE', 'vendor/CivSwitch/core.js',
-    'vendor/CivSwitch/installer-creator/install.py',
-    'vendor/CivSwitch/installer-creator/compress_stage.js',
-    'vendor/CivSwitch/installer-creator/package.json',
-    'vendor/CivSwitch/installer-creator/package-lock.json',
-    'vendor/CivSwitch/installer-creator/save_template.bin',
-    'packaging/OunceCake-SHA256SUMS', 'packaging/OunceCake-upstream-SHA256SUMS',
-    'packaging/stremio-display-SHA256SUMS',
-    'packaging/stremio-sample-provenance.json', 'scripts/install-driver.sh',
+    'vendor/ns2-savekit/Seedsow-Lua-Editor-Save.zip',
 )
 BLOCKED_PARTS = {
     '.git', '.build', 'runs', 'dumps', '__pycache__', 'xcuserdata',
@@ -137,7 +107,7 @@ EXECUTABLES = {
     'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard', 'mac2jb-civswitch-hid',
     'homebrew/bin/spirv-val', 'homebrew/bin/glslangValidator',
     'homebrew/python/bin/python3', 'homebrew/python/bin/python3.13',
-    'tools/nxformat/1.0.3/bin/nxconvert',
+    'tools/nxformat/1.0.4/bin/nxconvert',
 }
 
 REMOVED_COMPONENTS = (
@@ -162,7 +132,6 @@ REMOVED_COMPONENTS = (
     'packaging/IZMYSH-legacy-SHA256SUMS',
     'packaging/IZCIVSwitch-izlauncher-save.json',
 )
-
 
 def sha256_file(path):
     digest = hashlib.sha256()
@@ -192,10 +161,15 @@ def verify_minimum(payload):
         print(name + ': minimum macOS ' + ', '.join(versions))
 
 
-def safe(relative, source):
+def safe(relative, source, test_build=False):
     parts = relative.parts
     name = relative.as_posix()
-    if any(name == component or name.startswith(component + '/') for component in REMOVED_COMPONENTS):
+    if any(name == prefix or name.startswith(prefix + '/') for prefix in EXCLUDED_PACKAGE_FOLDERS):
+        return False
+    removed = any(name == component or name.startswith(component + '/') for component in REMOVED_COMPONENTS)
+    unbundled_save = any(name == component or name.startswith(component + '/')
+                         for component in UNBUNDLED_SAVE_COMPONENTS)
+    if unbundled_save or removed:
         return False
     if parts[:3] == ('tools', 'mcp', 'node_modules') or (
         parts[:2] == ('tools', 'bootstrap-kit') and len(parts) > 2 and parts[2].startswith('generated')
@@ -220,24 +194,53 @@ def safe(relative, source):
     )
 
 
-def copy_file(root, source, destination):
+def copy_file(root, source, destination, test_build=False):
     relative = source.relative_to(root)
-    if not safe(relative, source) or not source.is_file():
+    if not safe(relative, source, test_build) or not source.is_file():
         return False
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
     return True
 
 
-def copy_tree(root, folder, destination):
+def copy_tree(root, folder, destination, runtime=False, test_build=False):
     base = root / folder
     if not base.exists():
         return
     for source in sorted(base.rglob('*')):
-        copy_file(root, source, destination / source.relative_to(root))
+        relative = source.relative_to(root)
+        name = relative.as_posix()
+        if not test_build and any(name == prefix or name.startswith(prefix + '/') for prefix in RESEARCH_ONLY_FOLDERS):
+            continue
+        if runtime and not test_build and relative.parts[:1] == ('integrations',) and not name.startswith((
+            'integrations/mintbrew-native/upstream/', 'integrations/civswitch/fs-kit/port/'
+        )) and (
+            name.endswith(('.test.cjs', '.test.lua', '.test.py')) or relative.name == 'test.cjs'
+        ):
+            continue
+        copy_file(root, source, destination / relative, test_build)
+
+
+def runtime_manifest(root):
+    manifest = json.loads((root / RUNTIME_MANIFEST).read_text())
+    for field in ('copyFiles', 'requiredPaths', 'testRequiredPaths'):
+        paths = manifest.get(field)
+        if not isinstance(paths, list) or not all(isinstance(name, str) for name in paths):
+            raise SystemExit('Invalid runtime manifest field: ' + field)
+        if len(paths) != len(set(paths)) or any(
+            not name or name.startswith('/') or '\\' in name or
+            any(part in ('', '.', '..') for part in name.split('/')) or
+            (field != 'testRequiredPaths' and any(
+                name == prefix or name.startswith(prefix + '/') for prefix in RESEARCH_ONLY_FOLDERS
+            ))
+            for name in paths
+        ):
+            raise SystemExit('Unsafe or duplicate runtime manifest path: ' + field)
+    return manifest
 
 
 def stage(root, payload, node):
+    manifest = runtime_manifest(root)
     source = payload / 'source'
     source.mkdir()
     test_build = plistlib.loads((root / 'gui/Info.plist').read_bytes()).get('MAC2JBTestBuild') is True
@@ -246,6 +249,7 @@ def stage(root, payload, node):
     (source / 'packaging').mkdir(parents=True, exist_ok=True)
     (payload / 'packaging/test-build.json').write_text(marker)
     (source / 'packaging/test-build.json').write_text(marker)
+    copy_file(root, root / RUNTIME_MANIFEST, payload / RUNTIME_MANIFEST)
     (payload / 'packaging/runtime-homebrew.json').write_text(
         json.dumps({'allowed': ['mintbrew', 'native-hblauncher', 'ouncecake', 'custom-homebrew']}, indent=2) + '\n'
     )
@@ -253,14 +257,15 @@ def stage(root, payload, node):
         if (root / name).exists():
             copy_file(root, root / name, source / name)
     for folder in SOURCE_FOLDERS:
-        copy_tree(root, folder, source)
+        copy_tree(root, folder, source, test_build=test_build)
     for folder in RUNTIME_FOLDERS:
-        copy_tree(root, folder, payload)
-    for folder in OMITTED_RUNTIME_FOLDERS:
-        target = payload / folder
-        if target.exists():
-            shutil.rmtree(target)
-    for name in RUNTIME_FILES:
+        copy_tree(root, folder, payload, runtime=True, test_build=test_build)
+    if not test_build:
+        for folder in OMITTED_RUNTIME_FOLDERS:
+            target = payload / folder
+            if target.exists():
+                shutil.rmtree(target)
+    for name in manifest['copyFiles']:
         if not copy_file(root, root / name, payload / name):
             raise SystemExit('Missing GUI build input: ' + name)
     if not test_build:
@@ -271,6 +276,12 @@ def stage(root, payload, node):
                     shutil.rmtree(target)
                 elif target.exists():
                     target.unlink()
+    required = manifest['requiredPaths'] + (manifest['testRequiredPaths'] if test_build else [])
+    for name in required:
+        if name in PREPARED_RUNTIME_PATHS:
+            continue
+        if not (payload / name).is_file():
+            raise SystemExit('Missing GUI runtime file: ' + name)
     provenance = {
         'version': 'v24.22.1',
         'platform': 'darwin-arm64',
@@ -285,15 +296,16 @@ def stage(root, payload, node):
 
 
 def archive(payload, build, source_archive):
+    test_build = json.loads((payload / 'packaging/test-build.json').read_text())['testBuild'] is True
     runtime_archive = build / 'runtime.tar.gz'
     with runtime_archive.open('wb') as stream:
         with gzip.GzipFile(filename='', mode='wb', fileobj=stream, mtime=0) as gz:
             with tarfile.open(fileobj=gz, mode='w', format=tarfile.USTAR_FORMAT) as tar:
                 for item in sorted(payload.rglob('*')):
                     relative = item.relative_to(payload).as_posix()
-                    if any(relative == prefix or relative.startswith(prefix + '/')
-                           for folder in OMITTED_RUNTIME_FOLDERS
-                           for prefix in (folder, 'source/' + folder)):
+                    if not test_build and any(relative == prefix or relative.startswith(prefix + '/')
+                                              for folder in OMITTED_RUNTIME_FOLDERS
+                                              for prefix in (folder, 'source/' + folder)):
                         continue
                     if item.is_symlink():
                         raise SystemExit('Refusing archive symlink: ' + relative)
@@ -301,7 +313,7 @@ def archive(payload, build, source_archive):
                     entry.uid = entry.gid = 0
                     entry.uname = entry.gname = ''
                     entry.mtime = 0
-                    entry.mode = 0o755 if relative == 'tools/nxformat/1.0.3/bin/nxconvert' else (
+                    entry.mode = 0o755 if relative == 'tools/nxformat/1.0.4/bin/nxconvert' else (
                         0o700 if item.is_dir() or relative in EXECUTABLES else 0o600
                     )
                     if item.is_file():
@@ -322,6 +334,15 @@ def archive(payload, build, source_archive):
     print('Embedded runtime SHA-256:', digest)
 
 
+def verify_runtime(root, payload):
+    manifest = runtime_manifest(root)
+    test_build = plistlib.loads((root / 'gui/Info.plist').read_bytes()).get('MAC2JBTestBuild') is True
+    required = manifest['requiredPaths'] + (manifest['testRequiredPaths'] if test_build else [])
+    for name in required:
+        if not (payload / name).is_file():
+            raise SystemExit('Missing GUI runtime file: ' + name)
+
+
 def main(args):
     if len(args) == 2 and args[0] == 'verify-minimum':
         verify_minimum(Path(args[1]))
@@ -329,8 +350,10 @@ def main(args):
         stage(Path(args[1]), Path(args[2]), Path(args[3]))
     elif len(args) == 4 and args[0] == 'archive':
         archive(Path(args[1]), Path(args[2]), Path(args[3]))
+    elif len(args) == 3 and args[0] == 'verify-runtime':
+        verify_runtime(Path(args[1]), Path(args[2]))
     else:
-        raise SystemExit('usage: package-gui-payload.py verify-minimum PAYLOAD | stage ROOT PAYLOAD NODE | archive PAYLOAD BUILD SOURCE_ARCHIVE')
+        raise SystemExit('usage: package-gui-payload.py verify-minimum PAYLOAD | stage ROOT PAYLOAD NODE | verify-runtime ROOT PAYLOAD | archive PAYLOAD BUILD SOURCE_ARCHIVE')
 
 
 if __name__ == '__main__':

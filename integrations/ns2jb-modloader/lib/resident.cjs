@@ -70,11 +70,11 @@ async function install(run,plan,directory,captureFile,bootstrap,onStage=()=>{}){
   b.progress=(label,status)=>{r.nativeOperation={label,status,at:new Date().toISOString()};save();};
   stage('opening and qualifying retained SD report files');
   source=await openSource(run,b,plan.diagnostics);
-  if(plan.lazy){source.registry=(await b.m.u64(Number(b.base+0x11e12d0n)))+16n;check(source.registry>=0x100000000n&&source.registry<0x8000000000n,'FS program registry is unavailable');}
+  if(plan.lazy){source.registry=(await b.m.u64(Number(b.address(0x11e12d0))))+16n;check(source.registry>=0x100000000n&&source.registry<0x8000000000n,'FS program registry is unavailable');}
   stage('allocating resident context');
   if(plan.lazy&&l.bytes>0x100000){
    const output=await b.call(0x694c0,[8],'allocate-context-output');check(output>=0x100000000n&&output<0x8000000000n,'Native allocation output failed');
-   try{const result=await b.call(0x215620,[b.base+0x11ee960n,output,l.bytes],'allocate-mod-manifest');check(result===0n,'Cannot reserve mod manifest memory: '+result);allocation=await b.m.u64(Number(output));r.contextAllocationKind='SDK memory block';}
+   try{const result=await b.call(0x215620,[b.address(0x11ee960),output,l.bytes],'allocate-mod-manifest');check(result===0n,'Cannot reserve mod manifest memory: '+result);allocation=await b.m.u64(Number(output));r.contextAllocationKind='SDK memory block';}
    finally{if(!b.c.pending)await b.call(0x69580,[output,8],'free-context-output');}
   }else allocation=await b.call(0x694c0,[l.bytes],'allocate-layeredfs-context',{clearAllocation:true});
   check(allocation>=0x100000000n&&allocation<0x8000000000n,'Native context allocation failed');
@@ -140,7 +140,7 @@ async function install(run,plan,directory,captureFile,bootstrap,onStage=()=>{}){
   if(b?.c&&!b.c.pending&&!b.previous){await b.c.close();}
   else if(b?.c&&!b.c.pending&&!r.runtime&&!r.codeMayBeStaged&&!r.hookMayBeAttached&&!source?.closed){
    if(source){if(source.traceFile)await unpin(b,source.traceFile,true);if(source.logFile)await unpin(b,source.logFile,true);await unpin(b,source.filesystem,true);await source.close();}
-   if(allocation){if(r.contextAllocationKind==='SDK memory block')await b.call(0x215800,[b.base+0x11ee960n,allocation,l.bytes],'free-unused-mod-manifest');else await b.call(0x69580,[allocation,l.bytes],'free-unused-layeredfs-context');}await b.close();
+   if(allocation){if(r.contextAllocationKind==='SDK memory block')await b.call(0x215800,[b.address(0x11ee960),allocation,l.bytes],'free-unused-mod-manifest');else await b.call(0x69580,[allocation,l.bytes],'free-unused-layeredfs-context');}await b.close();
   }else if(b){r.resourcesRetained=true;r.requiresInspectionOrReboot=true;}
   save();throw error;
  }

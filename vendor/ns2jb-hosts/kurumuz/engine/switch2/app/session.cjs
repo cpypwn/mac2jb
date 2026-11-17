@@ -1,6 +1,6 @@
+const {runPath} = require('../../shared/paths.cjs');
 // Own allocations and handles in the freshly paired application.
 const fs = require('node:fs/promises');
-const path = require('node:path');
 const {client, live} = require('./rpc.cjs');
 const transport = require('../../shared/rpc.cjs');
 const functions = require("../../shared/sdk-functions.json");
@@ -16,7 +16,7 @@ class Session {
     this.threads = new Set();
     this.base = 0;
     this.bytes = bytes;
-    this.log = path.join(__dirname, label + '-events.jsonl');
+    this.log = runPath('switch2', 'app', label + '-events.jsonl');
   }
   async record(entry) {
     await fs.appendFile(this.log, JSON.stringify({at: new Date().toISOString(), ...entry}) + '\n', {mode: 0o600});
@@ -26,7 +26,7 @@ class Session {
     const region = await this.rpc.query(address);
     check(!region.result && region.permissions === 5 && region.address <= address &&
       address + size <= region.address + region.size, 'Code is not in the current executable mapping');
-    const file = path.join(__dirname, 'verified-instructions.json');
+    const file = runPath('switch2', 'app', 'verified-instructions.json');
     if (!this.codeCache) {
       let cached;
       try {cached = JSON.parse(await fs.readFile(file, 'utf8'));}

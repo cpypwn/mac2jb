@@ -14,6 +14,8 @@ function selectNotifier(state,proof,notifier){
  return handle;
 }
 class Bridge {
+ offset(reference){return require('./fs-layout.cjs').offset(this.layout,reference);}
+ address(reference){return this.base+BigInt(this.offset(reference));}
  async open(run,options={}) {
   this.caveOffset=options.caveOffset??CAVE;check([CAVE,0x24d800].includes(this.caveOffset),'Unqualified native cave');
   this.run=path.resolve(run);this.session=path.basename(this.run);
@@ -44,18 +46,18 @@ class Bridge {
    }
    return parts.length===1?parts[0]:Buffer.concat(parts,size);
   };
-  this.base=BigInt(proof.mapping.memory.address);this.cave=this.base+BigInt(this.caveOffset);this.page=this.base+BigInt(this.caveOffset&~4095);
+  this.capture=await fs.readFile(options.captureFile);this.layout=require('../native.cjs').validateCapture(this.capture).layout||null;
+  this.caveOffset=this.offset(this.caveOffset);this.base=BigInt(proof.mapping.memory.address);this.cave=this.base+BigInt(this.caveOffset);this.page=this.base+BigInt(this.caveOffset&~4095);
   this.notifier=JSON.parse(await fs.readFile(path.join(this.run,'switch2/ro',this.session+'-notifier-proof.json')));
   check(this.notifier.identityVerified&&await this.m.pointer(this.notifier.E+8)===this.notifier.B&&await this.m.u32(this.notifier.E+16)===1,'Notifier is not exclusively owned');
   const state=await this.m.request({command:'root-native-info'});this.handle=selectNotifier(state,proof,this.notifier);
-  this.capture=await fs.readFile(options.captureFile);
-  this.original=await this.read(this.base+BigInt(NOTIFIER),16);
-  check(this.original.equals(this.capture.subarray(NOTIFIER,NOTIFIER+16)),'Notifier instructions changed');
-  this.previous=Buffer.alloc(this.caveOffset===CAVE?WIDTH:256);check((await this.read(this.cave,this.previous.length)).equals(this.previous),'Temporary cave already occupied');
+  this.original=await this.read(this.address(NOTIFIER),16);
+  check(this.original.equals(this.capture.subarray(this.offset(NOTIFIER),this.offset(NOTIFIER)+16)),'Notifier instructions changed');
+  this.previous=Buffer.alloc(this.caveOffset===this.offset(CAVE)?WIDTH:256);check((await this.read(this.cave,this.previous.length)).equals(this.previous),'Temporary cave already occupied');
   const mapping=await this.c.info(this.h,this.page,this.pid);this.originalPermission=mapping.memory.permissions;
   check(!mapping.result&&[4,5].includes(this.originalPermission),'Wrong native text page permissions');
   const r=await this.c.request(0x524f0015,this.h,[this.pid,this.page,4096n,5n]);check(!r.result,'Cannot read cave literals');this.readable=true;
-  this.hook=Buffer.alloc(16);this.hook.writeUInt32LE((0x14000000|(this.caveOffset-NOTIFIER)/4)>>>0);for(let i=4;i<16;i+=4)this.hook.writeUInt32LE(0xd503201f,i);
+  this.hook=Buffer.alloc(16);this.hook.writeUInt32LE((0x14000000|(this.caveOffset-this.offset(NOTIFIER))/4)>>>0);for(let i=4;i<16;i+=4)this.hook.writeUInt32LE(0xd503201f,i);
   this.record.base=this.base.toString();this.record.notifier=this.notifier;await this.save();return this;
  }
  async save(){await fs.writeFile(this.journal,JSON.stringify(this.record,null,2)+'\n',{mode:0o600});}
@@ -84,13 +86,13 @@ class Bridge {
   for(let i=0;i<next.length;i+=16)if(!next.subarray(i,i+16).equals(this.previous.subarray(i,i+16)))await this.patch(this.cave+BigInt(i),this.previous.subarray(i,i+16),next.subarray(i,i+16));
   this.previous=next;
  }
- async detach() {if(this.hooked){await this.patch(this.base+BigInt(NOTIFIER),this.hook,this.original);this.hooked=false;}}
+ async detach() {if(this.hooked){await this.patch(this.address(NOTIFIER),this.hook,this.original);this.hooked=false;}}
  async controlCave(){
-  check(!this.hooked&&!this.c.pending&&this.caveOffset===CAVE,'Native bridge is busy');
-  const cave=this.base+0x24d800n,previous=Buffer.alloc(256);
+  check(!this.hooked&&!this.c.pending&&this.caveOffset===this.offset(CAVE),'Native bridge is busy');
+  const cave=this.address(0x24d800),previous=Buffer.alloc(256);
   check((await this.read(cave,previous.length)).equals(previous),'Control cave is already occupied');
-  this.caveOffset=0x24d800;this.cave=cave;this.previous=previous;
-  this.hook.writeUInt32LE((0x14000000|(this.caveOffset-NOTIFIER)/4)>>>0);
+  this.caveOffset=this.offset(0x24d800);this.cave=cave;this.previous=previous;
+  this.hook.writeUInt32LE((0x14000000|(this.caveOffset-this.offset(NOTIFIER))/4)>>>0);
  }
  async releaseControl(){
   if(!this.control)return;
@@ -98,8 +100,9 @@ class Bridge {
   await this.call(0x69580,[address,4096],'free-native-control');this.control=0n;
  }
  async call(offset,args,label,options={}) {
+  const reference=offset;offset=this.offset(reference);
   check(Number.isInteger(offset)&&offset>=0&&offset+16<this.capture.length&&args.length<=6,'Invalid native call');
-  if(options.clearAllocation)check(offset===0x694c0&&args.length===1&&BigInt(args[0])>0n&&BigInt(args[0])<=0x100000n,'Invalid cleared native allocation');
+  if(options.clearAllocation)check(reference===0x694c0&&args.length===1&&BigInt(args[0])>0n&&BigInt(args[0])<=0x100000n,'Invalid cleared native allocation');
   check((await this.read(this.base+BigInt(offset),16)).equals(this.capture.subarray(offset,offset+16)),'Call target differs');
   const row={label,offset,args:args.map(String),pending:true};this.record.operations.push(row);await this.save();
   return this.invoke(args,row,this.base+BigInt(offset),false,options);
@@ -107,8 +110,8 @@ class Bridge {
  async invoke(args,row,operation,publish=false,options={}){
   this.progress?.(row.label,'preparing');
   const resultAddress=this.resultAddress||BigInt(this.notifier.E)+8n;
-  const code=require('./artifacts.cjs').bridge(this.cave,this.notifier.E,args,{operation,result:resultAddress,clearAllocation:options.clearAllocation,original_tail:this.base+BigInt(NOTIFIER)+16n},publish);
-  await this.stage(code);await this.patch(this.base+BigInt(NOTIFIER),this.original,this.hook);this.hooked=true;
+  const code=require('./artifacts.cjs').bridge(this.cave,this.notifier.E,args,{operation,result:resultAddress,clearAllocation:options.clearAllocation,original_tail:this.address(NOTIFIER)+16n},publish);
+  await this.stage(code);await this.patch(this.address(NOTIFIER),this.original,this.hook);this.hooked=true;
   try {
    this.progress?.(row.label,'awaiting-native-reply');
    const r=await this.c.probeNotifier(this.handle);
@@ -121,7 +124,7 @@ class Bridge {
  async mapRuntime(code,save,output){
   check(Buffer.isBuffer(code)&&code.length>0&&code.length%4096===0,'Runtime pages are incomplete');
   check(BigInt(output)>0n,'Missing owned allocation output');
-  const manager=this.base+0x11ee960n,result=await this.call(0x215620,[manager,output,code.length],'allocate-resident-code');check(result===0n,'Cannot reserve native executable pages: '+result);
+  const manager=this.address(0x11ee960),result=await this.call(0x215620,[manager,output,code.length],'allocate-resident-code');check(result===0n,'Cannot reserve native executable pages: '+result);
   const allocated=await this.m.u64(Number(output)),source=allocated,record={allocated:String(allocated),allocationKind:'SDK memory block',allocationBytes:code.length,source:String(source),address:null,bytes:code.length,pages:[],published:false};await save(record);
   const info=await this.c.info(this.h,source,this.pid),address=BigInt(info.freeAddress||0);
   check(allocated>=0x100000000n&&allocated<0x8000000000n&&!info.result&&info.memory.type===5&&info.memory.permissions===3&&!info.memory.attributes&&source+BigInt(code.length)<=BigInt(info.memory.address)+BigInt(info.memory.size),'Resident code allocation is not Normal/RW memory');

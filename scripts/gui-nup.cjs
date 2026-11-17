@@ -25,7 +25,7 @@ async function manifestFor(root) {
     manifest.archive === `https://codeload.github.com/a55uka/nup/zip/${manifest.commit}` &&
     /^[0-9a-f]{64}$/.test(manifest.archiveSha256) &&
     Object.keys(manifest.modules).sort().join(',') ===
-      '__init__.py,cli.py,format.py,pack.py,read.py,verify.py' &&
+      '__init__.py,access.py,cli.py,discover.py,edit.py,format.py,meta.py,pack.py,read.py,verify.py' &&
     Object.values(manifest.modules).every(value => /^[0-9a-f]{64}$/.test(value)) &&
     manifest.zstandard.version === '0.25.0', 'The pinned NUP manifest is invalid');
   return manifest;

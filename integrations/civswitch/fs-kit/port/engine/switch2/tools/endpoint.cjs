@@ -32,7 +32,10 @@ function requestOnce(socketPath, command, timeoutMs = 300000) {
 }
 
 async function request(socketPath, command, timeoutMs = 60000) {
-  const deadline = Date.now() + 3000;
+  // The SD probe shares this endpoint during 3/4. A three second window lost the
+  // race in RUN 89 and failed the Owned FS notifier stage with "Another memory
+  // request is active"; the busy reply is sent before dispatch, so retrying is safe.
+  const deadline = Date.now() + 120000;
   for (;;) {
     try {return await requestOnce(socketPath, command, timeoutMs);}
     catch (error) {

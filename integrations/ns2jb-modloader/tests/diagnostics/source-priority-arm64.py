@@ -12,14 +12,15 @@ t=json.loads(template.read_text())['runtime'];offsets=t['offsets'];code=bytearra
 BASE=0x100000;CTX=0x400000;LAZY=0x410000;PLAN=0x420000;OWNER=PLAN+224;SOURCE=0x430000;FILE=0x440000;VT=0x441000;OUT=0x450000;PATH=0x460000;SRCFS=0x470000
 TLS=0x480000;FS=0x20000000;TAGS=[0x101,0x102];WAIT=0x40000000
 OPEN=0x700100;RETAIN=0x700200;RELEASE=0x700300;READ=0x700400;STACK=0x800000;RET=0x900000
-for name,value in [('resident_context',CTX),('lazy_context',LAZY),('namespace_context',0)]:struct.pack_into('<Q',code,offsets[name],value)
-u=Uc(UC_ARCH_ARM64,UC_MODE_ARM);u.mem_map(BASE,(len(code)+4095)&~4095);u.mem_write(BASE,bytes(code))
-for at,n in [(CTX,0x100000),(OPEN&~4095,4096),(STACK,0x40000),(RET,4096),(FS+0x1000,4096),(FS+0x218000,4096)]:u.mem_map(at,n)
-sdk_page=None
+sdk_page=None;sdk_offset=0x218000;lock_offset=0x2187d0;unlock_offset=0x218870
 if args.sdk_capture:
- raw=args.sdk_capture.read_bytes();profile=json.loads((root/'lib/native/fs-abi.json').read_text());r=next(r for r in profile['ranges'] if r['offset']==0x2187d0)
- assert hashlib.sha256(raw[r['offset']:r['offset']+r['size']]).hexdigest()==r['sha256']
- sdk_page=raw[0x218000:0x219000];u.mem_write(FS+0x218000,sdk_page)
+ from fs_sdk_fixture import load_sdk_mutex
+ sdk_page,sdk_offset,lock_offset,unlock_offset=load_sdk_mutex(root,args.sdk_capture)
+for name,value in [('resident_context',CTX),('lazy_context',LAZY),('namespace_context',0),('lfs_mutex_lock_address',FS+lock_offset),('lfs_mutex_unlock_address',FS+unlock_offset)]:
+ if name in offsets:struct.pack_into('<Q',code,offsets[name],value)
+u=Uc(UC_ARCH_ARM64,UC_MODE_ARM);u.mem_map(BASE,(len(code)+4095)&~4095);u.mem_write(BASE,bytes(code))
+for at,n in [(CTX,0x100000),(OPEN&~4095,4096),(STACK,0x40000),(RET,4096),(FS+0x1000,4096),(FS+sdk_offset,len(sdk_page) if sdk_page else 4096)]:u.mem_map(at,n)
+if sdk_page:u.mem_write(FS+sdk_offset,sdk_page)
 def reg(name):return getattr(R,'UC_ARM64_REG_'+name.upper())
 def q(at,value):u.mem_write(at,struct.pack('<Q',value))
 def w(at,value):u.mem_write(at,struct.pack('<I',value))
@@ -30,11 +31,12 @@ q(CTX+112,FS+0x1077b0);q(CTX+40,SRCFS);q(CTX+48,READ);q(CTX+128,OPEN);q(CTX+320,
 q(PLAN+8,1);q(SOURCE,PATH);u.mem_write(PATH,b'/test/character.bntx.zs\0')
 q(FILE,VT);q(VT,RETAIN);q(VT+8,RELEASE);w(FILE+32,1)
 insns={i.address:i for i in Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN).disasm(code,BASE)}
-if sdk_page:insns.update({i.address:i for i in Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN).disasm(sdk_page,FS+0x218000)})
+if sdk_page:insns.update({i.address:i for i in Cs(CS_ARCH_ARM64,CS_MODE_LITTLE_ENDIAN).disasm(sdk_page,FS+sdk_offset)})
 blocked={};waits=[]
 def lock(owner,address,tag):
  assert address==PLAN+16 and tag==TAGS[who]
  value=rw(address)
+ if value&~WAIT==tag:returned();return
  if sdk_page and value!=(owner|WAIT):returned();return
  if not sdk_page and not value:w(address,tag);returned();return
  assert owner in TAGS and owner!=tag
@@ -66,8 +68,8 @@ def hook(uc,pc,size,_):
   u.mem_write(rq(pair),bytes([0x6a])*n);q(u.reg_read(R.UC_ARM64_REG_X1),n);reads.append(who);returned();return
  if pc==FS+0x1248:lock(u.reg_read(R.UC_ARM64_REG_X0),u.reg_read(R.UC_ARM64_REG_X1),u.reg_read(R.UC_ARM64_REG_X2));return
  if pc==FS+0x1250:unlock(u.reg_read(R.UC_ARM64_REG_X0));return
- if not sdk_page and pc==FS+0x2187d0:lock(u.reg_read(R.UC_ARM64_REG_X1)&~WAIT,u.reg_read(R.UC_ARM64_REG_X0),u.reg_read(R.UC_ARM64_REG_X2));return
- if not sdk_page and pc==FS+0x218870:unlock(u.reg_read(R.UC_ARM64_REG_X0));return
+ if not sdk_page and pc==FS+lock_offset:lock(u.reg_read(R.UC_ARM64_REG_X1)&~WAIT,u.reg_read(R.UC_ARM64_REG_X0),u.reg_read(R.UC_ARM64_REG_X2));return
+ if not sdk_page and pc==FS+unlock_offset:unlock(u.reg_read(R.UC_ARM64_REG_X0));return
  i=insns.get(pc)
  if not i:return
  if i.mnemonic in ['bti','pacibsp','autibsp','xpaci','xpaclri']:u.reg_write(R.UC_ARM64_REG_PC,pc+4);return

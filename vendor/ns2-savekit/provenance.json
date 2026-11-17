@@ -20,9 +20,17 @@
     "originalSha256": "fdda25755a8023356d92995e9493f6ab515a69bf91a334e544fd66d5e289f7f6",
     "patchedSha256": "36b76a1a47193f97005672710367ef819a4f58ad17eaa798871b9924d88f55cf"
   },
+  "kurumuzFilesystem": {
+    "originalSha256": "2b26eea0e99a1e4cbd9135ea6c0cd45ab5bf3d45729747ffdcec9cdfeb554148",
+    "patchedSha256": "80406d6efb18c86a86640bd265538fee6c4d50f8e247a57dcd091ecf95c93c4d"
+  },
   "kurumuzMountedSave": {
     "originalSha256": "fdf76f2ff460f344ace7d5c08fcf30fadb87b6f5ef321622438cc0cf31254c08",
     "patchedSha256": "85b33fc7e1f14e4f1d07e363df71de2f0eb66fe044b54b0599f07744faf26f92"
+  },
+  "kurumuzCurrentMountedSave": {
+    "originalSha256": "313117c9407a960b3e365d3df62474cb2213e001594eee3d3afba4b37e124854",
+    "patchedSha256": "cd093bc1e4eab2c4793b8534c5e5db419ddc0f4a385b8ad7fd8a14906b5d732b"
   },
   "demoProgramId": "010042d022aea000"
 }

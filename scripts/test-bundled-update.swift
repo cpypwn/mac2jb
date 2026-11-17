@@ -8,11 +8,11 @@ import Foundation
         let ids = sources.map(\.id)
         precondition(ids.count == Set(ids).count)
         precondition(ids.count >= 20)
-        for id in ["host-kurumuz", "host-cellenseres", "host-pepsipu", "civswitch",
-                   "artemis", "artemis-full", "artemis-nora1", "seedsow-pro", "balatro", "gravcirc",
+        for id in ["host-kurumuz", "host-cellenseres", "host-pepsipu", "kaihen", "civswitch", "savekit",
                    "hb-native", "hb-gpu", "ouncecake", "ftpd", "libusbd", "usb-gadget"] {
             precondition(ids.contains(id), "Missing bundled source \(id)")
         }
+        precondition(ids.first == "kaihen")
         precondition(!ids.contains("host-astral"))
         for source in sources {
             precondition(source.pinned != "Unknown", "Missing bundled pin for \(source.id)")
@@ -20,9 +20,8 @@ import Foundation
             precondition(["github.com", "gitlab.com"].contains(source.repository?.host ?? ""))
         }
         precondition(sources.first { $0.id == "host-kurumuz" }?.pinned ==
-            "81d5bb114c856109dadaf1077d927a9f297fe58d")
-        precondition(sources.first { $0.id == "artemis" }?.pinned == "v2")
-        precondition(sources.first { $0.id == "balatro" }?.pinned == "v1.1.0")
+            "28f03b5895e5569d8fbc35cbed84906b8f0a65b2")
+        precondition(sources.first { $0.id == "kaihen" }?.pinned == "20261117.1")
         let lock = try String(contentsOf: root.appendingPathComponent("upstream.lock"), encoding: .utf8)
         let homebrew = try String(contentsOf: root.appendingPathComponent("scripts/gui-homebrew.cjs"), encoding: .utf8)
         for id in ["libusbd", "usb-gadget"] {
@@ -30,18 +29,18 @@ import Foundation
         }
         precondition(homebrew.contains(sources.first { $0.id == "hb-gpu" }!.pinned))
 
-        let artemis = sources.first { $0.id == "artemis" }!
-        let current = await BundledUpdateService.inspect(artemis) { url in
+        let kaihen = sources.first { $0.id == "kaihen" }!
+        let current = await BundledUpdateService.inspect(kaihen) { url in
             precondition(url.absoluteString ==
-                "https://api.github.com/repos/alula/switch-artemis-launcher/releases/latest")
-            return Data(#"{"tag_name":"v2"}"#.utf8)
+                "https://api.github.com/repos/ouncebrew/kaihen/releases/latest")
+            return Data(#"{"tag_name":"20261117.1"}"#.utf8)
         }
-        precondition(current.status == .current && current.latest == "v2")
-        let changed = await BundledUpdateService.inspect(artemis) { _ in
-            Data(#"{"tag_name":"v3"}"#.utf8)
+        precondition(current.status == .current && current.latest == "20261117.1")
+        let changed = await BundledUpdateService.inspect(kaihen) { _ in
+            Data(#"{"tag_name":"20261118"}"#.utf8)
         }
-        precondition(changed.status == .changed && changed.latest == "v3")
-        let malformed = await BundledUpdateService.inspect(artemis) { _ in
+        precondition(changed.status == .changed && changed.latest == "20261118")
+        let malformed = await BundledUpdateService.inspect(kaihen) { _ in
             Data(#"{"tag_name":"../wrong"}"#.utf8)
         }
         precondition(malformed.status == .unknown && malformed.latest == "Unknown")
@@ -51,7 +50,7 @@ import Foundation
         let gitlab = await BundledUpdateService.inspect(kurumuz) { url in
             calls.append(url.absoluteString)
             if url.absoluteString.hasSuffix("/repository/branches/main") {
-                return Data(#"{"commit":{"id":"81d5bb114c856109dadaf1077d927a9f297fe58d"}}"#.utf8)
+                return Data(#"{"commit":{"id":"28f03b5895e5569d8fbc35cbed84906b8f0a65b2"}}"#.utf8)
             }
             return Data(#"{"default_branch":"main"}"#.utf8)
         }

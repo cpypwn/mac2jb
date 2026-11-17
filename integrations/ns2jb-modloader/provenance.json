@@ -1,6 +1,6 @@
 {
   "upstream": "https://github.com/SebaaMG/ns2jb-modloader",
-  "commit": "cb9031dfa4989e3f21b2632aa2a48283c48ccaaf",
+  "commit": "50d473e341bb0af3134098bd4c4223f8239ffdd8",
   "license": "GPL-2.0",
   "localChanges": [
     "installed ELicense game-key-card content access adapted from Cellenseres/OunceCake",

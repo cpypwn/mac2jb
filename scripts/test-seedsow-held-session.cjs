@@ -124,12 +124,13 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
     if (${Boolean(options.absentSave)}) {
       emit('progress', {stage: 'backup', message: 'Backing up the selected demo save'});
       emit('failed', {reason: 'save-absent',
+        safeToContinue: !${Boolean(options.missingCleanupProof)},
         message: 'Demo has no save data yet. Launch it, create a save, close it fully, then retry.'});
       process.exitCode = 1;
     } else if ((${Boolean(options.artemisCheckFailure)} && game) ||
         (${Boolean(options.secondArtemisFailure)} && game && installCount === 2)) {
       emit('progress', {stage: 'checking', message: 'Checking pinned launcher download'});
-      emit('failed', {message: 'The pinned launcher download is unavailable'});
+      emit('failed', {safeToContinue: true, message: 'The pinned launcher download is unavailable'});
       process.exitCode = 1;
     } else if (${Boolean(options.secondArtemisAfterBackupFailure)} && game && installCount === 2) {
       emit('backup', {backupPath: backup, message: 'Original save backed up'});
@@ -140,6 +141,7 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
       emit('progress', {stage: 'backup', message: 'Checking full-game save'});
       emit('backup', {backupPath: backup, message: 'Original save backed up'});
       emit('failed', {backupPath: backup, reason: 'save-preflight',
+        safeToContinue: true,
         message: 'The full-game autosave is incompatible; no write started'});
       process.exitCode = 1;
     } else if (${Boolean(options.balatroUnchangedWriteFailure)} && game === 'balatro') {
@@ -449,7 +451,7 @@ test('Balatro without an existing save remains a recoverable held RPC action',
     assert.equal(result.code, 0, result.output + result.error);
   });
 
-test('Balatro write failure with a verified unchanged save keeps held RPC usable',
+test('Balatro post-write failure retains RPC but blocks another save action',
   {timeout: 15000}, async t => {
     const session = fixture(t, '--seedsow-save', {balatroUnchangedWriteFailure: true});
     await session.wait('post-run-ready');
@@ -457,18 +459,19 @@ test('Balatro write failure with a verified unchanged save keeps held RPC usable
     await session.wait('rpc-held');
     session.send({action: 'install-balatro-save', variant: 'showcase'});
     await session.wait('savekit-backup');
-    const recoverable = await session.wait('savekit-recoverable');
-    assert.equal(recoverable.game, 'balatro');
-    assert.match(recoverable.message, /verified unchanged/);
+    const failed = await session.wait('savekit-failed');
+    assert.equal(failed.game, 'balatro');
+    assert.match(failed.message, /finish this session/i);
     assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
-    session.send({action: 'launch-mintbrew'});
-    await session.wait('homebrew-running');
+    session.send({action: 'install-balatro-save', variant: 'upstream'});
+    await session.wait('action-rejected');
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
     session.send({action: 'finish'});
     const result = await session.done;
-    assert.equal(result.code, 0, result.output + result.error);
+    assert.notEqual(result.code, 0);
   });
 
-test('Balatro write failure without an unchanged-save proof closes held RPC',
+test('Balatro write failure without unchanged-save proof requires explicit Finish',
   {timeout: 15000}, async t => {
     const session = fixture(t, '--seedsow-save', {balatroUnverifiedWriteFailure: true});
     await session.wait('post-run-ready');
@@ -476,6 +479,8 @@ test('Balatro write failure without an unchanged-save proof closes held RPC',
     await session.wait('rpc-held');
     session.send({action: 'install-balatro-save', variant: 'showcase'});
     await session.wait('savekit-failed');
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+    session.send({action: 'finish'});
     await session.wait('rpc-finishing');
     const result = await session.done;
     assert.notEqual(result.code, 0);
@@ -502,8 +507,7 @@ test('Artemis download failure before save access keeps verified RPC available',
 for (const game of [undefined, 'seedsow', 'nora']) test(
   `${game || 'editor'} missing demo save leaves held RPC available for another choice`,
   {timeout: 15000}, async t => {
-    const session = fixture(t, '--seedsow-save',
-      {absentSave: true, rpcStatusThrowsAfterSave: true});
+    const session = fixture(t, '--seedsow-save', {absentSave: true});
     await session.wait('post-run-ready');
     session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
     await session.wait('rpc-held');
@@ -518,6 +522,43 @@ for (const game of [undefined, 'seedsow', 'nora']) test(
     session.send({action: 'finish'});
     const result = await session.done;
     assert.equal(result.code, 0, result.output + result.error);
+  });
+
+test('missing native cleanup proof keeps RPC but blocks another save install',
+  {timeout: 15000}, async t => {
+    const session = fixture(t, '--seedsow-save',
+      {absentSave: true, missingCleanupProof: true});
+    await session.wait('post-run-ready');
+    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+    await session.wait('rpc-held');
+    session.send({action: 'install-balatro-save', variant: 'upstream'});
+    const failed = await session.wait('savekit-failed');
+    assert.match(failed.message, /finish this session/i);
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+    session.send({action: 'install-balatro-save', variant: 'showcase'});
+    await session.wait('action-rejected');
+    session.send({action: 'finish'});
+    await session.wait('rpc-finishing');
+    const result = await session.done;
+    assert.notEqual(result.code, 0);
+  });
+
+test('failed fresh RPC status keeps RPC but blocks another save install',
+  {timeout: 15000}, async t => {
+    const session = fixture(t, '--seedsow-save',
+      {absentSave: true, rpcStatusThrowsAfterSave: true});
+    await session.wait('post-run-ready');
+    session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
+    await session.wait('rpc-held');
+    session.send({action: 'install-balatro-save', variant: 'upstream'});
+    await session.wait('savekit-failed');
+    assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+    session.send({action: 'install-balatro-save', variant: 'showcase'});
+    await session.wait('action-rejected');
+    session.send({action: 'finish'});
+    await session.wait('rpc-finishing');
+    const result = await session.done;
+    assert.notEqual(result.code, 0);
   });
 
 test('two Artemis saves use separate workers and keep held RPC available', {timeout: 15000}, async t => {
@@ -548,6 +589,8 @@ test('a failed second Artemis writer cannot inherit the first install success',
   await session.wait('savekit-ready');
   session.send({action: 'install-artemis-save', game: 'nora'});
   await session.wait('savekit-failed');
+  assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+  session.send({action: 'finish'});
   await session.wait('rpc-finishing');
   const result = await session.done;
   assert.notEqual(result.code, 0);
@@ -633,7 +676,7 @@ test('pre-writer SaveKit rejection keeps RPC and permits another write',
   assert.equal(result.code, 0, result.output + result.error);
 });
 
-test('a SaveKit writer failure after starting remains terminal', {timeout: 15000}, async t => {
+test('a SaveKit writer failure after starting retains RPC but blocks another write', {timeout: 15000}, async t => {
   const session = fixture(t, '--savekit-tools', {postWriteFailure: true});
   await session.wait('post-run-ready');
   session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
@@ -645,12 +688,18 @@ test('a SaveKit writer failure after starting remains terminal', {timeout: 15000
   }});
   const failed = await session.wait('savekit-tool-failed');
   assert.equal(failed.safeToContinue, false);
+  assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+  session.send({action: 'savekit-tool', request: {
+    action: 'write', titleId: noraTitle, uid: account, sourceFolder: '/tmp/fixture'
+  }});
+  await session.wait('action-rejected');
+  session.send({action: 'finish'});
   await session.wait('rpc-finishing');
   const result = await session.done;
-  assert.notEqual(result.code, 0);
+  assert.equal(result.code, 0, result.output + result.error);
 });
 
-test('unconfirmed title-name cleanup stops held RPC before another save action', {timeout: 15000}, async t => {
+test('unconfirmed title-name cleanup blocks another save action until explicit Finish', {timeout: 15000}, async t => {
   const session = fixture(t, '--seedsow-save', {titleUnsafeFailure: true});
   await session.wait('post-run-ready');
   session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
@@ -660,9 +709,13 @@ test('unconfirmed title-name cleanup stops held RPC before another save action',
   session.send({action: 'savekit-tool', request: {action: 'titles'}});
   const failed = await session.wait('savekit-tool-failed');
   assert.match(failed.message, /did not confirm cleanup/);
+  assert.equal(session.events().some(event => event.type === 'rpc-finishing'), false);
+  session.send({action: 'savekit-tool', request: {action: 'titles'}});
+  await session.wait('action-rejected');
+  session.send({action: 'finish'});
   await session.wait('rpc-finishing');
   const result = await session.done;
-  assert.notEqual(result.code, 0);
+  assert.equal(result.code, 0, result.output + result.error);
   const invocations = fs.readFileSync(path.join(session.root, 'tool-invocations'), 'utf8').trim().split('\n');
   assert.equal(invocations.length, 1);
   assert.equal(JSON.parse(invocations[0]).action, 'titles');

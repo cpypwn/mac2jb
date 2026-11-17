@@ -11,6 +11,8 @@ function verify(root, source = false) {
   const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
   if (provenance.upstream !== 'https://github.com/Gezine/CivSwitch' ||
       provenance.commit !== '10b38e9f5abfd13a4b0bec8af24b026e44567da3' ||
+      provenance.installerUpstreamCommit !== 'b1aa49dfbad6858c83da7b471baa49603f686258' ||
+      provenance.installerSha256 !== 'e04dcc41c1ad85d5a9c138edd93bd2f7eb752fda872a258c1e1906eb1136c349' ||
       provenance.license !== 'MIT' || digest(payload) !== provenance.payloadSha256) {
     throw Error('CivSwitch payload provenance changed.');
   }
@@ -21,6 +23,9 @@ function verify(root, source = false) {
     throw Error('CivSwitch chat payload has an invalid line.');
   }
   if (source) {
+    const installer = path.join(root, 'vendor/CivSwitch/installer-creator/install.py');
+    if (digest(fs.readFileSync(installer)) !== provenance.installerSha256)
+      throw Error('CivSwitch upstream installer changed');
     for (const [name, expected] of Object.entries(provenance.files)) {
       const file = path.join(root, 'vendor/CivSwitch', name);
       if (!fs.statSync(file).isFile() || digest(fs.readFileSync(file)) !== expected)

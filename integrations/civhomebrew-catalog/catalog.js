@@ -73,6 +73,10 @@
    if(await g.CivSha256.hash(result.body)!==app.sha256)throw Error("Package SHA-256 differs from the catalog.");
    var p=C.package(JSON.parse(C.decode(result.body)));
    if(p.id!==app.id||p.metadata.release!==app.release)throw Error("Package identity differs from the catalog.");
+   if(o.requireNativeUi){
+    var cap=p.metadata.extensions&&p.metadata.extensions.nativeUi;
+    if(!cap||cap.api!==1||(cap.library!==undefined&&cap.library!=="civapps-native-ui"))throw Error("This app does not support the native launcher. Choose Compatible 0.4.3.");
+   }
    unchanged(app);
    return o.api.submit(p.id+".civapp",C.encode(JSON.stringify(p)));
   }

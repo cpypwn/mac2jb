@@ -1,0 +1,77 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "status": "LightEvent initialization, gated wait, signal and finalize live-qualified with owned worker",
+  "objectLayout": {
+    "kind": "nn::os::LightEventType",
+    "bytes": 8,
+    "initializationCall": [
+      0,
+      0
+    ],
+    "expectedAfterInitialize": {
+      "byte0": 0,
+      "byte1": 1,
+      "u32At4": 0
+    }
+  },
+  "functions": {
+    "initialize": {
+      "offset": 1193984,
+      "size": 40,
+      "bytes": "280080525f04007108040039e8179f1a3f000072080000394800805208119f1a080400b9c0035fd6",
+      "sha256": "53e5c8b36d0c3526a503206c6dd878074f5ac9e8492a52e56f21dc56dade3b42",
+      "sourceSymbol": "_ZN2nn2os20InitializeLightEventEPNS0_14LightEventTypeEbNS0_14EventClearModeE"
+    },
+    "finalize": {
+      "offset": 1194032,
+      "size": 8,
+      "bytes": "1f040039c0035fd6",
+      "sha256": "fd7659e1ba6520a434ce9d504dfa52e162e2c3a43614542ead2d4dd901d016cc",
+      "sourceSymbol": "_ZN2nn2os18FinalizeLightEventEPNS0_14LightEventTypeE"
+    },
+    "wait": {
+      "offset": 1194448,
+      "size": 384,
+      "bytes": "ff0301d1fd7b01a9fd430091f65702a9f44f03a9f30300aa6846403888040034350080521400809236409f5268fedf888801003515000014e00313aa4100805222008052e30314aa76d40094085440921f0116ebc106005468fedf88680100341f050071a0feff541f0900710107005468fe5f881f090071210100547ffe088888ffff352c00001468fe5f888800003575fe0888a8ffff35e8ffff175f3f03d568fedf88e8fdff35f8ffff172800805269fedf883f090071e00300543f050071800100544904003569fe5f888900003568fe0988a9ffff35060000145f3f03d569fedf883f090071a1feff541200001403008092e00313aa410080522200805248d400940854409229409f521f0109eb20010054e00300b9e0000034604b00f000280c91e403009111000014e00b00b980010035bf3b03d5f44f43a9f65742a9fd7b41a9ff030191c0035fd6604b00f000280c91e10300aae2031f2a755c1294604b00f000280c91e4230091e10300aae20300aae3031f2ae50300aae9621294",
+      "sha256": "da84105773e4d18ed2b9fe56d75be3d03a3ea8f98fd879ccb4d71c3dcfa77440",
+      "sourceSymbol": "_ZN2nn2os14WaitLightEventEPNS0_14LightEventTypeE"
+    },
+    "tryWait": {
+      "offset": 1194832,
+      "size": 76,
+      "bytes": "084440382801003408fc5f881f090071610100541ffc088888ffff3520008052bf3b03d5c0035fd608fcdf88bf3b03d51f090071e0179f1ac0035fd6e0031f2a5f3f03d5bf3b03d5c0035fd6",
+      "sha256": "d75ef938bc6625990166d90a843dc3816157edea28ce570e6c4692ceb8ac6719",
+      "sourceSymbol": "_ZN2nn2os17TryWaitLightEventEPNS0_14LightEventTypeE"
+    },
+    "signal": {
+      "offset": 1194048,
+      "size": 340,
+      "bytes": "ff0301d1fd7b01a9fd430091f65702a9f44f03a9f30300aa68464038480300345400805235409f52bf3b03d5680240b91f090071c00600541f050071e00000540807003568fe5f88a801003574fe0888a8ffff352e000014e00313aa410080522200805223008052d4d40094085440921f0115eba0fdff541d0000145f3f03d5eaffff171400801235409f5256008052bf3b03d5680240b91f090071800300541f050071e0000054c803003568fe5f88a801003576fe0888a8ffff3514000014e00313aa2100805222008052e303142abad40094085440921f0115eba0fdff54090000145f3f03d5eaffff17e00b00b9e0000034604b00f000280c91e423009110000014e00300b960010035f44f43a9f65742a9fd7b41a9ff030191c0035fd6604b00f000280c91e10300aae2031f2ae45c1294604b00f000280c91e4030091e10300aae20300aae3031f2ae50300aa58631294",
+      "sha256": "59d6f306798313dc1b6839a8ac6bcce790c77c00369358cba09d18f972e78f77",
+      "sourceSymbol": "_ZN2nn2os16SignalLightEventEPNS0_14LightEventTypeE"
+    },
+    "clear": {
+      "offset": 1194400,
+      "size": 48,
+      "bytes": "08100091bf3903d509fd5f883f090071a10000541ffd098889ffff35bf3b03d5c0035fd65f3f03d5bf3b03d5c0035fd6",
+      "sha256": "57290b4ef9f75058dec5e89dadd5011ac6d91d293fc7f9fd16dd8f58500033fe",
+      "sourceSymbol": "_ZN2nn2os15ClearLightEventEPNS0_14LightEventTypeE"
+    },
+    "waitAddress": {
+      "offset": 1412080,
+      "size": 8,
+      "bytes": "810600d4c0035fd6",
+      "sha256": "5947e40f261901d94cdde170dd691370df85fb5f36058c7d055a6ea8285e625f"
+    },
+    "signalAddress": {
+      "offset": 1412088,
+      "size": 8,
+      "bytes": "a10600d4c0035fd6",
+      "sha256": "e7bee437483a241346fcf76260b18f0d6606640835da1ff50ac21566829091ba"
+    }
+  }
+}

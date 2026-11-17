@@ -20,7 +20,7 @@ async function openSource(run,bridge,log) {
     raw=await bridge.m.read(object,offset+4);vptr=Number(raw.readBigUInt64LE());
     check(raw.readUInt32LE(offset)>=2&&raw.readUInt32LE(offset)<=16,'Unexpected '+kind+' clone references');
     table=await bridge.m.read(vptr,80);
-    for(const [slot,fn]of [[0,add],[1,release],...(read?[[4,read]]:[])])check(table.readBigUInt64LE(slot*8)===bridge.base+BigInt(fn),'Wrong '+kind+' method table');
+    for(const [slot,fn]of [[0,add],[1,release],...(read?[[4,read]]:[])])check(table.readBigUInt64LE(slot*8)===bridge.address(fn),'Wrong '+kind+' method table');
    }catch(error){uncertain=bridge.c.pending||isUncertain(error);throw error;}
    finally{if(!uncertain)await s.close(clone);}
    const baseline=await bridge.m.u32(object+offset);
@@ -34,7 +34,7 @@ async function openSource(run,bridge,log) {
    const mode=Buffer.alloc(4);mode.writeUInt32LE(7);const opened=await filesystem.pathMethod(s,sd,8,log.sdPath,mode);check(!opened.result,'Cannot retain runtime report');file=domain.oneHandle(opened);check(await filesystem.fileSize(s,file)===BigInt(log.size),'Runtime report size changed');
    const qualified=await locate(file,'mod-file',0x20,0x1036f0,0x104e10,0x104ef0),table=Buffer.from(qualified.methods,'hex');
    for(const [key,slot,offset]of [['write',5,0x1050a0n],['flush',6,0x1053d0n],['setSize',7,0x105410n]]){
-    const address=table.readBigUInt64LE(slot*8);check(address===bridge.base+offset,'Report '+key+' method differs from qualified file operations');qualified[key]=String(address);
+    const address=table.readBigUInt64LE(slot*8);check(address===bridge.address(Number(offset)),'Report '+key+' method differs from qualified file operations');qualified[key]=String(address);
    }
    source.logFile=qualified;
   }catch(error){

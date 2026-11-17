@@ -25,7 +25,7 @@ import Foundation
         run("probe", script: "scripts/gui-civhomebrew.cjs", address: address, runtimeRoot: runtimeRoot)
     }
 
-    func open(address: String, runtimeRoot: URL?) {
+    func open(address: String, runtimeRoot: URL?, launcher: String = "compatible") {
         guard !busy, !launcherRunning, let runtimeRoot else { return }
         issue = ""
         guard Self.validIPv4(address) else {
@@ -44,7 +44,7 @@ import Foundation
         let task = Process()
         let stream = Pipe()
         task.executableURL = node
-        task.arguments = [script.path, "launch", runtimeRoot.path, address]
+        task.arguments = [script.path, "launch", runtimeRoot.path, address, launcher]
         task.currentDirectoryURL = runtimeRoot
         task.standardInput = FileHandle.nullDevice
         task.standardOutput = stream
@@ -83,8 +83,9 @@ import Foundation
         }
     }
 
-    func installTrigger(address: String, runtimeRoot: URL?) {
-        run("install", script: "scripts/gui-civhomebrew.cjs", address: address, runtimeRoot: runtimeRoot)
+    func installTrigger(address: String, runtimeRoot: URL?, launcher: String = "compatible") {
+        run("install", script: "scripts/gui-civhomebrew.cjs", address: address,
+            runtimeRoot: runtimeRoot, extraArguments: [launcher])
     }
 
     func restoreTrigger(address: String, runtimeRoot: URL?) {
@@ -124,10 +125,10 @@ import Foundation
         run("launch", script: "scripts/gui-civswitch-jellyfin.cjs", address: address, runtimeRoot: runtimeRoot)
     }
 
-    func installPackage(_ file: URL, address: String, runtimeRoot: URL?) {
+    func installPackage(_ file: URL, address: String, runtimeRoot: URL?, launcher: String = "compatible") {
         guard companionReady else { status = "Connect to CivHomebrew before installing an app"; return }
         run("install", script: "scripts/gui-civswitch-package.cjs", address: address,
-            runtimeRoot: runtimeRoot, extraArguments: [file.path])
+            runtimeRoot: runtimeRoot, extraArguments: [file.path, launcher])
     }
 
     private func run(_ action: String, script name: String, address: String,

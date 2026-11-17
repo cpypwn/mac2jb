@@ -9,7 +9,8 @@ const markerName = '.mac2jb-artemis-fs.json';
 const targetName = 'artemis-seedsow';
 const check = (value, message) => {if (!value) throw Error(message);};
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-const overlayNames = ['engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs'];
+const overlayNames = ['engine/shared/ipc.cjs', 'engine/switch2/ro/ncm.cjs',
+  'engine/switch2/app/filesystem.cjs'];
 const memoryName = 'engine/switch2/memory/fs-memory-control.cjs';
 
 async function regular(file) {

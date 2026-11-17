@@ -1,0 +1,88 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "sdkData": {
+    "offset": 13201408,
+    "size": 458752,
+    "sha256": "95731a7747de91168fefdb037f8d44d75f81b40d414d19062a5590fb041b2f45",
+    "captureSdkBase": 517866000384
+  },
+  "mountTable": {
+    "offset": 13629688,
+    "headNextOffset": 8,
+    "nodeNextOffset": 8,
+    "nodeToAccessorBias": -8,
+    "accessorNameOffset": 24,
+    "accessorNameSize": 16,
+    "accessorImplementationOffset": 40,
+    "observedMountNames": ["rom", "save"]
+  },
+  "proxy": {
+    "getterOffset": 745760,
+    "globalOffset": 13629744,
+    "initializedOffset": 13629752,
+    "objectOffset": 13629824,
+    "vtableOffset": 13209624,
+    "managerOffset": 13630976,
+    "managerPointerOffset": 16,
+    "objectIdOffset": 24,
+    "capturedObjectId": 138,
+    "managerStateSizeOffset": 8,
+    "managerStateSize": 2048,
+    "managerStateOffset": 92,
+    "managerStateValue": 3
+  },
+  "observedVtables": {
+    "romImplementation": {
+      "offset": 13205392,
+      "firstEightEntryCodeOffsets": [604908, 605408, 608248, 608260, 608272, 608284, 608296, 608308]
+    },
+    "storageWrapper": {
+      "offset": 13208352,
+      "firstEightEntryCodeOffsets": [710448, 710488, 710560, 710612, 710664, 710700, 710736, 710772]
+    },
+    "service": {
+      "offset": 13211816,
+      "firstEightEntryCodeOffsets": [775340, 775348, 775468, 576692, 775476, 775520, 775564, 775596]
+    },
+    "proxy": {
+      "offset": 13209624,
+      "firstEightEntryCodeOffsets": [750408, 750416, 750536, 576692, 750544, 750576, 750716, 750880]
+    }
+  },
+  "verifiedFunctions": [
+    {
+      "name": "detail.Register",
+      "offset": 665840,
+      "bytes": "fd7bbfa9fd030091e10300aae06200b000e02391636c1494007c4092fd7bc1a8c0035fd6"
+    },
+    {
+      "name": "detail.Find",
+      "offset": 665888,
+      "bytes": "fd7bbfa9fd030091e20301aae10300aae06200b000e023915a6c1494007c4092fd7bc1a8c0035fd6"
+    },
+    {
+      "name": "FileSystemAccessor.constructor",
+      "offset": 633808,
+      "bytes": "ff4301d1fd7b01a9fd430091f71300f9f65703a9f44f04a908200091080800f90963009029ed40f929410091f30300aa"
+    },
+    {
+      "name": "MountTable.Mount",
+      "offset": 639192,
+      "bytes": "fd7bbba9f90b00f9fd030091f85f02a9f65703a9f44f04a913400091f40300aae00313aaf60301aa14811494990640f9"
+    },
+    {
+      "name": "MountTable.Find",
+      "offset": 639696,
+      "bytes": "fd7bbca9f85f01a9fd030091f65702a9f44f03a9a20200b414400091f70300aae00314aaf60302aaf50301aa53409e52"
+    },
+    {
+      "name": "detail.GetFileSystemProxyServiceObject",
+      "offset": 745760,
+      "bytes": "ff8301d1fd7b01a9fd430091f91300f9f85f03a9f65704a9f44f05a9496200b029e1249129fddf08556200b0c9010036a09a44f9000100f9800000b4080040f9080140f900013fd6f44f45a9f91340f9"
+    }
+  ]
+}

@@ -194,6 +194,7 @@ private struct GUIEvent: Decodable {
         return activeSaveGame?.launcher ?? "Artemis launcher"
     }
     @Published private(set) var savekitBusy = false
+    @Published private(set) var savekitSessionBlocked = false
     @Published private(set) var savekitSaveOperationUsed = false
     private var savekitPendingOperation = false
     @Published private(set) var savekitMessage = "Start a SaveKit session to inspect saves"
@@ -233,6 +234,7 @@ private struct GUIEvent: Decodable {
     var fullInstall: Bool { runMode == .bootstrapOnly }
     @Published var keyDelayMs = 10 { didSet { saveTimingPreferences() } }
     @Published var enumerationTimeoutSeconds = 4 { didSet { saveTimingPreferences() } }
+    @Published var hostStageTimeoutMinutes = 10 { didSet { saveTimingPreferences() } }
     @Published var loadWaitMs = 1000 { didSet { saveTimingPreferences() } }
     @Published var runWaitMs = 0 { didSet { saveTimingPreferences() } }
     @Published var removeWaitMs = 0 { didSet { saveTimingPreferences() } }
@@ -353,6 +355,7 @@ private struct GUIEvent: Decodable {
         timingPreferences.set([
             "keyDelayMs": keyDelayMs, "keyHoldMs": keyHoldMs, "enterSettleMs": enterSettleMs,
             "pollInterval": pollInterval, "enumerationTimeoutSeconds": enumerationTimeoutSeconds,
+            "hostStageTimeoutMinutes": hostStageTimeoutMinutes,
             "loadConfirmWaitMs": loadConfirmWaitMs, "loadWaitMs": loadWaitMs,
             "runWaitMs": runWaitMs, "removeWaitMs": removeWaitMs
         ], forKey: Self.timingPreferenceKey)
@@ -371,6 +374,7 @@ private struct GUIEvent: Decodable {
         enterSettleMs = value("enterSettleMs", 0, 0...2000)
         pollInterval = value("pollInterval", 10, 1...16)
         enumerationTimeoutSeconds = value("enumerationTimeoutSeconds", 4, 1...120)
+        hostStageTimeoutMinutes = value("hostStageTimeoutMinutes", 10, 1...60)
         loadConfirmWaitMs = value("loadConfirmWaitMs", 0, 0...120000)
         loadWaitMs = value("loadWaitMs", 1000, 0...120000)
         runWaitMs = value("runWaitMs", 0, 0...120000)
@@ -381,6 +385,7 @@ private struct GUIEvent: Decodable {
     func useStockTiming() {
         keyDelayMs = 10; keyHoldMs = 0; enterSettleMs = 0; pollInterval = 10
         enumerationTimeoutSeconds = 4
+        hostStageTimeoutMinutes = 10
         loadConfirmWaitMs = 0; loadWaitMs = 1000; runWaitMs = 0; removeWaitMs = 0
     }
 
@@ -438,6 +443,7 @@ private struct GUIEvent: Decodable {
         (1...120).contains(enumerationTimeoutSeconds) &&
         [loadWaitMs, runWaitMs, removeWaitMs, effectiveLoadConfirmWaitMs].allSatisfy { (0...120000).contains($0) }
     }
+    private var hostStageTimeoutValid: Bool { (1...60).contains(hostStageTimeoutMinutes) }
     func canStartCommandsOnly(commands: [PostBootstrapCommand] = [.load, .run, .remove], startCommand: String? = nil, startPrefix: Bool = false) -> Bool {
         [.ready, .failed, .cancelled].contains(phase) && canStartKeyboard && typingSettingsValid &&
             PostBootstrapCommandSelection(commands: commands, startCommand: startCommand, startPrefix: startPrefix, host: selectedHost) != nil
@@ -503,7 +509,8 @@ private struct GUIEvent: Decodable {
     var canLaunchHomebrew: Bool {
         phase == .rpcHeld && activeSessionSupportsHomebrew && postRun.canLaunchHomebrew && pendingHomebrewAction == nil &&
         hostProcess?.isRunning == true && hostInput != nil && runFolder != nil &&
-        !savekitBusy && (!savekitSaveOperationUsed || savekitChoiceFinished) &&
+        !savekitBusy && !savekitSessionBlocked && !savekitReturnBlocked &&
+        (!savekitSaveOperationUsed || savekitChoiceFinished) &&
         (!seedsowInstallStarted || seedsowInstallCompleted) && !savekitChoicePending &&
         (!savekitChoiceStarted || savekitChoiceFinished) && !sdBusy && !sdRunning
     }
@@ -520,7 +527,8 @@ private struct GUIEvent: Decodable {
         activeHost.supportsNativeHBLauncher && nativeHBLauncherRuntimeAvailable
     }
     var canDumpSystemCode: Bool {
-        activeRunMode != .seedsowSave && !(homebrewApp == .modloader && postRun.homebrewAttempted) &&
+        !savekitSessionBlocked && !savekitReturnBlocked && activeRunMode != .seedsowSave &&
+        !(homebrewApp == .modloader && postRun.homebrewAttempted) &&
         activeSessionSupportsHomebrew && postRun.canDumpSystemCode &&
         hostProcess?.isRunning == true && hostInput != nil && runFolder != nil &&
         pendingHomebrewAction == nil && !sdBusy && !sdRunning
@@ -532,7 +540,7 @@ private struct GUIEvent: Decodable {
         isAttachedFilesystemFS
     }
     var canUseSaveKitTools: Bool {
-        saveKitToolsAvailableInRun && !savekitChoiceFinished && phase == .rpcHeld && postRun.stage == .held &&
+        !savekitSessionBlocked && !savekitReturnBlocked && saveKitToolsAvailableInRun && !savekitChoiceFinished && phase == .rpcHeld && postRun.stage == .held &&
         postRun.heldConfirmed && hostProcess?.isRunning == true && hostInput != nil &&
         runFolder != nil && !postRun.homebrewAttempted && pendingHomebrewAction == nil &&
         !savekitBusy && !sdBusy && !sdRunning
@@ -543,6 +551,7 @@ private struct GUIEvent: Decodable {
     }
     var canOpenAnotherSave: Bool { canUseSaveKitTools && !savekitReturnBlocked }
     var canInstallSeedsowSave: Bool {
+        !savekitSessionBlocked && !savekitReturnBlocked &&
         (activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld && activeHost.supportsSaveKit ||
          isAttachedFilesystemFS) &&
         phase == .rpcHeld && postRun.heldConfirmed &&
@@ -557,6 +566,7 @@ private struct GUIEvent: Decodable {
     var canInstallBalatroSave: Bool { canInstallSeedsowSave }
     var canInstallGravCircSave: Bool { canInstallSeedsowSave }
     var canStartSaveKit: Bool {
+        !savekitSessionBlocked && !savekitReturnBlocked &&
         (activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld && activeHost.supportsSaveKit ||
          isAttachedFilesystemFS) &&
         phase == .rpcHeld && postRun.heldConfirmed &&
@@ -567,7 +577,7 @@ private struct GUIEvent: Decodable {
         hostProcess?.isRunning == true && hostInput != nil && runFolder != nil
     }
     var canStartSDBrowser: Bool {
-        phase == .rpcHeld && postRun.heldConfirmed && !isAttachedRPCSession &&
+        !savekitSessionBlocked && !savekitReturnBlocked && phase == .rpcHeld && postRun.heldConfirmed && !isAttachedRPCSession &&
         !postRun.homebrewAttempted && !postRun.dumpInProgress && !seedsowInstallStarted &&
         !savekitChoicePending && !savekitChoiceStarted && pendingHomebrewAction == nil &&
         !savekitBusy && !savekitSaveOperationUsed && !sdBusy && !sdRunning &&
@@ -762,6 +772,10 @@ private struct GUIEvent: Decodable {
             fail("Use 1–2000 ms per key, 1–120 seconds for enumeration, and 0–120000 ms for each command wait.")
             return
         }
+        guard !runMode.requiresHost || hostStageTimeoutValid else {
+            fail("Use 1–60 minutes for each host stage timeout.")
+            return
+        }
         beginAttempt(commandSelection: commandSelection)
         if activeRunMode == .bootstrapOnly { startHID("bootstrap", root: runtime.root) }
         else if activeRunMode == .commandsOnly { startHID("commands-only", root: runtime.root) }
@@ -797,7 +811,7 @@ private struct GUIEvent: Decodable {
         seedsowInstallSkipped = false; seedsowSkipMessage = ""; seedsowCustomSource = false
         activeSaveGame = nil; activeBalatroVariant = nil; legacySeedsowInstall = false
         seedsowEditorPro = false; activeSeedsowEdition = .demo
-        savekitBusy = false; savekitSaveOperationUsed = false; savekitPendingOperation = false
+        savekitBusy = false; savekitSessionBlocked = false; savekitSaveOperationUsed = false; savekitPendingOperation = false
         savekitMessage = "Waiting for verified held RPC"
         savekitAccounts = []; savekitTitles = []; savekitTitleNames = [:]
         savekitEntries = []; savekitArchives = []; savekitArchiveTotal = 0
@@ -1140,10 +1154,11 @@ private struct GUIEvent: Decodable {
     }
 
     func launchOunceCake(ftp: Bool) {
-        guard canLaunchOunceCake,
+        guard canLaunchOunceCake, (!isAttachedCivSwitchFS || ftp),
               let address = OunceCakeSession.validConsoleAddress(ounceCakeConsoleAddress) else { return }
         var session = OunceCakeSession()
-        guard session.begin(consoleAddress: address) else { return }
+        guard session.begin(consoleAddress: address,
+                            service: isAttachedCivSwitchFS ? .civFTP : .webDAV) else { return }
         var command: [String: Any] = ["action": "launch-ouncecake", "consoleAddress": address]
         if ftp { command["mode"] = "ftp" }
         guard sendHostControl(command), postRun.launchHomebrew() else { return }
@@ -1502,7 +1517,7 @@ private struct GUIEvent: Decodable {
                 progress = nil; progressLabel = homebrewMessage
             case .selecting:
                 phase = .launchingHomebrew; status = "Choose a game"
-                detail = "Choose a game below, then start its read-only \(ounceCakeFTPRequested ? "FTP" : "WebDAV") server. \(sessionReminder)"
+                detail = "Choose a game below, then start its read-only \(isAttachedCivSwitchFS ? "FTP on your Switch" : ounceCakeFTPRequested ? "FTP" : "WebDAV") server. \(sessionReminder)"
                 progress = nil; progressLabel = "Game list ready"
             case .running:
                 phase = .homebrewRunning; status = homebrewApp == .modloader ? "Modloader ready" : "\(homebrewTitle) is running"
@@ -1601,7 +1616,8 @@ private struct GUIEvent: Decodable {
     func recordDiagnostic(_ message: String) { append(message) }
 
     private func startHost(root: URL) {
-        guard let arguments = activeRunMode.hostArguments(address: activeAddress, host: activeHost.rawValue) else {
+        guard let arguments = activeRunMode.hostArguments(address: activeAddress, host: activeHost.rawValue,
+                                                          stageTimeoutMinutes: hostStageTimeoutMinutes) else {
             fail("Choose an exploit mode to start a host session.")
             return
         }
@@ -1925,6 +1941,7 @@ private struct GUIEvent: Decodable {
                   seedsowInstallCompleted, matchesSaveInstall(event), phase == .installingSave,
                   postRun.stage == .held else { return }
             phase = .rpcHeld
+            savekitSessionBlocked = false
             seedsowInstallStarted = false
             let launcher = saveInstallName
             status = seedsowInstallSkipped ? "\(launcher) save unchanged · RPC held" : "\(launcher) save ready · RPC held"
@@ -1937,18 +1954,20 @@ private struct GUIEvent: Decodable {
                   matchesSaveInstall(event) else { return }
             if let backup = saveInstallBackup(event) { seedsowBackupFolder = backup }
             seedsowUsers = []
-            postRun.stop()
-            phase = .failed
+            seedsowInstallStarted = false
+            savekitSessionBlocked = true
+            phase = .rpcHeld
             status = "\(saveInstallName) save installation needs attention"
-            detail = event.message ?? "The save installation stopped. Keep the backup and restart the console before another app attempt."
+            detail = event.message ?? "The save installation stopped. Keep the backup and finish this held session before another save attempt."
             error = detail
             progress = nil
-            progressLabel = ""
+            progressLabel = "RPC held · finish this session"
         case "savekit-recoverable":
             guard role == "host", activeRunMode == .seedsowSave || activeRunMode == .hostOnlyHeld || isAttachedFilesystemFS,
                   phase == .installingSave, seedsowInstallStarted,
                   matchesSaveInstall(event) else { return }
             seedsowInstallStarted = false
+            savekitSessionBlocked = false
             seedsowUsers = []
             selectedSeedsowUser = ""
             phase = .rpcHeld
@@ -2019,7 +2038,11 @@ private struct GUIEvent: Decodable {
             }
             savekitMessage = event.message ?? "Save data operation failed. Check the console log."
             if savekitSaveOperationUsed && savekitReturnBlocked {
-                savekitMessage += " Finish the session and restart the console before another save operation."
+                savekitMessage += " Finish this session before another save operation."
+            }
+            if savekitReturnBlocked {
+                status = "Save action needs attention"
+                detail = savekitMessage
             }
             progressLabel = savekitMessage
         case "savekit-selected":
@@ -2155,13 +2178,14 @@ private struct GUIEvent: Decodable {
             if role == "host", event.type == "homebrew-running", ounceCakeSession.hasStarted {
                 guard postRun.stage == .held, postRun.homebrewStage == .launching,
                       ounceCakeSession.stage == .preparing else { return }
-                guard ounceCakeSession.receiveEndpoint(host: event.host, port: event.port, httpURL: event.httpURL) else {
+                guard ounceCakeSession.receiveEndpoint(host: event.host, port: event.port,
+                                                       httpURL: event.httpURL, ftpURL: event.ftpURL) else {
                     postRun.receive("homebrew-failed"); ounceCakeSession.stop(failed: true)
-                    homebrewMessage = "The game server did not confirm a valid WebDAV address. Finish the session and keep the logs."
+                    homebrewMessage = "The game server did not confirm a valid address. Finish the session and keep the logs."
                     presentPostRunState()
                     return
                 }
-                ounceCakeFTPURL = ounceCakeFTPRequested ? event.ftpURL : nil
+                ounceCakeFTPURL = ounceCakeFTPRequested && !isAttachedCivSwitchFS ? event.ftpURL : nil
             }
             guard role == "host", postRun.receive(event.type, retrySafe: event.retrySafe == true) else { return }
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
@@ -2190,7 +2214,7 @@ private struct GUIEvent: Decodable {
             guard postRun.receive(event.type) else { return }
             ounceCakeSession = session; selectedOunceCakeGame = session.games.first?.titleId ?? ""
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
-            homebrewMessage = "Choose a game to make its files available over \(ounceCakeFTPRequested ? "FTP on this Mac" : "WebDAV")."
+            homebrewMessage = "Choose a game to make its files available over \(isAttachedCivSwitchFS ? "FTP on your Switch" : ounceCakeFTPRequested ? "FTP on this Mac" : "WebDAV")."
             presentPostRunState()
         case "homebrew-progress":
             guard role == "host", phase == .launchingHomebrew || phase == .homebrewRunning else { return }
@@ -2371,7 +2395,10 @@ private struct GUIEvent: Decodable {
             hostStageLabel = event.message ?? hostStageLabel
             // Stage events update the status only. The adapter also emits the
             // original line as a log event, which owns the activity/log entry.
-            if let done = event.completed, let total = event.total, total > 0 { hostStageProgress = min(1, max(0, done / total)) }
+            if let done = event.completed, let total = event.total, total > 0 {
+                let fraction = done / total
+                hostStageProgress = min(1, max(event.stage == "pipeline" && done == 0 ? 0.025 : 0, fraction))
+            }
             else { hostStageProgress = nil }
             if hostIsExploiting && (event.stage == "connected" || event.stage == "pipeline") {
                 detail = "Jailbreak has four steps. Each can take several minutes. Please be patient and keep SmileBASIC and mac2jb open."

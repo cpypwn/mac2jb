@@ -5,6 +5,9 @@ const {client, live} = require('./rpc.cjs');
 const transport = require('../../shared/rpc.cjs');
 const functions = require("../../shared/sdk-functions.json");
 const {packet, response} = require("../../shared/ipc.cjs");
+const {loadTarget} = require('../../shared/target.cjs');
+const {allocationArgs, freeArgs} = require('./allocation-abi.cjs');
+const target = loadTarget();
 const u32 = value => {const b = Buffer.alloc(4); b.writeUInt32LE(value); return b;};
 const u64 = value => {const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(value)); return b;};
 const check = (condition, message) => {if (!condition) throw Error(message);};
@@ -59,26 +62,42 @@ class Session {
   async initialize() {
     check(await this.ready(), 'Switch 2 application connection is not ready');
     this.rpc = await client();
-    for (const name of ['allocate', 'free', 'getService', 'send', 'close', 'memset']) {
+    const useBridgeArena = target.name === 'gravcirc';
+    const names = useBridgeArena ? ['getService', 'send', 'close', 'memset'] :
+      ['allocate', 'free', 'getService', 'send', 'close', 'memset'];
+    for (const name of names) {
       const expected = functions[name];
       await this.verifyCode(expected, name);
     }
-    // This slot is inside this process's owned scratch, outside the RPC frames.
-    const temporary = live.scratch + 0x5300;
-    const region = await this.rpc.query(temporary);
-    check(!region.result && region.type === 5 && region.permissions === 3 &&
-      !region.attributes && !region.ipcReferences && !region.deviceReferences,
-      'Allocation output is not ordinary owned memory');
-    const saved = await this.read(temporary, 8);
-    try {
-      check(!await this.call('allocate', temporary, 4096, this.bytes), 'Allocation failed');
-      this.base = Number((await this.read(temporary, 8)).readBigUInt64LE());
-    } finally {await this.write(temporary, saved);}
-    check(this.base > 0 && this.base % 4096 === 0, 'Invalid allocation');
-    const allocated = await this.rpc.query(this.base);
+    let selectedBase;
+    if (useBridgeArena) {
+      check(Number.isSafeInteger(live.appArena) && live.appArena % 4096 === 0 &&
+        Number.isSafeInteger(live.appArenaBytes) && live.appArenaBytes >= this.bytes &&
+        live.appArena + live.appArenaBytes < 2 ** 39,
+        'Gravity Circuit app arena is not available for this session');
+      selectedBase = live.appArena;
+    } else {
+      // This slot is inside this process's owned scratch, outside the RPC frames.
+      const temporary = live.scratch + 0x5300;
+      const region = await this.rpc.query(temporary);
+      check(!region.result && region.type === 5 && region.permissions === 3 &&
+        !region.attributes && !region.ipcReferences && !region.deviceReferences,
+        'Allocation output is not ordinary owned memory');
+      const saved = await this.read(temporary, 8);
+      try {
+        const result = await this.call('allocate', ...allocationArgs(target, temporary, this.bytes));
+        check(!result, `Allocation failed: 0x${result.toString(16)}`);
+        selectedBase = Number((await this.read(temporary, 8)).readBigUInt64LE());
+      } finally {await this.write(temporary, saved);}
+    }
+    check(selectedBase > 0 && selectedBase % 4096 === 0, 'Invalid allocation');
+    const allocated = await this.rpc.query(selectedBase);
     check(!allocated.result && allocated.type === 5 && allocated.permissions === 3 &&
-      !allocated.attributes && Number(BigInt(allocated.address) + BigInt(allocated.size)) >= this.base + this.bytes,
+      !allocated.attributes && !allocated.ipcReferences && !allocated.deviceReferences &&
+      allocated.address <= selectedBase &&
+      Number(BigInt(allocated.address) + BigInt(allocated.size)) >= selectedBase + this.bytes,
       'New allocation is not ordinary owned memory');
+    this.base = selectedBase;
     await this.call('memset', this.base, 0, this.bytes);
     await this.record({operation: 'initialize', session: live.session, base: this.base, bytes: this.bytes});
   }
@@ -125,8 +144,13 @@ class Session {
     }
     for (const handle of [...this.handles].reverse()) await this.close(handle);
     if (this.base) {
-      await this.call('free', this.base, 0, 0);
-      await this.record({operation: 'Free', base: this.base});
+      if (target.name === 'gravcirc') {
+        await this.call('memset', this.base, 0, this.bytes);
+        await this.record({operation: 'ClearBridgeArena', base: this.base, bytes: this.bytes});
+      } else {
+        await this.call('free', ...freeArgs(target, this.base, this.bytes));
+        await this.record({operation: 'Free', base: this.base});
+      }
       this.base = 0;
     }
   }

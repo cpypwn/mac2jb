@@ -47,3 +47,9 @@ resident_context: .xword 0
 namespace_context: .xword 0
 lazy_context: .xword 0
 lfs_codefs_original_address: .xword 0
+.global lfs_mutex_lock_address
+.global lfs_mutex_unlock_address
+.hidden lfs_mutex_lock_address
+.hidden lfs_mutex_unlock_address
+lfs_mutex_lock_address: .xword 0
+lfs_mutex_unlock_address: .xword 0

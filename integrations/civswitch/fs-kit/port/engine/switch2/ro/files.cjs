@@ -2,7 +2,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const {packet} = require("../../shared/ipc.cjs");
+const {packet, response} = require("../../shared/ipc.cjs");
 const {loadTarget, programId} = require('../../shared/target.cjs');
 const target = loadTarget();
 const check = (ok, message) => { if (!ok) throw Error(message); };
@@ -15,6 +15,64 @@ function pathRequest(command, input, address, length = 0x301) {
     (pointer >> 32n & 15n) << 12n), 8);
   bytes.writeUInt32LE(Number(pointer & 0xffffffffn), 12);
   return bytes;
+}
+
+// Two-path rename requests (IFileSystem 5/6) need two inline X descriptors. packet() can only
+// describe one, so the header is rebuilt here: pointer data at 8 and 16, CMIF message at the
+// 16-byte aligned raw-data offset (32) with no input payload.
+function pathRequest2(command, first, second, length = 0x301) {
+  const bytes = Buffer.alloc(256);
+  bytes.writeUInt32LE(4 | 2 << 16);
+  bytes.writeUInt32LE(8, 4);
+  for (const [offset, address] of [[8, first], [16, second]]) {
+    const pointer = BigInt(address);
+    bytes.writeUInt32LE(Number(BigInt(length) << 16n | (pointer >> 36n & 7n) << 6n |
+      (pointer >> 32n & 15n) << 12n), offset);
+    bytes.writeUInt32LE(Number(pointer & 0xffffffffn), offset + 4);
+  }
+  bytes.write('SFCI', 32, 'ascii');
+  bytes.writeUInt32LE(command, 40);
+  return bytes;
+}
+
+// Ordinary (non-domain) path IPC: the packet comes prebuilt from pathRequest() because the
+// inline X descriptor has to point at this session's own scratch. Mirrors Session#ipc
+// except that the caller supplies the final packet bytes.
+async function rawPathIpc(s, label, handle, bytes) {
+  await s.write(s.base, bytes);
+  const transport = await s.call('send', s.base, 4096, handle);
+  check(!transport, label + ': transport 0x' + transport.toString(16));
+  const reply = response(await s.readOwned(s.base, 256));
+  for (const child of [...reply.copies, ...reply.moves]) s.handles.add(child);
+  return reply;
+}
+
+// Shared write-side path plumbing: validate the path, stage it in this session's own scratch
+// at +0x2000 and issue one ordinary (non-domain) IFileSystem request on the SD handle.
+async function sdPathCall(s, label, handle, command, input = Buffer.alloc(0)) {
+  const text = Buffer.from(label, 'utf8');
+  check(label.startsWith('/') && !label.includes('\0') && text.length < 0x301,
+    'Invalid filesystem path');
+  const filename = Buffer.alloc(0x304); text.copy(filename);
+  await s.write(s.base + 0x2000, filename);
+  return rawPathIpc(s, 'SD ' + label, handle, pathRequest(command, input, s.base + 0x2000));
+}
+
+function sdHandle(s, handle) {
+  check(Number.isInteger(handle) && s.handles.has(handle),
+    'The SD handle is not owned by this session');
+}
+
+// Every SD mutation is opt-in: NS2_ALLOW_WRITES must be 1 in the engine process. Otherwise the
+// attempt is still recorded (with a synthetic 0xE401) so the report shows what was refused.
+async function beginWrite(command, request, state, save) {
+  const entry = {at: new Date().toISOString(), operation: command,
+    handle: Number(request.handle), path: String(request.path ?? '')};
+  if (process.env.NS2_ALLOW_WRITES === '1') return {entry};
+  Object.assign(entry, {result: 0xE401, canonicalResult: 0x401,
+    error: 'writes disabled (set NS2_ALLOW_WRITES=1)'});
+  state.calls.push(entry); await save();
+  return {entry, disabled: true};
 }
 
 async function dispatch(context, request, state, domain) {
@@ -295,6 +353,248 @@ async function dispatch(context, request, state, domain) {
       (code.files ||= []).push(entry); await save();
       return entry;
     } finally { if (safeToClose) await s.close(child); }
+  }
+  if (command === 'sd-list') {
+    // Read-only directory listing on a caller-provided IFileSystem handle. The handle comes
+    // from fsp-srv cmd18 OpenSdCardFileSystem, obtained through root-native-ipc; it is an
+    // ordinary (non-domain) session handle, so the path packet goes out through rawPathIpc
+    // instead of domain.send.
+    const handle = Number(request.handle), label = String(request.path ?? '/');
+    check(Number.isInteger(handle) && s.handles.has(handle),
+      'The SD listing handle is not owned by this session');
+    const text = Buffer.from(label, 'utf8');
+    check(label.startsWith('/') && !label.includes('\0') && text.length < 0x301,
+      'Invalid filesystem path');
+    const filename = Buffer.alloc(0x304); text.copy(filename);
+    await s.write(s.base + 0x2000, filename);
+    const mode = Buffer.alloc(4); mode.writeUInt32LE(3);
+    const opened = await rawPathIpc(s, 'RO SD OpenDirectory ' + label, handle,
+      pathRequest(9, mode, s.base + 0x2000));
+    const entry = {at: new Date().toISOString(), operation: command, handle, path: label,
+      result: opened.result, canonicalResult: opened.canonicalResult};
+    state.calls.push(entry); await save();
+    if (opened.result) return entry;
+    const directory = domain.oneHandle(opened);
+    const entries = [];
+    try {
+      while (entries.length < 128) {
+        const reply = await s.ipc('RO SD ReadDirectory ' + label, directory, 0, Buffer.alloc(0),
+          {receive: [{address: s.base + 0x6000, size: 4 * 0x310, mode: 0}]});
+        check(!reply.result, 'SD directory read failed: ' + reply.canonicalResult);
+        const count = Number(reply.data.readBigUInt64LE());
+        check(count >= 0 && count <= 4, 'Invalid SD directory entry count');
+        if (!count) break;
+        const bytes = await s.readOwned(s.base + 0x6000, count * 0x310);
+        for (let i = 0; i < count; i++) {
+          const item = bytes.subarray(i * 0x310, (i + 1) * 0x310);
+          entries.push({name: item.subarray(0, 0x301).toString('utf8').split('\0')[0],
+            type: item[0x304], size: item.readBigUInt64LE(0x308).toString()});
+        }
+      }
+    } finally { await s.close(directory); }
+    entry.entries = entries; await save();
+    return entry;
+  }
+  if (command === 'sd-read') {
+    // Read-only readback of an SD file into the console scratch; only the size, hash and a
+    // short hex prefix are mirrored into the local report, the file stays on the console.
+    const handle = Number(request.handle), label = String(request.path ?? '');
+    const offset = Number(request.offset ?? 0), limit = Number(request.length ?? 0x1000);
+    check(Number.isInteger(handle) && s.handles.has(handle),
+      'The SD read handle is not owned by this session');
+    check(Number.isSafeInteger(offset) && offset >= 0 && Number.isInteger(limit) &&
+      limit > 0 && limit <= 0x4000, 'Invalid SD read range');
+    const text = Buffer.from(label, 'utf8');
+    check(label.startsWith('/') && !label.includes('\0') && text.length < 0x301,
+      'Invalid filesystem path');
+    const filename = Buffer.alloc(0x304); text.copy(filename);
+    await s.write(s.base + 0x2000, filename);
+    const output = s.base + 0x6000;
+    const opened = await rawPathIpc(s, 'RO SD OpenFile ' + label, handle,
+      pathRequest(8, Buffer.from([1, 0, 0, 0]), s.base + 0x2000));
+    const entry = {at: new Date().toISOString(), operation: command, handle, path: label,
+      result: opened.result, canonicalResult: opened.canonicalResult};
+    state.calls.push(entry); await save();
+    if (opened.result) return entry;
+    const child = domain.oneHandle(opened);
+    let safeToClose = false;
+    try {
+      const sized = await s.ipc('RO SD file size ' + label, child, 4);
+      safeToClose = true;
+      check(!sized.result, 'SD file size failed: ' + sized.canonicalResult);
+      const size = Number(sized.data.readBigUInt64LE());
+      entry.size = size;
+      const length = Math.min(limit, size - offset);
+      check(length > 0, 'SD read range lies outside the file');
+      const data = Buffer.alloc(24);
+      data.writeBigUInt64LE(BigInt(offset), 8); data.writeBigUInt64LE(BigInt(length), 16);
+      safeToClose = false;
+      const reply = await s.ipc('RO SD read file ' + label, child, 0, data,
+        {receive: [{address: output, size: length, mode: 1}]});
+      safeToClose = true;
+      check(!reply.result && reply.data.readBigUInt64LE() === BigInt(length),
+        'SD file read was short or failed: ' + reply.canonicalResult);
+      const bytes = await s.readOwned(output, length);
+      Object.assign(entry, {offset, length, sha256: hash(bytes), hex: bytes.toString('hex')});
+    } finally { if (safeToClose) await s.close(child); }
+    await save();
+    return entry;
+  }
+  if (command === 'sd-create') {
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const size = Number(request.size ?? 0), option = Number(request.option ?? 0);
+    check(Number.isSafeInteger(size) && size >= 0 && Number.isSafeInteger(option) &&
+      option >= 0 && option <= 0xffffffff, 'Invalid SD create parameters');
+    const input = Buffer.alloc(16);
+    input.writeUInt32LE(option >>> 0); input.writeBigUInt64LE(BigInt(size), 8);
+    const reply = await sdPathCall(s, entry.path, entry.handle, 0, input);
+    Object.assign(entry, {size, result: reply.result, canonicalResult: reply.canonicalResult});
+    state.calls.push(entry); await save();
+    return entry;
+  }
+  if (command === 'sd-mkdir') {
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const reply = await sdPathCall(s, entry.path, entry.handle, 2);
+    Object.assign(entry, {result: reply.result, canonicalResult: reply.canonicalResult});
+    state.calls.push(entry); await save();
+    return entry;
+  }
+  if (command === 'sd-delete') {
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const reply = await sdPathCall(s, entry.path, entry.handle, 1);
+    Object.assign(entry, {result: reply.result, canonicalResult: reply.canonicalResult});
+    state.calls.push(entry); await save();
+    return entry;
+  }
+  if (command === 'sd-delete-dir') {
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const recursive = request.recursive === true;
+    const reply = await sdPathCall(s, entry.path, entry.handle, recursive ? 4 : 3);
+    Object.assign(entry, {recursive, result: reply.result,
+      canonicalResult: reply.canonicalResult});
+    state.calls.push(entry); await save();
+    return entry;
+  }
+  if (command === 'sd-rename') {
+    // Best effort: two-slot X descriptors are not used anywhere else in the port, so a
+    // transport failure is reported as 0xE402 instead of aborting; the FTP layer can then
+    // fall back to read + create + write + delete.
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const label = entry.path, next = String(request.path2 ?? '');
+    const text = Buffer.from(label, 'utf8'), nextText = Buffer.from(next, 'utf8');
+    check(label !== next, 'SD rename source and destination are equal');
+    check(label.startsWith('/') && !label.includes('\0') && text.length < 0x301 &&
+      next.startsWith('/') && !next.includes('\0') && nextText.length < 0x301,
+      'Invalid filesystem path');
+    const firstPath = Buffer.alloc(0x304); text.copy(firstPath);
+    const secondPath = Buffer.alloc(0x304); nextText.copy(secondPath);
+    await s.write(s.base + 0x2000, firstPath);
+    await s.write(s.base + 0x2400, secondPath);
+    entry.path2 = next;
+    try {
+      const reply = await rawPathIpc(s, 'SD rename ' + label, entry.handle,
+        pathRequest2(request.directory === true ? 6 : 5, s.base + 0x2000, s.base + 0x2400));
+      Object.assign(entry, {result: reply.result, canonicalResult: reply.canonicalResult});
+    } catch (error) {
+      Object.assign(entry, {result: 0xE402, canonicalResult: 0x402,
+        error: 'rename unsupported: ' + error.message});
+    }
+    state.calls.push(entry); await save();
+    return entry;
+  }
+  if (command === 'sd-write') {
+    // Open-or-create with the Appendable bit (flags 7 = read+write+append; patch 22) because the
+    // SD image filesystem rejects a write that grows the file otherwise (Fs 2002-6201, RUN 105).
+    // Write at most one 0x4000-byte chunk from hex, flush, then GetSize to prove the length landed.
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const label = entry.path;
+    const offset = Number(request.offset ?? 0), truncate = request.truncate === true;
+    const hex = String(request.hex ?? '');
+    check(Number.isSafeInteger(offset) && offset >= 0 && hex.length > 0 && hex.length <= 0x8000 &&
+      hex.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hex), 'Invalid SD write payload');
+    const bytes = Buffer.from(hex, 'hex');
+    check(bytes.length > 0 && bytes.length <= 0x4000, 'SD write chunk must be 1..0x4000 bytes');
+    const preallocate = Number(request.size ?? 0);
+    check(Number.isSafeInteger(preallocate) && preallocate >= 0, 'Invalid SD write size');
+    let opened = await sdPathCall(s, label, entry.handle, 8, Buffer.from([7, 0, 0, 0]));
+    if (opened.canonicalResult === 0x202) {
+      const create = Buffer.alloc(16);
+      create.writeBigUInt64LE(BigInt(preallocate), 8);
+      const created = await sdPathCall(s, label, entry.handle, 0, create);
+      check(!created.result, 'SD write could not create the file: ' + created.canonicalResult);
+      opened = await sdPathCall(s, label, entry.handle, 8, Buffer.from([7, 0, 0, 0]));
+    }
+    Object.assign(entry, {offset, result: opened.result, canonicalResult: opened.canonicalResult});
+    if (opened.result) { state.calls.push(entry); await save(); return entry; }
+    const file = domain.oneHandle(opened);
+    const output = s.base + 0x4000;
+    let safeToClose = true;
+    try {
+      // Patch 21 (RUN 105): the SD image filesystem rejects IFile::Write that would grow the file
+      // through EOF (it returned 0x307202 for a freshly created 0-byte file). Size the file to the
+      // write end first, exactly like donor-prepare does on the save filesystem, then write.
+      const target = offset + bytes.length;
+      const before = await s.ipc('SD file size before write ' + label, file, 4);
+      check(!before.result, 'SD file size failed: ' + before.canonicalResult);
+      const current = Number(before.data.readBigUInt64LE());
+      const finalSize = truncate ? target : Math.max(current, target);
+      if (truncate || current < target) {
+        const resizeInput = Buffer.alloc(8);
+        resizeInput.writeBigUInt64LE(BigInt(finalSize));
+        safeToClose = false;
+        const resized = await s.ipc('SD resize file ' + label, file, 3, resizeInput);
+        safeToClose = true;
+        check(!resized.result, 'SD file resize failed: ' + resized.canonicalResult);
+        const afterResize = await s.ipc('SD file size after resize ' + label, file, 4);
+        if (!afterResize.result) {
+          Object.assign(entry, {sizeAfterResize: Number(afterResize.data.readBigUInt64LE())});
+        }
+      }
+      await s.write(output, bytes);
+      const data = Buffer.alloc(24);
+      data.writeBigUInt64LE(BigInt(offset), 8);
+      data.writeBigUInt64LE(BigInt(bytes.length), 16);
+      safeToClose = false;
+      const written = await s.ipc('SD write file ' + label, file, 1, data,
+        {send: [{address: output, size: bytes.length, mode: 1}]});
+      safeToClose = true;
+      if (written.result) {
+        Object.assign(entry, {failed: 'write', target, result: written.result,
+          canonicalResult: written.canonicalResult});
+        state.calls.push(entry); await save();
+      }
+      check(!written.result, 'SD file write failed: ' + written.canonicalResult);
+      const flushed = await s.ipc('SD flush file ' + label, file, 2);
+      check(!flushed.result, 'SD file flush failed: ' + flushed.canonicalResult);
+      const sized = await s.ipc('SD file size ' + label, file, 4);
+      check(!sized.result, 'SD file size failed: ' + sized.canonicalResult);
+      const size = Number(sized.data.readBigUInt64LE());
+      check(size >= target, 'SD write size mismatch: ' + size);
+      Object.assign(entry, {written: bytes.length, size, finalSize, sha256: hash(bytes)});
+    } finally { if (safeToClose) await s.close(file); }
+    state.calls.push(entry); await save();
+    return entry;
+  }
+  if (command === 'sd-commit') {
+    const {entry, disabled} = await beginWrite(command, request, state, save);
+    if (disabled) return entry;
+    sdHandle(s, entry.handle);
+    const reply = await s.ipc('SD commit', entry.handle, 10);
+    Object.assign(entry, {result: reply.result, canonicalResult: reply.canonicalResult});
+    state.calls.push(entry); await save();
+    return entry;
   }
   throw Error('Unknown native file operation');
 }

@@ -4,6 +4,7 @@ const {isUncertain}=require('./lib/game-files/uncertain.cjs');
 const fs=require('node:fs'),path=require('node:path');
 const {check,titleId,writeJson}=require('./lib/common.cjs');
 const {collectMods}=require('./lib/mods.cjs');
+const {resolveRunDirectory}=require('./lib/host-path.cjs');
 const root=__dirname;
 const USAGE=`Usage: node load.cjs [--run-dir PATH] [--title TITLE_ID] [--runtime-trace | --no-runtime-logs]
        node install.cjs [--run-dir PATH] [--title TITLE_ID] [--keep-rpc] [--mod-source SD_PATH]
@@ -18,7 +19,7 @@ function options(argv){
  const o={run:null,titles:[],check:false,keepRpc:false,modSource:'/ns2jb-modloader',runtimeLogs:true,runtimeTrace:false};
  for(let i=0;i<argv.length;i++){
   const a=argv[i];if(a==='--check')o.check=true;else if(a==='--keep-rpc')o.keepRpc=true;else if(a==='--help')o.help=true;else if(a==='--runtime-trace')o.runtimeTrace=true;else if(a==='--no-runtime-logs')o.runtimeLogs=false;
-  else{check(['--run-dir','--title','--mod-source'].includes(a),'Unknown option: '+a+'\n'+USAGE);const v=argv[++i];check(v&&!v.startsWith('--'),'Missing value after '+a);if(a==='--title')o.titles.push(titleId(v));else if(a==='--mod-source'){check(/^\/ns2jb-modloader\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(v),'Invalid session mod source');o.modSource=v;}else o.run=path.resolve(v);}
+  else{check(['--run-dir','--title','--mod-source'].includes(a),'Unknown option: '+a+'\n'+USAGE);const v=argv[++i];check(v&&!v.startsWith('--'),'Missing value after '+a);if(a==='--title')o.titles.push(titleId(v));else if(a==='--mod-source'){check(/^\/ns2jb-modloader\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(v),'Invalid session mod source');o.modSource=v;}else o.run=resolveRunDirectory(v);}
  }
  check(!o.runtimeTrace||o.runtimeLogs,'--runtime-trace cannot be combined with --no-runtime-logs');
  return o;
@@ -78,7 +79,7 @@ async function main(argv=process.argv.slice(2)){
   if(profile.runtimeLoggingCompatible===false&&o.runtimeLogs){
    console.warn('WARNING: Native report functions differ from the supported logging ABI. Runtime reports are disabled; mod loading and PC installation logs remain available.');o.runtimeLogs=false;o.runtimeTrace=false;
   }
-  plan.nativeProfile={sha256:profile.sha256,validatedRanges:profile.validatedRanges,pid:profile.pid,programId:profile.programId,runtimeLoggingCompatible:profile.runtimeLoggingCompatible};
+  plan.nativeProfile={sha256:profile.sha256,validatedRanges:profile.validatedRanges,pid:profile.pid,programId:profile.programId,runtimeLoggingCompatible:profile.runtimeLoggingCompatible,resolution:profile.layout?'relocated-functions':'verified-offsets'};
   plan.nativeRuntime=require('./lib/native/artifacts.cjs').artifacts().manifest.files['templates.json'];
   plan.runtimeDiagnostics=o.runtimeLogs;
   plan.runtimeTrace=o.runtimeTrace;

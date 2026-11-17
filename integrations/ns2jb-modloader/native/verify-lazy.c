@@ -48,7 +48,7 @@ void lfs_zbic_release(void *s){(void)s;}
 uint32_t lfs_zbic_read(void *s,void *n,uint32_t (*read)(void *,uint64_t,void *,uint64_t),uint64_t o,uint64_t p,uint64_t z,uint64_t a,void *d,uint64_t l){(void)s;(void)n;(void)read;(void)o;(void)p;(void)z;(void)a;(void)d;(void)l;return 0xd401;}
 #endif
 static uint32_t allocate_block(void *manager,void **out,uint64_t bytes){if(native_probe)native_probe();(void)manager;if(fail_at&&++allocations==fail_at)return 0xd401;*out=calloc(1,bytes);if(!*out)return 0xd401;blocks++;block_bytes+=bytes;return 0;}
-static uint32_t free_block(void *manager,void *memory,uint64_t bytes){if(native_probe)native_probe();(void)manager;assert(memory&&blocks&&bytes<=block_bytes);blocks--;block_bytes-=bytes;free(memory);return 0;}
+static void free_block(void *manager,void *memory,uint64_t bytes){if(native_probe)native_probe();(void)manager;assert(memory&&blocks&&bytes<=block_bytes);blocks--;block_bytes-=bytes;free(memory);}
 static void *allocate(uint64_t bytes){return calloc(1,bytes);}
 static void sdk_free(void *memory,uint64_t bytes){(void)bytes;free(memory);}
 static void retain(void *memory){if(native_probe)native_probe();struct object *o=memory;assert(o->vt==vt&&o->refs);o->refs++;}

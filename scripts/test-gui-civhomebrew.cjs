@@ -40,11 +40,18 @@ async function fixture(t) {
 test('the packaged bridge self-test checks its pinned source and bundled runtimes offline', async t => {
   const f = await fixture(t);
   const pinned = JSON.parse(fs.readFileSync(path.join(__dirname, '../packaging/CivHomebrew-source.json'), 'utf8'));
+  const compatible = JSON.parse(fs.readFileSync(path.join(__dirname, '../packaging/CivHomebrew-compatible-source.json'), 'utf8'));
   await fsp.writeFile(path.join(f.runtime, 'packaging/CivHomebrew-source.json'), JSON.stringify(pinned));
+  await fsp.writeFile(path.join(f.runtime, 'packaging/CivHomebrew-compatible-source.json'), JSON.stringify(compatible));
   const events = [];
   const result = await bridge.main(['--self-test', f.runtime], {emit: (type, fields) => events.push({type, ...fields})});
   assert.equal(result.selfTest, true);
   assert.equal(events[0].type, 'self-test');
+  const compatibleResult = await bridge.main(['--self-test', f.runtime, 'compatible'], {emit: () => {}});
+  assert.equal(compatibleResult.selfTest, true);
+  assert.equal((await bridge.main(['status', f.runtime, 'native'], {emit: () => {}})).version, '1.3.8');
+  assert.equal((await bridge.main(['status', f.runtime, 'compatible'], {emit: () => {}})).version, '0.4.3');
+  await assert.rejects(bridge.main(['status', f.runtime, 'unknown'], {emit: () => {}}), /usage/);
   await assert.rejects(bridge.main(['--self-test', path.join(f.runtime, 'missing')],
     {emit: () => {}}), /ENOENT/);
 });
@@ -119,7 +126,7 @@ test('companion probe rejects an unrelated service on the same port', async t =>
     /did not identify a compatible CivHomebrew core/);
 });
 
-test('connecting to a running launcher updates its cached UI before reporting ready', async t => {
+test('connecting to a running launcher does not change its version', async t => {
   const f = await fixture(t);
   const cached = path.join(f.cacheRoot, 'source', f.metadata.commit);
   await fsp.mkdir(path.dirname(cached), {recursive: true});
@@ -146,10 +153,10 @@ test('connecting to a running launcher updates its cached UI before reporting re
     emit: (type, fields) => events.push({type, ...fields})
   });
   assert.equal(state.mode, 'launcher');
-  assert.ok(restartPolls >= 2);
-  assert.deepEqual(requests.slice(0, 3), ['hello', 'status', 'update']);
+  assert.equal(updated, false);
+  assert.deepEqual(requests, ['hello', 'status']);
   assert.deepEqual(events.filter(event => ['refresh-start', 'refresh-ready', 'probe-ready'].includes(event.type))
-    .map(event => event.type), ['refresh-start', 'refresh-ready', 'probe-ready']);
+    .map(event => event.type), ['probe-ready']);
 });
 
 test('connecting while an app is open leaves the session intact and defers the UI update', async t => {
@@ -169,7 +176,7 @@ test('connecting while an app is open leaves the session intact and defers the U
   assert.deepEqual(events.map(event => event.type), ['probe-ready', 'refresh-deferred']);
 });
 
-test('a rejected launcher update keeps the live companion available', async t => {
+test('a rejected explicit launcher update keeps the live companion available', async t => {
   const f = await fixture(t);
   const cached = path.join(f.cacheRoot, 'source', f.metadata.commit);
   await fsp.mkdir(path.dirname(cached), {recursive: true});
@@ -181,16 +188,14 @@ test('a rejected launcher update keeps the live companion available', async t =>
     if (request.op === 'update') return {ok: false, error: 'system update rejected'};
     return {ok: true, state: {mode: 'launcher', launcher: true, closed: false}};
   });
-  const state = await bridge.main(['probe', f.runtime, '127.0.0.1'], {
+  await assert.rejects(bridge.refreshRunningLauncher(f.runtime, '127.0.0.1', {
     metadata: f.metadata, cacheRoot: f.cacheRoot, port, allowLoopback: true,
     testLauncherPackage: {component: 'launcher', source: 'updated launcher'},
     emit: (type, fields) => events.push({type, ...fields})
-  });
-  assert.equal(state.mode, 'launcher');
-  assert.deepEqual(requests, ['hello', 'status', 'update', 'hello', 'status']);
-  assert.deepEqual(events.filter(event => ['probe-ready', 'refresh-failed'].includes(event.type))
-    .map(event => event.type), ['probe-ready', 'refresh-failed']);
-  assert.match(events.at(-1).message, /system update rejected/);
+  }), /system update rejected/);
+  assert.deepEqual(requests, ['hello', 'status', 'update']);
+  assert.deepEqual(events.map(event => event.type), ['refresh-start']);
+  assert.equal((await bridge.probeCompanion('127.0.0.1', {port, allowLoopback: true})).mode, 'launcher');
 });
 
 test('stop leaves a foreground app running and gives a Switch-side exit instruction', async t => {

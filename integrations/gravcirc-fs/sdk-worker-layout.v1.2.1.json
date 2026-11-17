@@ -1,0 +1,74 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "status": "owned raw-SVC worker lifecycle qualified; bounded FS canary not yet qualified",
+  "functions": {
+    "longjmp": {
+      "offset": 5985588,
+      "size": 64,
+      "bytes": "135040a9155841a9176042a9196843a91b7044a91d7845a9023440f95f0000910824476d0a2c486d0c34496d0e3c4a6de00301aa410000b5200080d2c0031fd6",
+      "sha256": "d07e37cbe1c09612fd9b30fbfe4925241dd30a1d4dfb67e81253ae3c3a93772e",
+      "sourceSymbol": "_longjmp"
+    },
+    "loadTable": {
+      "offset": 306668,
+      "size": 24,
+      "bytes": "a80240f90041348bf44f42a9f50b40f9fd7bc3a8c0035fd6",
+      "sha256": "815e8dea17cca89eee06955a32cc79317d875b40790b74be6a8b79b09f1ab3a8"
+    },
+    "call4": {
+      "offset": 5335744,
+      "size": 116,
+      "bytes": "e00319aae10315aae20314aae3031caa00013fd6880215cbed0b40f98903088be90200f903000014fbb740a9e9030baaa80115cbbf0114eb8803088bea6340392801889a680300f96a000036e01740f990900294f44f49a9f65748a9f85f47a9fa6746a9fc6f45a9fd7b44a9ff830291c0035fd6",
+      "sha256": "d846449dde280dd05456e0552ddf8c28086a7d29fecb30bf50a579bd92f1987a"
+    },
+    "saveResult64": {
+      "offset": 1620144,
+      "size": 16,
+      "bytes": "600200f9f30b40f9fd7bc2a8c0035fd6",
+      "sha256": "397fa89e372874847103490bc1159773258edd456212ee9c9d4d14aadf835a44"
+    },
+    "current": {
+      "offset": 1213552,
+      "size": 12,
+      "bytes": "68d03bd500fd40f9c0035fd6",
+      "sha256": "41ff69256629619329b17d2142b55267ac2f4ddb051ac8c297437a75ff48feeb",
+      "sourceSymbol": "_ZN2nn2os16GetCurrentThreadEv"
+    },
+    "sleep": {
+      "offset": 1213728,
+      "size": 4,
+      "bytes": "3c621214",
+      "sha256": "12dbb478488c23261db943ce55e229fb13ebb0668e5da68a68e63cfe3978d164",
+      "sourceSymbol": "_ZN2nn2os11SleepThreadENS_8TimeSpanE"
+    },
+    "tryWait": {
+      "offset": 1213744,
+      "size": 20,
+      "bytes": "885e00d008cd41f9e10300aa0081039138621214",
+      "sha256": "64817af8f36ef934b756708efc3c334cb78f6a51a869051187a741445431940b",
+      "sourceSymbol": "_ZN2nn2os13TryWaitThreadEPNS0_10ThreadTypeE"
+    },
+    "tryWaitImplementation": {
+      "offset": 1244172,
+      "size": 192,
+      "bytes": "ff0301d1fd7b01a9fd430091f65702a9f44f03a928b041b9f30301aae0130091e123009122008052e80b00b9e3031faa34008052a2a300946002003435409d5236809d5234008052085440921f0115eb800100541f0116eb2102005468b241b9e0130091e123009122008052e3031faae80b00b992a3009480feff3502000014f4031f2ae003142af44f43a9f65742a9fd7b41a9ff030191c0035fd6e00300b9004b00f000280c91e4030091e10300aae20300aae3031f2ae50300aa8a321294",
+      "sha256": "58b7f61f1682d953949d71bf9e03d1c423a1576d4239be91fba769e7f0778005",
+      "sourceSymbol": "_ZN2nn2os6detail26ThreadManagerImplByHorizon20TryWaitForExitThreadEPNS0_10ThreadTypeE"
+    }
+  },
+  "frameAbi": {
+    "longjmpContext": "x19..x30 at context+0x00..0x58, sp at +0x68",
+    "loadTable": "x8 = [x21], x20/x19 = [sp+0x20], x21 = [sp+0x10], sp += 0x30",
+    "call4": "x0=x25, x1=x21, x2=x20, x3=x28; blr x8; writes through x23 and x27, branch flag at sp+0x18 must be zero; sp += 0xa0; x0 remains a 64-bit return",
+    "saveResult64": "[x19]=x0; sp += 0x20",
+    "callStride": 240,
+    "scratchOffsetsFromCallSp": [
+      32,
+      40
+    ]
+  }
+}

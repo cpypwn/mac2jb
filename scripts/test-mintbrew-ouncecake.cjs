@@ -137,6 +137,7 @@ test('A selects one game; short B closes HTTP/WebDAV and allows another selectio
  assert.deepEqual(events.closed.sort((a,b)=>a-b),[101,201]);
  assert.ok(events.order.indexOf('server-stopped')<events.order.indexOf('handle:201'));
  assert.ok(events.order.indexOf('server-stopped')<events.order.indexOf('handle:101'));
+ await waitFor(()=>events.order.includes('title-ftp-resumed'),true);
  assert.ok(events.order.indexOf('handle:101')<events.order.indexOf('title-ftp-resumed'));
  await instance.select(0);await waitFor(()=>instance.report.status,'running');
  await instance.close();

@@ -1,0 +1,20 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCodeSha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52",
+  "sdkBase": "0x7893381000",
+  "method": "owned-memory raw-SVC thread with LightEvent start gate",
+  "priority": 44,
+  "borrowedCore": 0,
+  "workerCore": 0,
+  "affinityBefore": 1,
+  "affinityRequested": 1,
+  "affinityAfter": 1,
+  "gate": "worker result unchanged before signal; changed after signal",
+  "join": "svcWaitSynchronization returned success and index zero",
+  "cleanup": "thread handle closed, event finalized and arena released",
+  "bridgeStageAfter": "accept",
+  "limits": [
+    "same-core affinity was qualified; cross-core movement was not tested",
+    "filesystem calls and canary allocation geometry were not tested"
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCodeSha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52",
+  "status": "captured-signatures-only; raw-svc affinity still needs live worker qualification",
+  "functions": {
+    "pthread_getaffinity_np": {
+      "offset": 1259440,
+      "bytes": "ffc300d1fd7b01a9fd430091f44f02a93f2000f1c2000054c0028052f44f42a9fd7b41a9ffc30091c0035fd6f30302aae20300aa600300b448004139080d00511f050071e8020054f40301aae1230091e0031faad3351294e80b40b99f4200f1680200f94301005488fe43d31f0900f1490080520881899a08f17dd360220091022100d1e1031f2aaa191294e0031f2af44f42a9fd7b41a9ffc30091c0035fd660008052f44f42a9fd7b41a9ffc30091c0035fd6",
+      "size": 180,
+      "prefixSize": 180,
+      "sha256": "61999fee114ceb936efbf749a1f20a5aafa5e2444a1770d8ebfbde78cf4b12d7",
+      "dynamicSymbol": "pthread_getaffinity_np",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "pthread_setaffinity_np": {
+      "offset": 1259632,
+      "bytes": "fd7bbea9f44f01a9fd030091f30300aa3f2000f162000054f4031faa10000014540040f93f4000f1a301005428fc43d31f0900f1490080520881899a49200091080500d1c00280522a0140f90a0200b5080500f12921009181ffff54ad321294020014ea20020054930100b468024139080d00511f0500710801005401008012e00313aa93351294e0031f2af44f41a9fd7bc2a8c0035fd660008052f44f41a9fd7bc2a8c0035fd6c0028052f44f41a9fd7bc2a8c0035fd6",
+      "size": 184,
+      "prefixSize": 184,
+      "sha256": "bb9b0823acb0f6d67a80457c29787566d9a158588d6b52ec26ee0c16998eecc2",
+      "dynamicSymbol": "pthread_setaffinity_np",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "nn::os::SetThreadCoreMask(nn::os::ThreadType*, int, unsigned long)": {
+      "offset": 1213888,
+      "bytes": "885e00d008cd41f9e30302aae203012ae10300aa008103911e621214",
+      "size": 28,
+      "prefixSize": 28,
+      "sha256": "517a294375392099563501132b3140a7ac48f7803b2319f7097a48b27d0ea6b1",
+      "dynamicSymbol": "_ZN2nn2os17SetThreadCoreMaskEPNS0_10ThreadTypeEim",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "nn::os::GetThreadCoreMask(int*, unsigned long*, nn::os::ThreadType const*)": {
+      "offset": 1213920,
+      "bytes": "885e00d008cd41f9e30302aae20301aae10300aa008103911a621214",
+      "size": 28,
+      "prefixSize": 28,
+      "sha256": "e1cb3fe9f2b0ba5c32a081f75b292531b7cbf5eb18991b5cb36438b69cbf7362",
+      "dynamicSymbol": "_ZN2nn2os17GetThreadCoreMaskEPiPmPKNS0_10ThreadTypeE",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "nn::os::GetThreadAvailableCoreMask()": {
+      "offset": 1213952,
+      "bytes": "885e00d008cd41f90081039119621214",
+      "size": 16,
+      "prefixSize": 16,
+      "sha256": "8395bd48e510b77cd0a7f5512f2d5fe8693364c56fee58a36169496a15dee6c7",
+      "dynamicSymbol": "_ZN2nn2os26GetThreadAvailableCoreMaskEv",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "nn::os::GetCurrentCoreNumber()": {
+      "offset": 1213808,
+      "bytes": "885e00d008cd41f90081039131621214",
+      "size": 16,
+      "prefixSize": 16,
+      "sha256": "698618abfeb72beb9a0ff079a20227fa995e8b275ce0b8c472140a89f75f88b7",
+      "dynamicSymbol": "_ZN2nn2os20GetCurrentCoreNumberEv",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "nn::os::detail::ThreadManagerImplByHorizon::GetThreadAvailableCoreMask() const": {
+      "offset": 1245240,
+      "bytes": "ff8300d1fd7b01a9fd430091e0230091e1031f2ac2ff8f12e3031faac9a20094e00300b9a0000035e00740f9fd7b41a9ff830091c0035fd6004b00d000280c91e4030091e10300aae20300aae3031f2ae50300aa99311294",
+      "size": 88,
+      "prefixSize": 88,
+      "sha256": "d461c17b522a58828c84137e5fb886659110eb270fcc29bfac894164c786ed19",
+      "dynamicSymbol": "_ZNK2nn2os6detail26ThreadManagerImplByHorizon26GetThreadAvailableCoreMaskEv",
+      "qualification": "captured SDK instruction signature only"
+    },
+    "nn::os::detail::ThreadManagerImplByHorizon::GetCurrentCoreNumber() const": {
+      "offset": 1245036,
+      "bytes": "c3a20014",
+      "size": 4,
+      "prefixSize": 4,
+      "sha256": "da4c9aad9dc9b645ddde92fb7888f4eac8717ce9244b142ed4905e49c21a229c",
+      "dynamicSymbol": "_ZNK2nn2os6detail26ThreadManagerImplByHorizon20GetCurrentCoreNumberEv",
+      "qualification": "captured SDK instruction signature only"
+    }
+  }
+}

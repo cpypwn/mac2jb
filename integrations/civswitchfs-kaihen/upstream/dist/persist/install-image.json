@@ -1,0 +1,12 @@
+{
+  "profile": "civ7-sdk-19f22ec5",
+  "version": "civswitchfs-0.1.0+kaihen",
+  "bytes": 197351,
+  "sha256": "ca63c8102877a4d451ebd5035140986fea46cde930773cc568cb42f0de86a54a",
+  "coreSha256": "a22ca2f93b7fd7f7083df8ca42158e69f990acac9a397bfef58470558caa7df5",
+  "payloadSha256": "7f2a5b287283c6727e06b389b8837fedf402ea518670b34d4ad1cf0e433c39f7",
+  "templateSha256": "32fa8a0d6dd0a480d8e541e63ea44c4619bc6f7be4282cfc3cb6a4f6d305dfae",
+  "hideTriggerText": true,
+  "debugPayload": false,
+  "minifyPayload": false
+}

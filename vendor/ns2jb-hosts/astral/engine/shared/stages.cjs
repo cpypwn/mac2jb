@@ -1,10 +1,14 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {spawn} = require('node:child_process');
+const stageTimeoutMs = process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS === undefined ? 10 * 60 * 1000 :
+  Number(process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS);
+if (!Number.isSafeInteger(stageTimeoutMs) || stageTimeoutMs < 60000 || stageTimeoutMs > 3600000)
+  throw Error('Invalid host stage timeout');
 
 // A stage is never retried after a timeout or incomplete cleanup. Each stage
 // keeps its native ownership records in the current launch directory.
-async function run(directory, name, args = [], timeout = 10 * 60 * 1000) {
+async function run(directory, name, args = [], timeout = stageTimeoutMs) {
   if (!/^[a-z0-9-]+$/.test(name)) throw Error('Invalid stage name');
   console.log(name.replaceAll('-', ' ') + (args.length ? ': ' + args.join(' ') : ''));
   const file = path.join(directory, name + '-' + Date.now() + '.log');
@@ -36,4 +40,4 @@ async function run(directory, name, args = [], timeout = 10 * 60 * 1000) {
   } finally {clearTimeout(timer); clearTimeout(killTimer); await log.close();}
 }
 
-module.exports = {run};
+module.exports = {run, stageTimeoutMs};

@@ -9,6 +9,15 @@ const align = value => Math.ceil(value / PAGE) * PAGE;
 // Each call uses a table entry and a saved register frame. Dynamic arguments
 // are loaded by preceding memcpy calls, using the same checked SDK functions.
 function build(base, sdk, calls, code, fixed = false, target = loadTarget()) {
+  if (target.name === 'gravcirc') {
+    if (fixed || target.thread?.mode !== 'raw-svc' || !code.rawExitContinuation?.offset)
+      throw Error('Gravity Circuit worker lifecycle is not qualified');
+    return require('./frames-gravcirc.cjs').build(base, sdk, calls, code, {
+      sdkBytes: target.sdkBytes,
+      memcpyOffset: nativeOffset('memcpy', target),
+      exitOffset: code.rawExitContinuation.offset,
+    });
+  }
   if (base % PAGE || sdk % PAGE || calls.length < 1 || calls.length > (fixed ? 96 : 32768))
     throw Error('Invalid worker address or call count');
   const memcpyOffset = nativeOffset('memcpy', target);

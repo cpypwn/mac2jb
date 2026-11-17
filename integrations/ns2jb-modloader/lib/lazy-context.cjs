@@ -26,7 +26,7 @@ function layout(plan){
  return{romfs:HEADER,exefs:NAMESPACE,lazyOffset,gamesOffset,filesOffset,patchOffset,stringsOffset,inlineOffset,logOffset,logBufferOffset,traceOffset:align(logBufferOffset+0x4000,16),bytes:align(logBufferOffset+0x4000+(plan.diagnostics?.tracePath?49152:0),4096)};
 }
 function buildContext(plan,source,base,address,native,active=0){
- base=BigInt(base);address=BigInt(address);const l=layout(plan);
+ base=BigInt(base);address=BigInt(address);const resolve=reference=>require('./native/fs-layout.cjs').offset(native.fsLayout,reference);const l=layout(plan);
  check(Number.isSafeInteger(l.bytes)&&l.bytes>0&&l.bytes<=require('node:buffer').constants.MAX_LENGTH,'Resident manifest exceeds the addressable buffer size');
  const buffer=Buffer.alloc(l.bytes),pointers=new Map();
  const u64=(value,at)=>buffer.writeBigUInt64LE(BigInt(value),at);let at=l.stringsOffset;
@@ -38,15 +38,15 @@ function buildContext(plan,source,base,address,native,active=0){
   inlinePointers.set(file,address+BigInt(at));bytes.copy(buffer,at);at+=bytes.length;
  }
  buffer.write('NS2LFS02');buffer.writeUInt32LE(active,8);u64(source.filesystem.object,40);u64(base+BigInt(native.sdk.original.fileRead),48);
- u64(address+BigInt(l.romfs),56);u64(base+0x694c0n,104);u64(base+0x1077b0n,112);u64(base+BigInt(native.originalSize),120);u64(base+BigInt(native.namespace.original.open),128);u64(base+0x69580n,136);
+ u64(address+BigInt(l.romfs),56);u64(base+BigInt(resolve(0x694c0)),104);u64(base+BigInt(resolve(0x1077b0)),112);u64(base+BigInt(native.originalSize),120);u64(base+BigInt(native.namespace.original.open),128);u64(base+BigInt(resolve(0x69580)),136);
  for(const [i,name]of ['fileRead','fileSize','fileRelease','filesystemRelease','storageRelease','directoryRead','directoryCount','directoryRelease'].entries())u64(base+BigInt(native.sdk.original[name]),304+i*8);
  const c=l.romfs;buffer.writeUInt32LE(active,c);buffer.writeUInt32LE(0x34465343,c+4);
  for(const [name,offset]of [['open',8],['directory',16],['type',24]])u64(base+BigInt(native.namespace.original[name]),c+offset);
  u64(BigInt(source.filesystem.object)+8n,c+32);u64(base+BigInt(native.sdk.original.fileRead),c+40);u64(base+BigInt(native.sdk.original.fileSize),c+48);u64(base+BigInt(native.sdk.original.fileRelease),c+56);
  const a=l.lazyOffset;
  check(source.registry!==undefined,'Missing live FS program registry');
- for(const [value,offset]of [[source.registry,0],[base+0x121400n,8],[base+0x24a7a0n,16],[base+0x11ee960n,24],[base+0x215620n,32],[base+0x215800n,40],...['current','program','data'].map((name,i)=>[base+BigInt(native.lazy.original[name]),48+i*8]),[plan.lazyGames.length,72],[address+BigInt(l.gamesOffset),80],[plan.lazyPatches.length,88],[address+BigInt(l.patchOffset),96]])u64(value,a+offset);
- u64(base+0x107bc0n,a+184);u64(base+0x107cd0n,a+192);
+ for(const [value,offset]of [[source.registry,0],[base+BigInt(resolve(0x121400)),8],[base+BigInt(resolve(0x24a7a0)),16],[base+BigInt(resolve(0x11ee960)),24],[base+BigInt(resolve(0x215620)),32],[base+BigInt(resolve(0x215800)),40],...['current','program','data'].map((name,i)=>[base+BigInt(native.lazy.original[name]),48+i*8]),[plan.lazyGames.length,72],[address+BigInt(l.gamesOffset),80],[plan.lazyPatches.length,88],[address+BigInt(l.patchOffset),96]])u64(value,a+offset);
+ u64(base+BigInt(resolve(0x107bc0)),a+184);u64(base+BigInt(resolve(0x107cd0)),a+192);
  if(source.logFile&&plan.diagnostics){
   const diagnostic=plan.diagnostics,text=Buffer.from(diagnostic.text);check(text.length===diagnostic.size&&text.length<1024*1024,'Invalid report size');text.copy(buffer,l.logOffset);
   for(const [value,offset]of [[source.logFile.object,160],[source.logFile.write,168],[source.logFile.flush,176],[address+BigInt(l.logOffset),184],[text.length,192],[address+BigInt(l.logOffset+diagnostic.readyOffset),272]])u64(value,offset);

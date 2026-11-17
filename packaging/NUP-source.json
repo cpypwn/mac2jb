@@ -1,15 +1,19 @@
 {
   "repository": "https://github.com/a55uka/nup",
-  "commit": "6fa98a8623afc5e40eeb30052b77691f1a68d542",
-  "archive": "https://codeload.github.com/a55uka/nup/zip/6fa98a8623afc5e40eeb30052b77691f1a68d542",
-  "archiveSha256": "7a97b74ce0787856ad3e9009eef3e5c45d3c9faf113d421717856aa6cac4221b",
+  "commit": "a4840f06c94ddeb414eea5b33c9704ffe995f11c",
+  "archive": "https://codeload.github.com/a55uka/nup/zip/a4840f06c94ddeb414eea5b33c9704ffe995f11c",
+  "archiveSha256": "b2fea8a91b490cf81275d7f522aa5fd73a08a390ddf4275c4199993539855343",
   "modules": {
     "__init__.py": "10f43be5642e3dfff0cd41d458967ee1eb10d151733e52e6a8955d5364238df6",
-    "cli.py": "84e769105dc1b5984d3560a6408a065e9dd96ca788596290a1d07d031234778e",
-    "format.py": "d08006d883d33e36a5b3514b1d866aec1896ea77b473548627dc5d6d6534c410",
-    "pack.py": "8e6215b6286421712f7de199cec0a3b89f2b3e2e05b2ffb84c52b685bfe87030",
-    "read.py": "0c578c7169d823d0a8952eb0cd8192d035e3970447abafa028d5bd246f77f9fd",
-    "verify.py": "3296e69af92756cdad9c1168de56a5d2211661ec2c0ceefe8dc4251a8f774ffe"
+    "access.py": "d6cbc32d75825a5c21617fcd831c90c7a2339bf97b65206e9fd1319ea6dc249c",
+    "cli.py": "f7ac4471f9edfe0704667229f26baacec74c911e55e2ed2b5b30182a0f7becf5",
+    "discover.py": "4f58d968e631927b4eac3674ce27c81f2ea4c1316d8e8a22d305fbdf2b50067d",
+    "edit.py": "70ae8b86a88f50261c37f77e46e075c48ef291b73bfadf591919831e0f4e9125",
+    "format.py": "6300c4940fc8a716a80644e7fdedc5c331ce23134de7157a7588ae0d4d993c78",
+    "meta.py": "ac0cce0fb96749c76d7c432621b6591b354d31881252c064e1c7b04ae92b14ba",
+    "pack.py": "5e3c2f913b2d81abd12abde67f3324ef25b879aadfa7c17077dd4090e9b1075c",
+    "read.py": "7916d00ab4ccdacca8e048e18ddc3dde1c8ffccb501bd9ff1ced32b4f816eb89",
+    "verify.py": "e2813384752b7ed41dfc9dcafe74014eda616c4f89068c410df771b9608949f1"
   },
   "zstandard": {
     "version": "0.25.0",

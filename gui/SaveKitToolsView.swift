@@ -98,7 +98,9 @@ struct SaveKitToolsView: View {
                         if model.savekitInventoryFolder != nil {
                             Button("Open full inventory report") { model.revealSaveKitInventory() }
                         }
-                    }.padding(.top, 6)
+                    }
+                    .padding(.top, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }.font(.system(size: 11))
             }
             HStack {
@@ -142,7 +144,9 @@ struct SaveKitToolsView: View {
                     Toggle("Scan all matching archives", isOn: $scanAll).toggleStyle(.checkbox)
                     Text("A full scan can take a long time and may interrupt the RPC session. Narrow it to a space or type when possible.")
                         .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                }.padding(.top, 6)
+                }
+                .padding(.top, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }.font(.system(size: 11))
             HStack {
                 Button("List save files") { send("inspect", archiveOptions: true) }.disabled(!canRead)
@@ -173,7 +177,9 @@ struct SaveKitToolsView: View {
                             Text(sourceFolder?.lastPathComponent ?? "No folder chosen")
                                 .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
                         }
-                        Button("Back up and write save") { confirmWrite = true }
+                        Button("Back up and write save") {
+                            confirmWrite = true
+                        }
                             .disabled(!canModify || sourceFolder == nil)
                         HStack {
                             Button("Choose verified backup to restore…") { restoreFolder = chooseFolder() }
@@ -192,14 +198,18 @@ struct SaveKitToolsView: View {
                         Button("Verify live save against backup") {
                             if let comparisonFolder { send("verify", extra: ["expectedFolder": comparisonFolder.path]) }
                         }.disabled(!canRead || comparisonFolder == nil)
-                    }.padding(.top, 6)
+                    }
+                    .padding(.top, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }.font(.system(size: 11))
                 DisclosureGroup("Delete one save file") {
                     VStack(alignment: .leading, spacing: 8) {
                         TextField("File name at save root", text: $deleteName).textFieldStyle(.roundedBorder)
                         Button("Back up and delete file", role: .destructive) { confirmDelete = true }
                             .disabled(!canModify || deleteName.isEmpty)
-                    }.padding(.top, 6)
+                    }
+                    .padding(.top, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }.font(.system(size: 11))
             }
             if model.savekitBusy { ProgressView().controlSize(.small) }
@@ -225,12 +235,13 @@ struct SaveKitToolsView: View {
         .alert("Write save files to \(titleLabel(titleID))?", isPresented: $confirmWrite) {
             Button("Back up and replace matching files", role: .destructive) {
                 if let sourceFolder {
-                    send("write", extra: ["sourceFolder": sourceFolder.path, "allowReplace": true])
+                    send("write", extra: ["sourceFolder": sourceFolder.path,
+                                          "allowReplace": true])
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Files from \(sourceFolder?.path ?? "the selected folder") will be written for account \(accountID). A verified backup is made first. Matching files will be replaced; other files are kept.")
+            Text("Files from \(sourceFolder?.path ?? "the selected folder") will be written for account \(accountID). A verified backup is made first. Matching files will be replaced; other files remain.")
         }
         .alert("Restore backup to \(titleLabel(titleID))?", isPresented: $confirmRestore) {
             Button("Back up current save and restore", role: .destructive) {

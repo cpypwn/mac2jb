@@ -6,12 +6,18 @@ const crypto = require('node:crypto');
 const {execFileSync} = require('node:child_process');
 const overlays = require('./prepare-homebrew-apps.cjs');
 const ouncecake = require('../integrations/mintbrew-ouncecake/prepare.cjs');
+const mintftp = () => require('../integrations/mintbrew-file-explorer/prepare.cjs');
 
 const repository = path.resolve(__dirname, '..');
 const source = path.join(repository, 'vendor/MintBrew');
 const baseApps = ['hello-world', 'froggy-road', 'cpu-gpu-probe', 'chip8-test'];
 const runtimeApps = [...baseApps, 'ftpd-sb', 'stremio', 'ouncecake'];
 const check = (condition, message) => {if (!condition) throw Error(message);};
+
+function isTestBuild(runtimeRoot) {
+  const marker = path.join(runtimeRoot, 'packaging/test-build.json');
+  return fs.existsSync(marker) && JSON.parse(fs.readFileSync(marker, 'utf8')).testBuild === true;
+}
 
 function locate(input) {
   const root = path.resolve(input);
@@ -20,15 +26,15 @@ function locate(input) {
         fs.existsSync(path.join(candidate, 'apps'))) return candidate;
   throw Error('MintBrew runtime not found under ' + root);
 }
-function inspect(root, prepared) {
+function inspect(root, prepared, testBuild = false) {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
   check(manifest.name === 'MintBrew' && typeof manifest.version === 'string' &&
     /^\d+\.\d+\.\d+$/.test(manifest.version), 'Invalid MintBrew manifest.');
-  const expected = prepared ? runtimeApps : baseApps;
+  const expected = prepared ? [...runtimeApps, ...(testBuild ? ['mintnes', 'mintftp'] : [])] : baseApps;
   const apps = path.join(root, 'apps');
   const actual = fs.readdirSync(apps, {withFileTypes: true}).filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
   for (const name of expected) check(actual.includes(name), 'Missing MintBrew app: ' + name);
-  if (prepared) for (const name of ['mintnes', 'mintftp'])
+  if (prepared && !testBuild) for (const name of ['mintnes', 'mintftp'])
     check(!actual.includes(name), 'Unreleased MintBrew app is still staged: ' + name);
   for (const name of baseApps) {
     const manifest = JSON.parse(fs.readFileSync(path.join(apps, name, 'app.json')));
@@ -43,6 +49,12 @@ function inspect(root, prepared) {
   if (prepared) {
     overlays.verifyFiles(path.join(apps, 'ftpd-sb'), overlays.verifyOverlay(repository).manifest);
     ouncecake.verifyMintBrew(repository, root);
+    if (testBuild) {
+      mintftp().verifyMintBrew(repository, root);
+      const mintnes = JSON.parse(fs.readFileSync(path.join(apps, 'mintnes/app.json'), 'utf8'));
+      check(mintnes.id === 'mintnes' && mintnes.format === 'hblauncher.gpu-app' && mintnes.abi === 1,
+        'Invalid MintNES test app manifest.');
+    }
     const stremio = path.join(apps, 'stremio');
     const original = path.join(repository, 'stremio/app');
     for (const name of fs.readdirSync(original))
@@ -94,17 +106,21 @@ function main(args = process.argv.slice(2)) {
     return;
   }
   check(mode !== '--prepare' || args.length === 2, '--prepare requires a runtime path.');
-  const root = locate(args[1] || process.cwd());
+  const runtimeRoot = path.resolve(args[1] || process.cwd());
+  const root = locate(runtimeRoot);
+  const testBuild = isTestBuild(runtimeRoot);
   if (mode === '--prepare') {
     check(fs.realpathSync(root) !== fs.realpathSync(source), 'Refusing to prepare MintBrew in its source folder.');
     inspect(root, false);
-    for (const name of ['mintnes', 'mintftp']) fs.rmSync(path.join(root, 'apps', name), {recursive: true, force: true});
+    if (!testBuild) for (const name of ['mintnes', 'mintftp'])
+      fs.rmSync(path.join(root, 'apps', name), {recursive: true, force: true});
+    else mintftp().prepareMintBrew(repository, root);
     if (!fs.existsSync(path.join(root, 'apps/ftpd-sb'))) overlays.installOverlays(repository, path.join(root, 'apps'));
     ouncecake.prepareMintBrew(repository, root);
     const stremio = path.join(root, 'apps/stremio');
     if (!fs.existsSync(stremio)) fs.cpSync(path.join(repository, 'stremio/app'), stremio, {recursive: true});
   }
-  const result = inspect(root, true);
+  const result = inspect(root, true, testBuild);
   console.log('MintBrew runtime ready: ' + result.apps.join(', '));
 }
 if (require.main === module) {

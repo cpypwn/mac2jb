@@ -369,6 +369,10 @@ async function tool(name, args) {
   return result;
 }
 
+function pullCleanupOk(result) {
+  return result.stdout.split(/\r?\n/).some(line => line.trim() === 'MAC2JB_SAVE_PULL_CLEANUP_OK');
+}
+
 function missingSaveArchive(result, titleId) {
   if (result.code !== 1 || result.signal) return false;
   const output = `${result.stderr || ''}\n${result.stdout || ''}`;
@@ -787,7 +791,7 @@ async function install(runDirectory, sourcePath, variant) {
   const runPath = await require('./gui-savekit-tools.cjs').validRun(runDirectory);
   const stageRoot = await fsp.mkdtemp(path.join(root, 'seedsow-stage-'));
   const extracted = path.join(stageRoot, 'editor');
-  let backup;
+  let backup, nativeClean = true, writeStarted = false;
   try {
     emit('progress', {stage: 'checking', message: sourcePath
       ? 'Checking the selected Seedsow Lua Editor save' :
@@ -796,8 +800,11 @@ async function install(runDirectory, sourcePath, variant) {
     const files = sourcePath ? await stageCustomEditor(extracted, sourcePath) :
       variant === 'pro' ? await stageProEditor(extracted) : await stageEditor(extracted);
     emit('progress', {stage: 'finding', message: 'Finding the Seedsow Lullaby demo save'});
+    nativeClean = false;
     const listed = await tool('save-pull-root.cjs',
       [runPath, '0000000000000000', '.', '--list-uids']);
+    nativeClean = pullCleanupOk(listed);
+    check(nativeClean, 'Console account listing did not confirm native cleanup.');
     check(listed.code === 0, 'Could not list console users. Restart the console before retrying.');
     const uids = [...new Set(listed.stdout.split('\n').map(line => line.trim().toLowerCase())
       .filter(line => uidPattern.test(line)))];
@@ -808,8 +815,11 @@ async function install(runDirectory, sourcePath, variant) {
     const backups = path.join(root, 'seedsow-backups');
     await fsp.mkdir(backups, {recursive: true, mode: 0o700});
     backup = await fsp.mkdtemp(path.join(backups, 'demo-' + uid.slice(0, 8) + '-'));
+    nativeClean = false;
     const pulled = await tool('save-pull-root.cjs',
       [runPath, programId, backup, uid, '--space', '1', '--type', '1', '--rank', '0']);
+    nativeClean = pullCleanupOk(pulled);
+    check(nativeClean, 'The Seedsow backup did not confirm native cleanup. No save write was attempted.');
     if (missingSaveArchive(pulled, programId)) {
       await fsp.rm(backup, {recursive: true, force: true});
       backup = undefined;
@@ -847,6 +857,7 @@ async function install(runDirectory, sourcePath, variant) {
       ? 'Writing selected editor files and verifying every file'
       : variant === 'pro' ? 'Writing Seedsow Lua Editor Pro and verifying every file'
       : 'Writing the editor and cpypwn showcase, then verifying every file'});
+    writeStarted = true;
     const written = await tool('save-write-stage.cjs', [runPath, programId, uid, backup, manifestPath]);
     check(written.code === 0 && written.stdout.includes('verified ' + plan.files.length + ' written files after commit'),
       'The Seedsow editor write was not fully verified. Keep the backup and restart the console.');
@@ -858,7 +869,8 @@ async function install(runDirectory, sourcePath, variant) {
         : 'Seedsow Lua Editor v0.1.3 and cpypwn showcase installed. Keep SmileBASIC open while using this held RPC session.'});
   } catch (error) {
     emit('failed', {backupPath: backup,
-      ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} : {}), message: error.message});
+      ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} : {}),
+      safeToContinue: !writeStarted && nativeClean, message: error.message});
     process.exitCode = 1;
   } finally {
     await fsp.rm(stageRoot, {recursive: true, force: true});
@@ -874,14 +886,17 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
   const stageRoot = await fsp.mkdtemp(path.join(root, 'artemis-stage-'));
   const extracted = path.join(stageRoot, 'save');
   const report = (type, fields) => emit(type, {game, ...fields});
-  let backup, writeStarted = false;
+  let backup, writeStarted = false, nativeClean = true;
   try {
     report('progress', {stage: 'checking', message: `Checking the bundled ${profile.title} Artemis launcher`});
     let files = fullGame ? await stageUpstreamArtemis(extracted, game) :
       await stageBundledArtemis(extracted, game);
     report('progress', {stage: 'finding', message: `Finding the ${profile.title} save`});
+    nativeClean = false;
     const listed = await tool('save-pull-root.cjs',
       [runPath, '0000000000000000', '.', '--list-uids']);
+    nativeClean = pullCleanupOk(listed);
+    check(nativeClean, 'Console account listing did not confirm native cleanup.');
     check(listed.code === 0, 'Could not list console users. Restart the console before retrying.');
     const uids = [...new Set(listed.stdout.split('\n').map(line => line.trim().toLowerCase())
       .filter(line => uidPattern.test(line)))];
@@ -892,8 +907,11 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
     const backups = path.join(root, 'artemis-backups');
     await fsp.mkdir(backups, {recursive: true, mode: 0o700});
     backup = await fsp.mkdtemp(path.join(backups, `${game}-${uid.slice(0, 8)}-`));
+    nativeClean = false;
     const pulled = await tool('save-pull-root.cjs',
       [runPath, profile.titleId, backup, uid, '--space', '1', '--type', '1', '--rank', '0']);
+    nativeClean = pullCleanupOk(pulled);
+    check(nativeClean, `The ${profile.title} backup did not confirm native cleanup. No save write was attempted.`);
     if (missingSaveArchive(pulled, profile.titleId)) {
       await fsp.rm(backup, {recursive: true, force: true});
       backup = undefined;
@@ -940,7 +958,8 @@ async function installArtemis(runDirectory, game, variant = 'demo') {
   } catch (error) {
     report('failed', {backupPath: backup,
       ...(fullGame && backup && !writeStarted ? {reason: 'save-preflight'} : {}),
-      ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} : {}), message: error.message});
+      ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} : {}),
+      safeToContinue: !writeStarted && nativeClean, message: error.message});
     process.exitCode = 1;
   } finally {
     await fsp.rm(stageRoot, {recursive: true, force: true});
@@ -954,12 +973,16 @@ async function installNestedSave(runDirectory, config) {
   const extracted = path.join(stageRoot, 'save');
   const report = (type, fields) => emit(type, {game, ...fields});
   let backup;
+  let writeStarted = false, nativeClean = true;
   try {
     report('progress', {stage: 'checking', message: `Checking the bundled ${title} save`});
     const files = await stage(extracted);
     report('progress', {stage: 'finding', message: `Finding the ${title} save account`});
+    nativeClean = false;
     const listed = await tool('save-pull-root.cjs',
       [runPath, '0000000000000000', '.', '--list-uids']);
+    nativeClean = pullCleanupOk(listed);
+    check(nativeClean, 'Console account listing did not confirm native cleanup.');
     check(listed.code === 0, 'Could not list console accounts. Restart the console before retrying.');
     const uids = [...new Set(listed.stdout.split('\n').map(line => line.trim().toLowerCase())
       .filter(line => uidPattern.test(line)))];
@@ -970,14 +993,18 @@ async function installNestedSave(runDirectory, config) {
     const backups = path.join(root, `${game}-backups`);
     await fsp.mkdir(backups, {recursive: true, mode: 0o700});
     backup = await fsp.mkdtemp(path.join(backups, `${game}-${uid.slice(0, 8)}-`));
+    nativeClean = false;
     const pulled = await tool('save-pull-root.cjs',
       [runPath, titleId, backup, uid, '--space', '1', '--type', '1', '--rank', '0']);
+    nativeClean = pullCleanupOk(pulled);
+    check(nativeClean, `The ${title} backup did not confirm native cleanup. No save write was attempted.`);
     if (missingSaveArchive(pulled, titleId)) {
       await fsp.rm(backup, {recursive: true, force: true});
       backup = undefined;
       throw absentSaveError(title);
     }
-    check(pulled.code === 0, `The ${title} backup failed. No save write was attempted.`);
+    const pullFailure = (pulled.stderr.match(/^FAILED: ([^\r\n]{1,200})/m) || [])[1];
+    check(pulled.code === 0, `The ${title} backup failed${pullFailure ? `: ${pullFailure}` : ''}. No save write was attempted.`);
     const original = await require('./gui-savekit-tools.cjs').verifyPull(backup,
       {titleId, uid,
         selection: {space: 1, type: 1, rank: 0, index: 0, staticId: 0}});
@@ -1001,6 +1028,7 @@ async function installNestedSave(runDirectory, config) {
     const manifestPath = path.join(stageRoot, 'manifest.json');
     await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n', {mode: 0o600});
     report('progress', {stage: 'writing', message: `Writing and verifying the ${title} save`});
+    writeStarted = true;
     const written = await tool('save-write-stage.cjs',
       [runPath, titleId, uid, backup, manifestPath]);
     if (written.code !== 0 ||
@@ -1032,8 +1060,9 @@ async function installNestedSave(runDirectory, config) {
   } catch (error) {
     report('failed', {backupPath: backup,
       ...(error.code === 'SAVE_ABSENT' ? {reason: 'save-absent'} :
-        error.code === 'SAVE_UNCHANGED' ? {reason: 'save-unchanged'} : {}),
-      message: error.message});
+        error.code === 'SAVE_UNCHANGED' ? {reason: 'save-unchanged'} :
+          !writeStarted ? {reason: 'save-preflight'} : {}),
+      safeToContinue: !writeStarted && nativeClean, message: error.message});
     process.exitCode = 1;
   } finally {
     await fsp.rm(stageRoot, {recursive: true, force: true});

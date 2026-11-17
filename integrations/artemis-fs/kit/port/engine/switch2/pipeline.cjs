@@ -1,7 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const {a} = require('../shared/rpc.cjs');
-const {run} = require('../shared/stages.cjs');
+const {run, configuredTimeout} = require('../shared/stages.cjs');
 const {connect} = require('./tools/fs-memory.cjs');
 const runtime = require('./ro/runtime.cjs');
 const {read, save, local, hash} = runtime;
@@ -93,7 +93,7 @@ async function main() {
     await script('ro', 'prepare-event');
     const gate = await script('ro', 'test-gate');
     check(gate.verified && gate.restored, 'The native request gate did not qualify');
-    const launch = await script('ro', 'launch', [], 300000);
+    const launch = await script('ro', 'launch', [], configuredTimeout());
     check(launch.imageAccepted && launch.restored && launch.pid, 'PM did not accept the payload');
     const activation = await stage('Start RO payload', () => runtime.activate(launch.file));
     const proof = await stage('RO instruction challenges', () => runtime.probe(activation.pid));

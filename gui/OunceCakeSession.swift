@@ -11,10 +11,15 @@ struct OunceCakeGame: Decodable, Equatable, Identifiable {
     }
 }
 
+enum OunceCakeService {
+    case webDAV, civFTP
+}
+
 struct OunceCakeEndpoint: Equatable {
     let host: String
     let port: Int
-    var address: String { "http://\(host):\(port)/" }
+    let service: OunceCakeService
+    var address: String { "\(service == .civFTP ? "ftp" : "http")://\(host):\(port)/" }
 }
 
 // only the current verified host can supply a catalog and confirm its endpoint.
@@ -23,6 +28,7 @@ struct OunceCakeSession: Equatable {
     enum Stage { case idle, discovering, choosing, preparing, serving, stopped, failed, cleanupBlocked }
     private(set) var stage: Stage = .idle
     private(set) var consoleAddress = ""
+    private(set) var service: OunceCakeService = .webDAV
     private(set) var games: [OunceCakeGame] = []
     private(set) var selectedTitleId: String?
     private(set) var endpoint: OunceCakeEndpoint?
@@ -39,9 +45,10 @@ struct OunceCakeSession: Equatable {
         return address
     }
 
-    @discardableResult mutating func begin(consoleAddress: String) -> Bool {
+    @discardableResult mutating func begin(consoleAddress: String, service: OunceCakeService = .webDAV) -> Bool {
         guard stage == .idle, let address = Self.validConsoleAddress(consoleAddress) else { return false }
         self.consoleAddress = address
+        self.service = service
         stage = .discovering
         return true
     }
@@ -73,10 +80,13 @@ struct OunceCakeSession: Equatable {
         return true
     }
 
-    @discardableResult mutating func receiveEndpoint(host: String?, port: Int?, httpURL: String?) -> Bool {
+    @discardableResult mutating func receiveEndpoint(host: String?, port: Int?, httpURL: String?, ftpURL: String? = nil) -> Bool {
         guard stage == .preparing, let host, host == consoleAddress, port == 2121 else { return false }
-        let endpoint = OunceCakeEndpoint(host: host, port: 2121)
-        guard httpURL == endpoint.address else { return false }
+        let endpoint = OunceCakeEndpoint(host: host, port: 2121, service: service)
+        switch service {
+        case .webDAV: guard httpURL == endpoint.address else { return false }
+        case .civFTP: guard httpURL == nil, ftpURL == endpoint.address else { return false }
+        }
         self.endpoint = endpoint
         stage = .serving
         return true

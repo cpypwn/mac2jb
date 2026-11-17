@@ -1,0 +1,50 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "sourceFunctions": {
+    "nn::os::CreateThread": "0x1280f0",
+    "nn::os::detail::ThreadManager::CreateThread": "0x1292e8",
+    "nn::os::detail::ThreadManager::ThreadManager": "0x129a48",
+    "nn::os::detail::ThreadManagerImplByHorizon::CreateThread": "0x12f954",
+    "nn::os::detail::ThreadManagerImplByHorizon::GetThreadCoreMask": "0x12ffc0",
+    "pthread_create": "0x1323b0"
+  },
+  "manager": {
+    "globalPointerOffset": 13607832,
+    "bias": 224,
+    "listSentinelOffset": 464,
+    "nextOffset": 0,
+    "previousOffset": 8
+  },
+  "node": {
+    "argumentOffset": 96,
+    "entryOffset": 104,
+    "kernelHandleOffset": 432
+  },
+  "pthread": {
+    "nodeOffset": 832,
+    "argumentOffset": 488,
+    "entryOffset": 496
+  },
+  "evidence": {
+    "managerPage": { "offset": 1212664, "bytes": "885e00d0" },
+    "managerLoad": { "offset": 1212668, "bytes": "08cd41f9" },
+    "managerBias": { "offset": 1212672, "bytes": "08810391" },
+    "sentinelAddress": { "offset": 1219188, "bytes": "76420791" },
+    "sentinelSelfLink": { "offset": 1219212, "bytes": "76ea00f9" },
+    "nodeSelfLinks": { "offset": 1217416, "bytes": "734e00a9" },
+    "nodeArgument": { "offset": 1217424, "bytes": "76e605a9" },
+    "nodeEntry": { "offset": 1217428, "bytes": "7afe06a9" },
+    "nodeNext": { "offset": 1217700, "bytes": "6a0200f9" },
+    "nodePrevious": { "offset": 1217712, "bytes": "130500f9" },
+    "storeKernelHandle": { "offset": 1243680, "bytes": "61b201b9" },
+    "loadKernelHandle": { "offset": 1245140, "bytes": "62b041b9" },
+    "pthreadArgumentRegister": { "offset": 1254352, "bytes": "f40303aa" },
+    "pthreadEntryRegister": { "offset": 1254356, "bytes": "f50302aa" },
+    "pthreadNodeAddress": { "offset": 1254740, "bytes": "00030d91" },
+    "pthreadEntryArgument": { "offset": 1254760, "bytes": "14d71ea9" }
+  }
+}

@@ -94,6 +94,17 @@ function parseHello(bytes, target = loadTarget()) {
       memmove !== sdk + nativeOffset('memmove', target) ||
       values[15] !== (expectedCrc === null ? 0 : expectedCrc))
     throw Error(`Unsupported ${target.displayName} SDK or bootstrap layout`);
+  if (target.name === 'gravcirc') {
+    const appArena = values[11], appArenaBytes = values[12];
+    if (appArena < 0x1000 || appArena % 4096 ||
+        ![0x80000, 0x2400000].includes(appArenaBytes) ||
+        appArena + appArenaBytes >= 2 ** 39 ||
+        appArena < scratch + scratchBytes && scratch < appArena + appArenaBytes ||
+        values[13] !== 0 || values[14] !== 0)
+      throw Error('Gravity Circuit app arena is absent or invalid');
+    addresses.appArena = appArena;
+    addresses.appArenaBytes = appArenaBytes;
+  }
   return {...addresses, platform: 2, sdkCrc32: values[15], target: target.name};
 }
 
@@ -122,7 +133,10 @@ async function listen({host, port, onWaiting, timeout = 10 * 60 * 1000, target =
         pending.delete(connection);
         stop();
         for (const other of pending) other.close();
-        connection.timeout = 120000;
+        const requestedTimeout = Number(process.env.NS2_CONSOLE_TIMEOUT_MS);
+        connection.timeout = Number.isSafeInteger(requestedTimeout) &&
+          requestedTimeout >= 10000 && requestedTimeout <= 600000
+          ? requestedTimeout : 300000;
         resolve({connection, addresses});
       }).catch(() => {pending.delete(connection); connection.close();});
     });

@@ -26,11 +26,15 @@ function bridge(base,owner,args,externals,publish=false){
  for(let i=0;i<args.length;i++)r.code.writeBigUInt64LE(BigInt(args[i]),r.symbols['arg'+i].value);
  check(r.code.length<=256,'Native call template exceeds the bridge');return r.code;
 }
-function runtime(context,namespaceContext,lazyContext=0n){
+function runtime(context,namespaceContext,lazyContext=0n,fs=null){
  const r=artifacts().templates.runtime,code=Buffer.from(r.code,'base64');
  check(r.offsets.resident_context>=0&&r.offsets.namespace_context>=0,'Missing runtime context literals');
  code.writeBigUInt64LE(BigInt(context),r.offsets.resident_context);code.writeBigUInt64LE(BigInt(namespaceContext),r.offsets.namespace_context);
  if(r.offsets.lazy_context!==undefined)code.writeBigUInt64LE(BigInt(lazyContext),r.offsets.lazy_context);
+ if(fs)for(const [symbol,reference]of [['lfs_mutex_lock_address',0x2187d0],['lfs_mutex_unlock_address',0x218870]]){
+  check(Number.isSafeInteger(r.offsets[symbol]),'Missing native mutex binding');
+  code.writeBigUInt64LE(BigInt(fs.base)+BigInt(require('./fs-layout.cjs').offset(fs.layout,reference)),r.offsets[symbol]);
+ }
  return{code,offsets:r.offsets};
 }
 module.exports={artifacts,bridge,runtime};

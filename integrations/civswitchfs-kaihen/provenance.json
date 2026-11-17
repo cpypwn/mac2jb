@@ -1,0 +1,11 @@
+{
+  "source": "https://github.com/s8n/CivSwitchFS-kaiHEN",
+  "commit": "c426a3e92ef8cb4245be6d950da01cb8c458be4f",
+  "testedConfiguration": "Upstream: Civ VII 1.0.0, Switch 2 firmware 23.0.1, kaiHEN 20261116",
+  "kaihenRelease": "https://github.com/s8n/CivSwitchFS-kaiHEN/releases/tag/20261116",
+  "kaihenUpstreamRelease": "https://github.com/ouncebrew/kaihen/releases/tag/20261116",
+  "kaihenZipSha256": "9ec9d028c407568b7009d94f727d05df0e6bbffda30db7a82347e2a50c3d4d9b",
+  "chainSha256": "acfaee19411bcac2de35fb58f48c1d87f30d8a75f5415e7f3565a04a5348548d",
+  "persistBootstrapSha256": "9399d13f2a5bba72eb4356030bb7abb9ba25ad474cd3c973e4bbeda607cfd9ce",
+  "saveTemplateSha256": "32fa8a0d6dd0a480d8e541e63ea44c4619bc6f7be4282cfc3cb6a4f6d305dfae"
+}

@@ -1,0 +1,13 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkBytes": 6148096,
+  "sdkCrc32": 4209895763,
+  "memmove": {
+    "offset": 5805280,
+    "bytes": "fd7bbea9f30b00f9fd030091f30300aa1f0001eb800300542800028b1f0113eb"
+  },
+  "queryMemory": {
+    "offset": 1411552,
+    "bytes": "e10f1ff8c10000d4e20340f9410000b9ff430091c0035fd6"
+  }
+}

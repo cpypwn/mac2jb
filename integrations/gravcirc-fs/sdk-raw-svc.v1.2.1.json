@@ -1,0 +1,28 @@
+{
+  "gameProfile": "gravity-circuit-v1.2.1",
+  "sdkCode": {
+    "size": 6148096,
+    "sha256": "9016be5c93da27fa4bf54c816fc8ffe48e2661e309bc8584da507e951723ef52"
+  },
+  "status": "raw thread create, start, wait, close and same-core affinity live-qualified",
+  "managerList": {
+    "globalPointerOffset": 13607832,
+    "managerBias": 224,
+    "listSentinelOffset": 464,
+    "nodeHandleOffset": 432,
+    "maxNodes": 64
+  },
+  "waitTimeoutResult": 59905,
+  "functions": {
+    "createThread": {"offset": 1411584, "size": 24, "bytes": "e00f1ff8010100d4e20340f9410000b9ff430091c0035fd6", "sha256": "f219e6844e5bc00b1cfddc1d79b17d8912de4694f1afb4ecccac311b5fa8e7aa"},
+    "startThread": {"offset": 1411608, "size": 8, "bytes": "210100d4c0035fd6", "sha256": "74ad737290d0b3378cd228fdcb9ade82616a21e4d4ec9d404f26b496601b91cd"},
+    "exitThread": {"offset": 1411616, "size": 8, "bytes": "410100d4c0035fd6", "sha256": "4cf40568345612b57aa00bb1203772b3dba1a414aa87aff6950f18d710333b9a"},
+    "getThreadPriority": {"offset": 1411632, "size": 24, "bytes": "e00f1ff8810100d4e20340f9410000b9ff430091c0035fd6", "sha256": "b6bbee60394563b51b4fa608a61b4cd978c41313934e36555e7b024e03dc82d3"},
+    "getThreadCoreMask": {"offset": 1411664, "size": 32, "bytes": "e007bfa9c10100d4e30340f9610000b9e30740f9620000f9ff430091c0035fd6", "sha256": "edef9bd01da0ce33c69f48c4012afe76099a9a384d48ac91a2c4e89542299a12"},
+    "setThreadCoreMask": {"offset": 1411696, "size": 8, "bytes": "e10100d4c0035fd6", "sha256": "7f95f9bc19d4d77aa81c618046994a1f21e550df121cc5ab7913daa0f604ad2b"},
+    "getCurrentProcessorNumber": {"offset": 1411704, "size": 8, "bytes": "010200d4c0035fd6", "sha256": "92b6b6ee094a27d4f3fe32801a9a6e23955487bdf6f6a59b836abb47b2e22055"},
+    "closeHandle": {"offset": 1411768, "size": 8, "bytes": "c10200d4c0035fd6", "sha256": "deece32043f3736d68d757a1b01501d4f9a43a053fa3049fbfb1fdcbc0a13965"},
+    "waitSynchronization": {"offset": 1411784, "size": 24, "bytes": "e00f1ff8010300d4e20340f9410000b9ff430091c0035fd6", "sha256": "c21ce9ebd6f850c74271da02d514754994b1757019d4a70ec5316f16ecfc5992"},
+    "readTpidrro": {"offset": 1307296, "size": 8, "bytes": "60d03bd5c0035fd6", "sha256": "e5f6e73ea64dea0683f62379503079d4ca4b36248b1a235d59739696f1d7ae7a"}
+  }
+}

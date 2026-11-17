@@ -29,3 +29,20 @@ test('MintBrew restores ftpd-sb in its intended position without staging unrelea
   assert.ok(order.indexOf('ftpd-sb')<order.indexOf('cpu-gpu-probe'));
  }finally{fs.rmSync(directory,{recursive:true,force:true});}
 });
+
+test('MintBrew includes MintNES and MintFTP in a test runtime',async()=>{
+ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'mac2jb-mintbrew-experiments-'));
+ try{
+  fs.mkdirSync(path.join(directory,'vendor'));
+  fs.cpSync(path.join(root,'vendor/MintBrew'),path.join(directory,'vendor/MintBrew'),{recursive:true});
+  fs.mkdirSync(path.join(directory,'packaging'));
+  fs.writeFileSync(path.join(directory,'packaging/test-build.json'),JSON.stringify({testBuild:true}));
+  execFileSync(process.execPath,[prepare,'--prepare',directory],{stdio:'pipe'});
+  execFileSync(process.execPath,[prepare,'--check-runtime',directory],{stdio:'pipe'});
+  const apps=path.join(directory,'vendor/MintBrew/apps');
+  const catalog=await require('../vendor/MintBrew/homebrew-launcher/app-catalog.cjs').scan(apps);
+  assert.deepEqual(catalog.rejected,[]);
+  assert.ok(catalog.apps.some(app=>app.id==='mintnes'));
+  assert.ok(catalog.apps.some(app=>app.id==='mintftp'));
+ }finally{fs.rmSync(directory,{recursive:true,force:true});}
+});

@@ -1,12 +1,28 @@
 'use strict';
 
 const fs = require('node:fs/promises');
+const {execFile} = require('node:child_process');
 const os = require('node:os');
 const path = require('node:path');
+const {promisify} = require('node:util');
 
 const ROOT = path.resolve(__dirname, '..');
 const CATALOG = path.join(ROOT, 'integrations/civhomebrew-catalog');
 const PRIOR_CATALOG_LAUNCHER_CHECKSUM = '60d573be';
+const runFile = promisify(execFile);
+
+async function nativeLauncher(source, python, environment) {
+  const script = "import json; from payload_menu import component_bundle, system_package; print(json.dumps(system_package('launcher', component_bundle('launcher')), ensure_ascii=False))";
+  const {stdout} = await runFile(python, ['-B', '-c', script], {
+    cwd: path.join(source, 'tools'), env: environment, maxBuffer: 12 * 1024 * 1024
+  });
+  const image = JSON.parse(stdout);
+  if (image.format !== 'civswitch-system' || image.component !== 'launcher' ||
+      !image.source.includes('CivNanoVGMainComponent') || image.checksum !== fnvHash(image.source)) {
+    throw Error('Invalid CivHomebrew native launcher package');
+  }
+  return image;
+}
 
 function replaceOnce(source, before, after, name) {
   const index = source.indexOf(before);
@@ -42,7 +58,8 @@ async function launcherBundle(source, menu) {
     index ? [Buffer.from('\n;\n'), part] : [part])).toString('utf8');
 }
 
-async function upstreamLauncherChecksum(source, menu) {
+async function upstreamLauncherChecksum(source, menu, options = {}) {
+  if (options.python) return (await nativeLauncher(source, options.python, options.environment)).checksum;
   return fnvHash(await launcherBundle(source, menu));
 }
 
@@ -58,8 +75,11 @@ async function launcherPackage(source, menu) {
 function patchLauncher(source, checksum) {
   source = replaceOnce(source, "ROOT/'app/src/ftp.js', ROOT/'app/app.js'",
     "ROOT/'app/src/ftp.js', ROOT/'app/src/catalog.js', ROOT/'app/src/catalog-ui.js', ROOT/'app/app.js'", 'launcher bundle');
-  source = replaceOnce(source, "'seeds':{name:system_package(name,component_bundle(name)",
-    "'upstreamLauncherChecksum':'" + checksum + "','seeds':{name:system_package(name,component_bundle(name)", 'launcher upgrade identity');
+  const seed = source.includes("'seeds':{name:system_package(name,component_bundle(name,native_launcher=native_launcher)")
+    ? "'seeds':{name:system_package(name,component_bundle(name,native_launcher=native_launcher)"
+    : "'seeds':{name:system_package(name,component_bundle(name)";
+  source = replaceOnce(source, seed,
+    "'upstreamLauncherChecksum':'" + checksum + "'," + seed, 'launcher upgrade identity');
   return source;
 }
 
@@ -79,7 +99,7 @@ function patchBoot(source) {
     'guarded catalog launcher upgrade');
 }
 
-function patchApp(source) {
+function patchApp(source, options = {}) {
   source = replaceOnce(source, 'options=null,appMenu=null,updater=null',
     'options=null,appMenu=null,catalogUI=null,updater=null', 'catalog state');
   source = replaceCount(source, 'if(options&&options.editing())return;',
@@ -91,7 +111,7 @@ function patchApp(source) {
     'if(systemUI)systemUI.close();if(options)options.close();if(appMenu)appMenu.close();if(catalogUI)await catalogUI.close();', 'catalog close');
   source = replaceOnce(source,
     'options=g.CivOptions.create({stage:stage,layout:layout,settings:',
-    'catalogUI=g.CivCatalogUI.create({stage:stage,layout:layout,api:api,catalog:g.CivCatalog.create({api:api,native:boot.native}),native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};}});\n        options=g.CivOptions.create({stage:stage,layout:layout,browse:function(){catalogUI.open();},settings:', 'catalog startup');
+    'catalogUI=g.CivCatalogUI.create({stage:stage,layout:layout,api:api,catalog:g.CivCatalog.create({api:api,native:boot.native,requireNativeUi:' + !!options.python + '}),native:function(){return !!(g.PayloadNative&&g.PayloadNative.available);},focus:function(){if(!closed)root.focus();},suppress:function(){ignoreUntil=Date.now()+250;held="";last={name:"",time:0};}});\n        options=g.CivOptions.create({stage:stage,layout:layout,browse:function(){catalogUI.open();},settings:', 'catalog startup');
   return source;
 }
 
@@ -105,7 +125,7 @@ function patchOptions(source) {
   return source;
 }
 
-async function createOverlay(source) {
+async function createOverlay(source, options = {}) {
   const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'mac2jb-civ-catalog-'));
   const target = path.join(temporary, 'source');
   try {
@@ -113,13 +133,13 @@ async function createOverlay(source) {
     const menu = path.join(target, 'tools/payload_menu.py');
     const boot = path.join(target, 'app/boot.js');
     const app = path.join(target, 'app/app.js');
-    const options = path.join(target, 'app/src/options.js');
+    const optionsFile = path.join(target, 'app/src/options.js');
     const menuSource = await fs.readFile(menu, 'utf8');
-    const checksum = await upstreamLauncherChecksum(target, menuSource);
+    const checksum = await upstreamLauncherChecksum(target, menuSource, options);
     await fs.writeFile(menu, patchLauncher(menuSource, checksum));
     await fs.writeFile(boot, patchBoot(await fs.readFile(boot, 'utf8')));
-    await fs.writeFile(app, patchApp(await fs.readFile(app, 'utf8')));
-    await fs.writeFile(options, patchOptions(await fs.readFile(options, 'utf8')));
+    await fs.writeFile(app, patchApp(await fs.readFile(app, 'utf8'), options));
+    await fs.writeFile(optionsFile, patchOptions(await fs.readFile(optionsFile, 'utf8')));
     await fs.copyFile(path.join(CATALOG, 'catalog.js'), path.join(target, 'app/src/catalog.js'));
     await fs.copyFile(path.join(CATALOG, 'catalog-ui.js'), path.join(target, 'app/src/catalog-ui.js'));
     return {path: target, cleanup: () => fs.rm(temporary, {recursive: true, force: true})};
@@ -129,11 +149,14 @@ async function createOverlay(source) {
   }
 }
 
-async function buildLauncherPackage(source) {
-  const overlay = await createOverlay(source);
+async function buildLauncherPackage(source, options = {}) {
+  const overlay = await createOverlay(source, options);
   try {
     const menu = await fs.readFile(path.join(overlay.path, 'tools/payload_menu.py'), 'utf8');
-    return {package: await launcherPackage(overlay.path, menu), cleanup: overlay.cleanup};
+    const image = options.python
+      ? await nativeLauncher(overlay.path, options.python, options.environment)
+      : await launcherPackage(overlay.path, menu);
+    return {package: image, cleanup: overlay.cleanup};
   } catch (error) {
     await overlay.cleanup();
     throw error;

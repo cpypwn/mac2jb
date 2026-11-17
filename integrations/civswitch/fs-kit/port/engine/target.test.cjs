@@ -7,7 +7,7 @@ const {parseHello, MAGIC} = require('./lib/connection.cjs');
 const {NativeClient, callRecord, RESPONSE_BYTES} = require('./lib/native.cjs');
 const {build} = require('./shared/frames.cjs');
 const {loadTarget, nativeOffset, validateArtifacts, assertAppSupported, assertFullSupported,
-  materializeTarget} = require('./shared/target.cjs');
+  assertCanarySupported, materializeTarget} = require('./shared/target.cjs');
 const {parseArguments} = require('./run.cjs');
 
 function fixture(t) {
@@ -64,6 +64,47 @@ test('checked-in Civ7 HELLO profile pairs without a SmileBASIC GOT', () => {
   assert.equal(parsed.got, 0);
   assert.equal(parsed.memmove, 0x4012300000 + 0x522830);
   assert.equal(parsed.sdkCrc32, 157086863);
+});
+
+test('Gravity Circuit HELLO requires a separate bounded application arena', () => {
+  const target = loadTarget('gravcirc');
+  const bytes = civHello(target, {11: 0x5010000000n, 12: 0x80000n});
+  const parsed = parseHello(bytes, target);
+  assert.equal(parsed.appArena, 0x5010000000);
+  assert.equal(parsed.appArenaBytes, 0x80000);
+  assert.throws(() => parseHello(civHello(target), target), /app arena/);
+  assert.throws(() => parseHello(civHello(target, {11: 0x5012340000n, 12: 0x80000n}), target), /app arena/);
+  assert.throws(() => parseHello(civHello(target, {11: 0x5010000000n, 12: 0x100000n}), target), /app arena/);
+});
+
+test('Gravity Circuit canary geometry is qualified while full FS remains gated', () => {
+  const target = loadTarget('gravcirc');
+  const proof = target.appWorkerQualification.proof;
+  target.appWorkerQualification.proof = 'sha256:' + '0'.repeat(64);
+  assert.throws(() => assertFullSupported(target), /qualification proof hash differs/);
+  target.appWorkerQualification.proof = proof;
+  assert.equal(assertCanarySupported(target), target);
+  const fieldCopies = target.fieldCopies;
+  target.fieldCopies = fieldCopies + 1;
+  assert.throws(() => assertFullSupported(target), /measured cache-copy repetition count/);
+  target.fieldCopies = fieldCopies;
+  target.canaryGeometry.pinningAllocationBytes++;
+  assert.throws(() => assertCanarySupported(target), /measured canary allocation geometry/);
+  target.canaryGeometry.pinningAllocationBytes--;
+  assert.equal(nativeOffset('cancelSynchronization', target), 0x158ae0);
+  assert.throws(() => assertFullSupported(target), /retained capture size/);
+});
+
+test('Gravity Circuit canary validates artifacts from a materialized run', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ns2jb-gravcirc-run-'));
+  t.after(() => fs.rmSync(root, {recursive: true, force: true}));
+  fs.mkdirSync(path.join(root, 'shared'), {recursive: true});
+  fs.mkdirSync(path.join(root, 'switch2', 'app'), {recursive: true});
+  await materializeTarget(loadTarget('gravcirc'), root);
+  const target = loadTarget('gravcirc', {materializedRoot: root});
+  assert.equal(assertCanarySupported(target), target);
+  fs.unlinkSync(path.join(root, 'shared', 'sdk-functions.json'));
+  assert.throws(() => assertCanarySupported(target), /Missing gravcirc SDK function table/);
 });
 
 test('Civ7 native records accept offsets beyond the SmileBASIC text mapping', t => {
@@ -176,14 +217,23 @@ test('runner target arguments default to Civ7 and retain the SmileBASIC fallback
   const previous = process.env.NS2_TARGET;
   delete process.env.NS2_TARGET;
   try {
-    assert.deepEqual(parseArguments([]), {targetName: 'civ7', hostArgs: [], appOnly: false, rpcMode: false, dumpFirmware: false});
+    assert.deepEqual(parseArguments([]), {targetName: 'civ7', hostArgs: [], appOnly: false,
+      rpcMode: false, dumpFirmware: false, canaryOnly: false, geometryOnly: false,
+      writeSizeOnly: false, oneMiBRetry: false, splitMiB: false,
+      maxWriteSize: null, retrySize: null});
     assert.equal(parseArguments(['--target', 'smilebasic', '192.0.2.1']).targetName, 'smilebasic');
     assert.equal(parseArguments(['--target=civ7', '--rpc']).rpcMode, true);
     assert.equal(parseArguments(['--app-only']).appOnly, true);
+    assert.equal(parseArguments(['--target', 'gravcirc', '--canary-only']).canaryOnly, true);
+    assert.equal(parseArguments(['--target', 'gravcirc', '--geometry-only']).geometryOnly, true);
     assert.throws(() => parseArguments(['--app-only', '--rpc']), /cannot be combined/);
     assert.throws(() => parseArguments(['--app-only', '--dump-firmware']), /cannot be combined/);
+    assert.throws(() => parseArguments(['--canary-only', '--rpc']), /cannot be combined/);
+    assert.throws(() => parseArguments(['--canary-only', '--dump-firmware']), /cannot be combined/);
+    assert.throws(() => parseArguments(['--geometry-only', '--canary-only']), /cannot be combined/);
+    assert.throws(() => parseArguments(['--geometry-only', '--rpc']), /cannot be combined/);
     assert.throws(() => parseArguments(['--target', 'other']), /Unsupported target/);
-    assert.throws(() => parseArguments(['--target']), /requires civ7 or smilebasic/);
+    assert.throws(() => parseArguments(['--target']), /requires civ7, smilebasic, or gravcirc/);
   } finally {
     if (previous === undefined) delete process.env.NS2_TARGET;
     else process.env.NS2_TARGET = previous;

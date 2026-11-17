@@ -33,7 +33,10 @@ function join(directory, name) {
   if (typeof name !== 'string' || !name || name === '.' || name === '..' ||
       name.includes('/') || name.includes('\\') || /[\x00-\x1f\x7f]/.test(name))
     throw Error('The save contains an unsafe file name');
-  return (directory.endsWith('/') ? directory : directory + '/') + name;
+  const full = (directory.endsWith('/') ? directory : directory + '/') + name;
+  if (Buffer.byteLength(full, 'utf8') >= 0x800)
+    throw Error('The save contains a path longer than the filesystem API permits (2047 bytes)');
+  return full;
 }
 
 // Depth-first walk over one mounted archive, from `directory` (default '/').

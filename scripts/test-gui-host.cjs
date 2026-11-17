@@ -6,7 +6,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const {spawn} = require('node:child_process');
-const {validStart, verifiedResult, hidSettings,commandsOnlySettings,heldCommandsSettings, networkBindFailure} = require('./gui-host.cjs');
+const {validStart, verifiedResult, hidSettings,commandsOnlySettings,heldCommandsSettings,hostSettings,
+  networkBindFailure} = require('./gui-host.cjs');
 const {fallbackControllers, parseGadgetControllers, gadgetControllers, autoControllers} = require('./usb-controllers.cjs');
 function command(address = '192.0.2.1') {
   return 'V=START(' + [39380, ...address.split('.')].join(',') + ')';
@@ -68,6 +69,7 @@ test('IORegistry discovery selects attached USB gadget controllers in numeric or
   assert.deepEqual(autoControllers('usb-drd2', () => ['usb-drd0', 'usb-drd2', 'usb-drd12']),
     ['usb-drd2', 'usb-drd0', 'usb-drd12']);
   assert.deepEqual(autoControllers('usb-drd3', () => ['usb-drd0', 'usb-drd2']), ['usb-drd0', 'usb-drd2']);
+  assert.deepEqual(autoControllers(undefined, () => ['usb-drd0', 'usb-drd2']), ['usb-drd0', 'usb-drd2']);
 });
 test('IORegistry failure or missing gadget includes usb-drd2 before usb-drd3', () => {
   assert.deepEqual(fallbackControllers, ['usb-drd0', 'usb-drd1', 'usb-drd2', 'usb-drd3']);
@@ -113,6 +115,29 @@ test('normal command transfer uses the current host START without a fixed run fo
   assert.equal(fs.existsSync(path.join(root, 'vendor/ns2jb/runs/mac2jb-active-connect.txt')), false);
   assert.equal(result.events.some(event => event.type === 'transfer-complete' && event.kind === 'commands'), true);
 });
+test('kaiHEN command transfer uses Kurumuz even when another host is selected', async t => {
+  const {profileById} = require('./host-profiles.cjs');
+  const root = fixture(t, `
+    require('fs').writeFileSync('args.json',JSON.stringify(process.argv.slice(2)));
+    console.log('Keyboard enumerated. Sending...');
+  `);
+  fs.writeFileSync(path.join(root, 'selected-host.json'), JSON.stringify(profileById('pepsipu')));
+  const start = command('192.0.2.1');
+  const result = await run(root, ['hid', 'kaihen-commands', 'usb-drd0', '10', '--demo',
+    '--start-command', start]).done;
+  assert.equal(result.code, 0, result.error);
+  const args = JSON.parse(fs.readFileSync(path.join(root, 'args.json')));
+  assert.equal(args.includes('--start-arity'), false);
+  assert.ok(args.includes('--demo'));
+  assert.deepEqual(args.slice(args.indexOf('--commands'), args.indexOf('--commands') + 4),
+    ['--commands', 'load,run,remove,start', '--start-command', start]);
+  for (const options of [[], ['--start-command', start + ',0']]) {
+    fs.rmSync(path.join(root, 'args.json'), {force: true});
+    const rejected = await run(root, ['hid', 'kaihen-commands', 'usb-drd0', ...options]).done;
+    assert.equal(rejected.code, 1);
+    assert.equal(fs.existsSync(path.join(root, 'args.json')), false);
+  }
+});
 test('pepsipu selection accepts only its real token-bearing pairing and refuses unsupported operations',async t=>{
   const {profileById}=require('./host-profiles.cjs');
   const profile=profileById('pepsipu');
@@ -155,6 +180,18 @@ test('Mac network diagnostics match only unavailable binding of the selected hos
   assert.deepEqual(networkBindFailure(line,'192.0.2.1'),{address:'192.0.2.1',diagnostic:line});
   for(const bad of [line.replace('EADDRNOTAVAIL','EADDRINUSE'),line.replace(':39380',':393800'),line.replace(':39380',':12345'),line.replace('192.0.2.1','192.0.2.11')])
     assert.equal(networkBindFailure(bad,'192.0.2.1'),null,bad);
+});
+test('host stage timeout accepts only one value from 1 to 60 minutes', () => {
+  assert.deepEqual(hostSettings(['host', '192.0.2.1', '--post-run-options',
+    '--host-stage-timeout-minutes', '25']),
+  {args: ['host', '192.0.2.1', '--post-run-options'], stageTimeoutMinutes: 25});
+  assert.deepEqual(hostSettings(['host', '192.0.2.1']),
+    {args: ['host', '192.0.2.1'], stageTimeoutMinutes: 10});
+  for (const value of ['0', '61', '1.5', '-1', '01', 'NaN'])
+    assert.throws(() => hostSettings(['host', '192.0.2.1', '--host-stage-timeout-minutes', value]),
+      /Host stage timeout/);
+  assert.throws(() => hostSettings(['host', '192.0.2.1', '--host-stage-timeout-minutes', '5',
+    '--host-stage-timeout-minutes', '6']), /Host stage timeout/);
 });
 function bindFailureScript(prefix='',latePairing=false) {
   const original='Error: listen EADDRNOTAVAIL: address not available 192.0.2.1:39380';
@@ -628,13 +665,15 @@ test('GUI host fixes bootstrap arity and disables inherited held RPC mode', asyn
     const fs = require('fs'); const path = require('path');
     fs.writeFileSync(path.join(__dirname, 'host-settings.json'), JSON.stringify({
       arity: process.env.NS2_BASIC_ARITY, rpc: process.env.NS2_RPC_MODE,
+      timeout: process.env.MAC2JB_HOST_STAGE_TIMEOUT_MS,
       args: process.argv.slice(2)
     }));
     console.log(${JSON.stringify(pairing)});
   `);
-  const result = await run(root, ['host', '192.0.2.1'], {NS2_BASIC_ARITY: '9', NS2_RPC_MODE: '1'}).done;
+  const result = await run(root, ['host', '192.0.2.1', '--host-stage-timeout-minutes', '25'],
+    {NS2_BASIC_ARITY: '9', NS2_RPC_MODE: '1', MAC2JB_HOST_STAGE_TIMEOUT_MS: '1'}).done;
   const settings = JSON.parse(fs.readFileSync(path.join(root, 'vendor/ns2jb/host-settings.json')));
-  assert.deepEqual(settings, {arity: '5', rpc: '0', args: ['192.0.2.1']});
+  assert.deepEqual(settings, {arity: '5', rpc: '0', timeout: '1500000', args: ['192.0.2.1']});
   assert.ok(result.events.some(e => e.type === 'host-ready'));
 });
 test('USB command and failure output preserve the full pairing command', async t => {

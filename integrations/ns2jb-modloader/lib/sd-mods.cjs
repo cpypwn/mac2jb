@@ -10,10 +10,10 @@ async function collectSdMods(run,directory,source='/ns2jb-modloader',options={})
  async function close(){if(!closed&&!uncertain){closed=true;if(a)await a.close();}}
  try{
   for(const row of tree.values())if(row.type==='directory')row.children=row.children.filter(name=>!['.DS_Store','Thumbs.db','.gitkeep'].includes(name));
+  const manifest=[...tree].map(([name,row])=>({path:name,type:row.type,...(row.type==='file'?{size:row.size}:{})}));writeJson(path.join(directory,'inventory.json'),manifest);
   function stat(name){const row=tree.get(name);check(row,'Unknown SD input');return{size:row.size,isSymbolicLink:()=>false,isFile:()=>row.type==='file',isDirectory:()=>row.type==='directory'};}
   const io={remote:true,existsSync:name=>tree.has(name),statSync:stat,lstatSync:stat,readdirSync:(name,options)=>tree.get(name).children.map(child=>options?.withFileTypes?{name:child,...stat(name+'/'+child)}:child)};
   const collection=collectMods(source,io);collection.inputDirectory=directory;collection.bootstrap=bootstrap;
-  const manifest=[...tree].map(([name,row])=>({path:name,type:row.type,...(row.type==='file'?{size:row.size}:{})}));writeJson(path.join(directory,'inventory.json'),manifest);
   console.log('Scanned '+manifest.filter(r=>r.type==='file').length+' file(s) in SD:'+source+'/');
   const hasText=collection.patches.some(patch=>patch.format==='pchtxt')||collection.games.some(game=>game.patches.some(patch=>patch.format==='pchtxt'));
   if(options.nativePreparation&&!hasText)return collection;

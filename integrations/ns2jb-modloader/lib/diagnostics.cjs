@@ -2,7 +2,7 @@
 const {isUncertain}=require('./game-files/uncertain.cjs');
 const path=require('node:path');
 const {check}=require('./common.cjs'),{attachGame,createGameFiles}=require('./game-files/mount-api.cjs'),{pathRequest}=require('./game-files/protocol.cjs');
-const VERSION='0.3.4';
+const VERSION='0.3.5';
 function logPath(session,date=new Date()){
  check(/^switch2-[A-Za-z0-9]+$/.test(session),'Invalid report session');return'/ns2jb-modloader/logs/'+date.toISOString().replace(/[-:]/g,'').slice(0,15)+'Z-'+session+'.log';
 }

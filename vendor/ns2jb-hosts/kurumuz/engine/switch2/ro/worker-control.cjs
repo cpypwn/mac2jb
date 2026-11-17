@@ -42,7 +42,7 @@ async function dispatch(context, request, state, domain) {
     check(!s.threads.size && (!state.worker || state.worker.joined), 'A native worker is still active');
     await workerCode.verifyWorkerCode(s);
     await events.verify(s);
-    const area = s.base + 0x2100000, gate = area, slot = area + 0x10;
+    const area = s.base + (context.workerAreaOffset ?? 0x2100000), gate = area, slot = area + 0x10;
     check(area + 0x60000 <= s.base + s.bytes, 'Worker area exceeds the retained allocation');
     await events.initialize(s, gate);
     const handle = Number(request.handle);
@@ -116,10 +116,9 @@ async function dispatch(context, request, state, domain) {
       } else {
         check(state.services?.some(x => x.name === 'pm:shell' && x.handle === handle), 'Launch requires the owned PM session');
         const flags = Number(request.flags ?? 0);
-        check(flags === 0 || flags === 0x10, 'Unsupported launch flags');
+        check(Number.isInteger(flags) && flags >= 0 && flags <= 0xffffffff, 'Invalid launch flags');
         const storage = Number(request.storage ?? 3);
-        check(storage === 3 && request.title === '0x0400000000000037',
-          'Only the qualified RO replacement may be launched');
+        check([3, 4, 5].includes(storage), 'Invalid launch storage');
         const input = Buffer.alloc(24); input.writeUInt32LE(flags);
         input.writeBigUInt64LE(BigInt(request.title), 8); input[16] = storage;
         bytes = packet(0, input);

@@ -5,6 +5,16 @@ const check = (ok, message) => {if (!ok) throw Error(message);};
 
 const gapScratch = entry => entry.name.startsWith('NS2_GAP');
 
+function verifiesScratchCleanup(proof) {
+  return proof?.cleanedUp === true && !proof.error && !proof.pending &&
+    Array.isArray(proof.previous) && Array.isArray(proof.removed) &&
+    proof.previous.length === proof.removed.length &&
+    proof.previous.every(entry => proof.removed.some(removed =>
+      removed.name === entry.name && removed.path === entry.path)) &&
+    Array.isArray(proof.remaining) && proof.remaining.length === 0 &&
+    /^[0-9]+$/.test(proof.saveFreeBytes || '');
+}
+
 function scratchDeleteCommand(type) {
   if (type === 0) return 4; // DeleteDirectoryRecursively
   if (type === 1) return 1; // DeleteFile
@@ -12,7 +22,8 @@ function scratchDeleteCommand(type) {
 }
 
 async function main() {
-  const proof = {started: new Date().toISOString(), previous: [], removed: [], cleanedUp: false};
+  const proof = {started: new Date().toISOString(), previous: [], removed: [],
+    remaining: [], cleanedUp: false};
   const {Session, live} = require('./app/session.cjs');
   const mounted = require('./app/mounted-save.cjs');
   const filesystem = require('./app/filesystem.cjs');
@@ -44,6 +55,14 @@ async function main() {
         check((await normal(handle, 7, record.path)).canonicalResult === 0x202, 'NS2_GAP entry still exists');
         proof.removed.push(proof.pending); delete proof.pending; await save();
       }
+      proof.remaining.push(...(await filesystem.listDirectory(s, handle, '/', 4096))
+        .filter(gapScratch).map(item => ({name, path: '/' + item.name})));
+      check(!proof.remaining.length, 'Exploit scratch remains after cleanup');
+      if (name === 'save') {
+        const space = await normal(handle, 11, '/');
+        check(!space.result, 'Save free-space check failed after scratch cleanup');
+        proof.saveFreeBytes = space.data.readBigUInt64LE().toString();
+      }
       await s.close(handle);
     }
   } catch (error) {proof.error = error.stack; throw error;}
@@ -51,7 +70,8 @@ async function main() {
     await s.cleanup(); proof.cleanedUp = !s.base && !s.handles.size;
     proof.completed = new Date().toISOString(); await save();
   }
+  check(verifiesScratchCleanup(proof), 'Prior exploit scratch cleanup did not verify');
   return proof;
 }
 
-module.exports = {main, gapScratch, scratchDeleteCommand};
+module.exports = {main, gapScratch, scratchDeleteCommand, verifiesScratchCleanup};

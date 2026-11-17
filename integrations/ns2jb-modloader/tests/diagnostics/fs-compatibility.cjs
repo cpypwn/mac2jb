@@ -53,6 +53,12 @@ const client={async info(handle,address,pid){assert.equal(handle,9);assert.equal
   assert(!profile.ranges.some(range=>range.offset<=offset&&offset<range.offset+range.size));fixture[offset]=1;
  }
  assert.equal(validateFsAbi(fixture).validatedRanges,profile.ranges.length);
+ // Data references are part of the fast qualification, even if every called
+ // operation remains byte-for-byte unchanged.
+ for(const offset of [0x12cce0,0x20ec44]){
+  assert(profile.ranges.some(range=>range.offset===offset));fixture[offset]=1;
+  assert.throws(()=>validateFsAbi(fixture,{relocate:false}),error=>error.fsCompatibility?.stage==='native-functions');fixture[offset]=0;
+ }
  const body=profile.ranges.find(range=>range.offset===0x1045b0),byte=body.offset+body.size-4;
  fixture[byte]=1;assert.throws(()=>validateFsAbi(fixture),error=>error.fsCompatibility?.stage==='native-functions');fixture[byte]=0;
  // A logger ABI change must disable its native calls without excluding an

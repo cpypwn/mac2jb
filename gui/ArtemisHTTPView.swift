@@ -238,7 +238,9 @@ struct ArtemisHTTPView: View {
                         .background(Color.black.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
                     Button("Run on Switch") { Task { await model.eval() } }
                         .disabled(!model.canEval)
-                }.padding(.top, 8)
+                }
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             DisclosureGroup("Upload save file") {
                 VStack(alignment: .leading, spacing: 8) {
@@ -260,7 +262,9 @@ struct ArtemisHTTPView: View {
                         .disabled(!model.canUpload)
                     Text("The launcher accepts files up to 28,672 bytes. Its core files are protected; use the upstream update mechanism for those.")
                         .font(.system(size: 10)).foregroundStyle(Mac2jbTheme.muted)
-                }.padding(.top, 8)
+                }
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             DisclosureGroup("Delete save file") {
                 VStack(alignment: .leading, spacing: 8) {
@@ -268,7 +272,9 @@ struct ArtemisHTTPView: View {
                         .textFieldStyle(.roundedBorder).disabled(model.isBusy)
                     Button("Delete file…") { confirmDelete = true }
                         .disabled(!model.canDelete)
-                }.padding(.top, 8)
+                }
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             if !model.message.isEmpty {
                 Text(model.message).font(.system(size: 11, weight: .semibold))

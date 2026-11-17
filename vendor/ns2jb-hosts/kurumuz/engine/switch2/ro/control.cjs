@@ -53,6 +53,9 @@ async function dispatch(context, request) {
     state.calls.push(entry); await save();
     return entry;
   }
+  if (command === 'file-stage' || command === 'file-delete' ||
+      command.startsWith('package-'))
+    return require('./package.cjs').dispatch(context, request, state, domain);
   if (command.startsWith('code-') || command.startsWith('file-') || command.startsWith('donor-'))
     return require("./files.cjs").dispatch(context, request, state, domain);
   if (command === 'ncm-list-system')

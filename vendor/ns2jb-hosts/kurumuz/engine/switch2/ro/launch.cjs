@@ -37,8 +37,8 @@ function requestInfo(hex) {
     input: b.subarray(at + 32, at + 16 + b.readUInt16LE(at + 2)).toString('hex')};
 }
 
-async function main() {
-  const memory = await connect();
+async function main(options = {}) {
+  const memory = options.memory || await connect();
   const read = suffix => fs.readFile(path.join(__dirname, memory.info.session + suffix)).then(JSON.parse);
   const layout = await read('-layout.json'), root = await read('-loader-root-copy.json');
   const bound = await read('-bound-sessions.json'), types = await read('-filesystem-types.json');
@@ -50,21 +50,22 @@ async function main() {
 
   const state = await memory.request({command: 'root-native-info'});
   check(state.donor?.ready && (!state.worker || state.worker.joined), 'Donor or worker is not ready');
-  const target = '0x0400000000000037';
-  check(['0x0400000000000037', '0x0400000000000019', '0x040000000000000a', '0x040000000000004f',
-    '0x0400000000000014', '0x0400000000000013', '0x040000000000001d'].includes(target), 'Unsupported native research target');
-  check(target === (state.donor.title || '0x0400000000000037'), 'Donor policy belongs to a different target');
+  const target = options.target || '0x0400000000000037';
+  const flags = options.flags ?? 0x10;
+  // The caller stages the matching signed policy before supplying a target.
+  // The filesystem view itself has no title identity.
   const shell = state.services.find(x => x.name === 'pm:shell').handle;
   const row = bound.rows.find(r => r.domain === root.targetDomain);
   const donor = types.rows.find(r => r.name === 'donor');
   const server = await exportHandle(memory, row.receive, 'Loader server readiness');
   const gate = new Gate(memory, row, state.apiWorkers, bound.waiters, server.handle, event);
   const proof = {session: memory.info.session, report: memory.reportFile, target,
-    wantedMount, flags: 0x10, row, donor, server, requests: [], steps: gate.steps, mounts: 0, swapped: false};
+    wantedMount, flags, row, donor, server, requests: [], steps: gate.steps, mounts: 0, swapped: false};
   const file = path.join(__dirname, memory.info.session + '-launch-' + Date.now() + '.json');
   const save = () => fs.writeFile(file, JSON.stringify(proof, null, 2) + '\n', {mode: 0o600});
   await save();
   console.log(JSON.stringify({stage: 'launch-prepared', file, wantedMount}));
+  let launchError;
   try {
     proof.worker = await memory.request({command: 'root-native-worker-prepare', kind: 'pm-launch',
       handle: shell, title: proof.target, flags: proof.flags});
@@ -125,13 +126,47 @@ async function main() {
         command: info.command, added: added.map(a => a.id), mounts: proof.mounts}));
     }
   } catch (error) {
-    proof.error = error.stack; await save();
-    throw error;
+    launchError = error;
+    proof.error = error.stack;
   } finally {
-    proof.outstanding = gate.outstanding; await save();
-    await gate.restore();
-    proof.restored = true; proof.restoration = gate.restoration; await save();
+    proof.outstanding = gate.outstanding;
+    let preRestoreSaveError;
+    try { await save(); }
+    catch (error) {
+      preRestoreSaveError = error;
+      proof.preRestoreSaveError = error.stack;
+      console.error(JSON.stringify({stage: 'launch-pre-restore-save-failed', file,
+        error: error.message, primaryError: launchError?.message || null}));
+    }
+    let restorationError;
+    try {
+      await gate.restore();
+      proof.restored = true;
+    } catch (error) {
+      restorationError = error;
+      proof.restorationError = error.stack;
+      console.error(JSON.stringify({stage: 'launch-restoration-failed', file,
+        error: error.message, primaryError: launchError?.message || null,
+        restoration: gate.restoration || null}));
+    }
+    proof.restoration = gate.restoration;
+    if (launchError && restorationError) launchError.restorationError = restorationError.message;
+    if (preRestoreSaveError) {
+      if (launchError) launchError.preRestoreSaveError = preRestoreSaveError.message;
+      else if (restorationError) restorationError.preRestoreSaveError = preRestoreSaveError.message;
+      else launchError = preRestoreSaveError;
+    }
+    try { await save(); }
+    catch (error) {
+      console.error(JSON.stringify({stage: 'launch-proof-save-failed', file,
+        error: error.message, primaryError: launchError?.message || restorationError?.message || null}));
+      if (launchError) launchError.proofSaveError = error.message;
+      else if (restorationError) restorationError.proofSaveError = error.message;
+      else restorationError = error;
+    }
+    if (!launchError && restorationError) launchError = restorationError;
   }
+  if (launchError) throw launchError;
   const until = Date.now() + 20000;
   while (!(await memory.request({command: 'root-native-worker-state'})).finished) {
     check(Date.now() < until, 'PM did not complete after the gate was restored');
@@ -151,7 +186,8 @@ async function main() {
   }
   console.log(JSON.stringify({stage: 'launch-complete', file, mounts: proof.mounts, result: proof.result,
     pid: proof.pid, imageAccepted: proof.imageAccepted, restored: proof.restored}));
+  return {file, ...proof};
 }
 if (require.main === module) main().catch(e => { console.error(e.stack); process.exitCode = 1; });
 
-module.exports = {requestInfo, entries};
+module.exports = {main, requestInfo, entries};

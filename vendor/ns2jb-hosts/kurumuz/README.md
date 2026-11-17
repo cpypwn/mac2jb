@@ -1,18 +1,47 @@
 # Switch 2 FS demo
 
+## Load kaiHEN改変
+
+Note: You need an SD card plugged in for kaiHEN改変, either formatted FAT32 or EXFAT.
+
+You are not required to move any files to your SD card.
+
+1. Download a release from [kaiHEN](https://github.com/ouncebrew/kaihen) and
+   unzip it on your computer. Pass `--dir` the extracted directory that
+   directly contains `ro/main`, `hen/main`, `game/main`, `bootstrap.bin`,
+   `hbmenu.nro`, and `programs/`.
+2. Complete the [one-time SmileBASIC setup](#one-time-setup), then open
+   SmileBASIC and enter Direct mode. Leave it open.
+3. From this `ns2jb` directory, run:
+
+   ```sh
+   node hen.cjs --dir /path/to/extracted/kaihen
+   ```
+
+   If the computer has multiple network addresses, add the IP address the
+   Switch can reach after the directory path. Follow the printed SmileBASIC
+   instructions, including `LOAD`, `RUN`, `REMOVE`, and `V=START(...)`.
+4. Wait for `HEN launch completed!` and the HEN PID before leaving SmileBASIC.
+   Press HOME and close SmileBASIC normally.
+5. Hold **R** while opening a native Switch 2 game. On a fresh setup, the
+   first launch captures the game's policy and opens the game normally.
+   Close the game from HOME, then hold **R** and launch it a second time to
+   open hbmenu. If a game policy was already saved, hbmenu may open on the
+   first R-held launch.
+
 You need **SmileBASIC 4.4.9 (and now the demo version works as well!)**, **system software 23.0.1**, **Node.js 22+** on
 macOS or Linux, and over **20 MiB free** in the SmileBASIC save. The computer and
-console must be on the same reachable network connected via ethernet.
+console must be on the same reachable network. Ethernet has the most recorded
+successful runs; acquisition has also been tested over Wi-Fi.
 
 Notes:
 
-- Always use ethernet on the device you run the exploit and your Switch 2, or
-  the fs exploit won't work as it's very timing sensitive.
+- Wi-Fi acquisition is timing-sensitive and can fail on a particular run or
+  console even when the host and console can reach each other.
 - Keep the game on internal storage of the console, not SD.
 - FS exploit is still very unstable. At best you might get a 20% success rate.
 - This repo isn't intended to use as an API to build other apps on. Use it for
   debugging only.
-- 
 
 ## One-time setup
 
@@ -93,9 +122,12 @@ connection. A disconnect also ends the held run and attempts cleanup. A failed
 or interrupted cleanup may require a console restart. Tools that use the FS
 endpoint must finish their requests before the held run is stopped.
 
-If a run fails, keep the `runs` folder and restart the console before trying
-again. Enter `REMOVE` only once per application process. Logs and temporary
-memory captures stay in `runs`; they are not part of the distributable.
+If acquisition fails before HEN is loaded, keep the `runs` folder, close and
+reopen SmileBASIC, and retry on the same console boot. Enter `REMOVE` only
+once per application process. Restart the console if the UI or process cannot
+be closed normally, or if an already loaded HEN must be replaced. Logs and
+temporary memory captures stay in `runs`; they are not part of the
+distributable.
 
 ## Optional system-code dump
 
@@ -141,8 +173,6 @@ Physically tested on October 21, 2026: both FS instruction challenges,
 restoration, and cleanup passed. Acquisition is timing-sensitive: the test
 passed on the third fresh boot. The first two attempts stopped at validation
 checks and cleaned up.
-
-
 
 ## What this fork improves
 

@@ -14,7 +14,7 @@ const mount=require.resolve('../../lib/game-files/mount-api.cjs');require(mount)
 const m={async read(at,n){if(at>=0x300000&&at<0x300000+16*0x30){const id=(at-0x300000)/0x30+1,o=handles.get(id),b=Buffer.alloc(0x30);assert(o);b.writeBigUInt64LE(BigInt(o.address),32);return b;}for(const o of objects.values()){if(at===o.address){assert(n<=o.offset+4,'SDK probe exceeded the owned adapter');const b=Buffer.alloc(n);b.writeBigUInt64LE(BigInt(o.vptr));b.writeUInt32LE(o.refs,o.offset);return b;}if(at===o.vptr)return o.table;}throw Error('Unexpected memory read');},async u32(at){for(const o of objects.values())if(at===o.address+o.offset)return o.refs;throw Error('Unexpected ref read');}};
 (async()=>{try{
  const {openSource}=require('../../lib/native/source.cjs'),log={sdPath:'/ns2jb-modloader/logs/20261105T000000Z-switch2-test.log',tracePath:'/ns2jb-modloader/logs/20261105T000000Z-switch2-test.trace',size:123};
- const bridge={session,base,m,c:{pending:false}};
+ const bridge={session,base,m,c:{pending:false},address:reference=>base+BigInt(reference)};
  const source=await openSource(run,bridge,log);assert(source.logFile&&source.traceFile&&source.filesystem);assert.equal(source.traceFile.baseline,1);assert.equal(clones,3);assert.equal(handles.size,3);await source.close();assert.equal(closed,1);assert.equal(handles.size,0);
  // An uncertain request must not be followed by cleanup or another IPC call.
  next=1;traceFailure=true;sd.refs=1;bridge.c.pending=false;await assert.rejects(openSource(run,bridge,log),/timed out/);assert(bridge.c.pending);assert.equal(closed,1);assert(handles.size>0);

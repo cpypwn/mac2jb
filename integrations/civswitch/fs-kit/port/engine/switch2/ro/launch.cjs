@@ -51,14 +51,21 @@ async function main() {
 
   const state = await memory.request({command: 'root-native-info'});
   check(state.donor?.ready && (!state.worker || state.worker.joined), 'Donor or worker is not ready');
-  const target = programId(loadTarget());
+  const requestedTitle = process.env.NS2_LAUNCH_TITLE;
+  check(!requestedTitle || /^0x[0-9a-fA-F]{16}$/.test(requestedTitle), 'NS2_LAUNCH_TITLE needs a hex title ID');
+  // PROCESS-ESCAPE-PLAN stage A (opt-in): override the launch target per experiment boot.
+  const target = requestedTitle || programId(loadTarget());
   check(target === (state.donor.title || target), 'Donor policy belongs to a different target');
+  if (requestedTitle) {
+    await memory.request({command: 'root-native-worker-allowlist', titles: [requestedTitle]});
+  }
   const shell = state.services.find(x => x.name === 'pm:shell').handle;
   const row = bound.rows.find(r => r.domain === root.targetDomain);
   const donor = types.rows.find(r => r.name === 'donor');
   const server = await exportHandle(memory, row.receive, 'Loader server readiness');
   const gate = new Gate(memory, row, state.apiWorkers, bound.waiters, server.handle, event);
   const proof = {session: memory.info.session, report: memory.reportFile, target,
+    experiment: requestedTitle ? {override: requestedTitle} : undefined,
     wantedMount, flags: 0x10, row, donor, server, requests: [], steps: gate.steps, mounts: 0, swapped: false};
   const file = path.join(__dirname, memory.info.session + '-launch-' + Date.now() + '.json');
   const save = () => fs.writeFile(file, JSON.stringify(proof, null, 2) + '\n', {mode: 0o600});

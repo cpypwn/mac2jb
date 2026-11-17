@@ -5,6 +5,7 @@ const net = require('node:net');
 const path = require('node:path');
 
 const PREFIX = 'MAC2JB_ARTEMIS_FS ';
+const DEFAULT_STAGE_TIMEOUT_MINUTES = 10;
 const PROFILE_MARKER = 'mac2jb-profile';
 const PROFILE_FIELDS = [
   'socket_socket', 'socket_bind', 'socket_listen', 'socket_accept',
@@ -42,6 +43,21 @@ function emitLine(value) {
 function ipv4(value, label) {
   if (!net.isIPv4(value)) throw Error('Enter a valid ' + label + ' IPv4 address');
   return value;
+}
+
+function stageTimeoutMinutes(value = DEFAULT_STAGE_TIMEOUT_MINUTES) {
+  const minutes = Number(value);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 60)
+    throw Error('Host stage timeout must be between 1 and 60 minutes');
+  return minutes;
+}
+
+function parseArguments(args) {
+  const usage = 'usage: node fs-host.cjs SWITCH_IPV4 MAC_IPV4 RUNTIME_ROOT [--host-stage-timeout-minutes 1..60]';
+  if (args.length !== 3 && args.length !== 5) throw Error(usage);
+  if (args.length === 5 && args[3] !== '--host-stage-timeout-minutes') throw Error(usage);
+  return {consoleIp: args[0], macIp: args[1], runtimeRoot: args[2],
+    stageTimeoutMinutes: stageTimeoutMinutes(args.length === 5 ? args[4] : undefined)};
 }
 
 function request(ip, port, method, endpoint, body = '', options = {}) {
@@ -147,12 +163,11 @@ async function runCompatibilityCheck(options) {
 }
 
 async function main(args = process.argv.slice(2)) {
-  if (args.length !== 3)
-    throw Error('usage: node fs-host.cjs SWITCH_IPV4 MAC_IPV4 RUNTIME_ROOT');
-  await require('./runtime-host.cjs').runFsHost({consoleIp: args[0], macIp: args[1], runtimeRoot: args[2]});
+  await require('./runtime-host.cjs').runFsHost(parseArguments(args));
 }
 
 if (require.main === module) main().catch(() => {process.exitCode = 1;});
 
 module.exports = {PREFIX, PROFILES, PROFILE_FIELDS, PROFILE_PROBE,
-  request, parseStatus, parseProfile, runCompatibilityCheck};
+  request, parseStatus, parseProfile, runCompatibilityCheck,
+  stageTimeoutMinutes, parseArguments};
