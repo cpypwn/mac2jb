@@ -4,12 +4,19 @@
 const assert = require('node:assert/strict');
 const childProcess = require('node:child_process');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 
 const stateDir = '/Library/Application Support/mac2jb/offline-ethernet';
 const root = path.resolve(__dirname, '..');
 const helper = path.join(root, 'integrations/offline-ethernet/helper.sh');
 const responder = path.join(root, 'integrations/offline-ethernet/Responder.pl');
+const parentDir = path.dirname(stateDir);
+const installDir = path.join(parentDir, 'offline-ethernet-runtime');
+const installedHelper = path.join(installDir, 'helper.sh');
+const installedResponder = path.join(installDir, 'Responder.pl');
+const daemonLabel = 'io.github.cpypwn.mac2jb.offline-ethernet';
+const daemonPlist = path.join('/Library/LaunchDaemons', daemonLabel + '.plist');
 
 function parseOptions(args) {
   const options = {};
@@ -110,18 +117,122 @@ function readStatus(dir) {
   };
 }
 
+function xmlEscape(value) {
+  return String(value).replace(/[&<>"']/g, ch =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[ch]);
+}
+
+function renderDaemonPlist(name) {
+  const programArguments = ['/bin/bash', installedHelper, 'start', name, stateDir];
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
+    '<plist version="1.0">',
+    '<dict>',
+    '  <key>Label</key>',
+    '  <string>' + xmlEscape(daemonLabel) + '</string>',
+    '  <key>ProgramArguments</key>',
+    '  <array>'
+  ];
+  for (const argument of programArguments) lines.push('    <string>' + xmlEscape(argument) + '</string>');
+  lines.push(
+    '  </array>',
+    '  <key>RunAtLoad</key>',
+    '  <true/>',
+    '  <key>KeepAlive</key>',
+    '  <false/>',
+    '  <key>StandardOutPath</key>',
+    '  <string>' + xmlEscape(path.join(stateDir, 'daemon.out.log')) + '</string>',
+    '  <key>StandardErrorPath</key>',
+    '  <string>' + xmlEscape(path.join(stateDir, 'daemon.err.log')) + '</string>',
+    '</dict>',
+    '</plist>',
+    ''
+  );
+  return lines.join('\n');
+}
+
+// Create or adopt a directory that must be root-owned, refusing symlinks and
+// non-root ownership so the privileged install never follows a planted path.
+function ensureRootDir(dir) {
+  let info = null;
+  try { info = fs.lstatSync(dir); } catch {}
+  if (info) {
+    if (info.isSymbolicLink() || !info.isDirectory()) throw new Error('Refusing to use an unsafe path: ' + dir);
+    if (info.uid !== 0) throw new Error('Directory must be owned by root: ' + dir);
+  } else {
+    fs.mkdirSync(dir, { mode: 0o755 });
+  }
+  fs.chownSync(dir, 0, 0);
+  fs.chmodSync(dir, 0o755);
+}
+
+function installRuntimeFile(source, destination, mode) {
+  // Write to a sibling temp file and rename into place so a concurrent reader never
+  // sees a half-written script, and a running copy keeps its old inode until it exits.
+  const temp = destination + '.tmp.' + process.pid;
+  fs.writeFileSync(temp, fs.readFileSync(source), { mode });
+  fs.chmodSync(temp, mode);
+  fs.chownSync(temp, 0, 0);
+  fs.renameSync(temp, destination);
+}
+
+// Copy the responder out of the user-owned, per-launch runtime tree into a stable
+// root-owned directory, so the launchd job points at files the user cannot rewrite.
+function installRuntime() {
+  ensureRootDir(parentDir);
+  ensureRootDir(installDir);
+  ensureRootDir(stateDir);
+  installRuntimeFile(helper, installedHelper, 0o755);
+  installRuntimeFile(responder, installedResponder, 0o644);
+}
+
+function writeDaemonPlist(name) {
+  fs.writeFileSync(daemonPlist, renderDaemonPlist(name), { mode: 0o644 });
+  fs.chownSync(daemonPlist, 0, 0);
+  fs.chmodSync(daemonPlist, 0o644);
+}
+
+function launchctl(args, { ignoreFailure = false } = {}) {
+  const result = childProcess.spawnSync('/bin/launchctl', args, { stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (!ignoreFailure && result.status !== 0) {
+    throw new Error('launchctl ' + args[0] + ' failed with status ' + result.status);
+  }
+  return result.status;
+}
+
+// Unload the daemon and remove its plist. The plist must not linger in
+// /Library/LaunchDaemons, or RunAtLoad would silently restart the responder on the
+// next boot after the user has stopped or restored. Start re-creates it on demand.
+function removeDaemon() {
+  launchctl(['bootout', 'system/' + daemonLabel], { ignoreFailure: true });
+  fs.rmSync(daemonPlist, { force: true });
+}
+
 function runPrivileged(action, options) {
   if (process.platform !== 'darwin') throw new Error('Offline Ethernet requires macOS');
   if (process.getuid?.() !== 0) throw new Error(action + ' requires macOS administrator access');
   requireStateDir(options['state-dir']);
-  const args = [helper, action];
   if (action === 'start') {
     const name = options.interface;
     if (!/^en[0-9]+$/.test(name || '')) throw new Error('Choose a physical enN Ethernet adapter');
-    args.push(name);
+    // Run the responder as a LaunchDaemon so launchd owns it. The privileged step then
+    // just installs and bootstraps and returns; it no longer has to stay alive itself.
+    // On macOS 26/27 a `nohup ... &` process started under `do shell script ... with
+    // administrator privileges` is reaped when the Security authorization session ends.
+    installRuntime();
+    writeDaemonPlist(name);
+    launchctl(['bootout', 'system/' + daemonLabel], { ignoreFailure: true });
+    launchctl(['bootstrap', 'system', daemonPlist]);
+    return;
   }
-  args.push(stateDir);
-  const result = childProcess.spawnSync('/bin/bash', args, { stdio: 'inherit' });
+  // Boot out and remove the daemon first: launchd SIGTERMs helper.sh and its existing
+  // cleanup runs (kill responder, release lock, write status). Then let the helper settle
+  // the lock, alias and saved state. bootout is preferred over helper.sh's owns_pid match,
+  // which keys on "$BASE/helper.sh start " and is fragile now the daemon runs from a copy.
+  removeDaemon();
+  const result = childProcess.spawnSync('/bin/bash', [helper, action, stateDir], { stdio: 'inherit' });
   if (result.error) throw result.error;
   process.exitCode = result.status ?? 1;
 }
@@ -140,6 +251,22 @@ function selfTest() {
   if (bash.status !== 0) throw new Error('Offline Ethernet helper syntax: ' + bash.stderr);
   const perl = childProcess.spawnSync('/usr/bin/perl', ['-c', responder], { encoding: 'utf8' });
   if (perl.status !== 0) throw new Error('Offline Ethernet responder syntax: ' + perl.stderr);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-offline-ethernet-plist-'));
+  try {
+    const plistFile = path.join(dir, 'daemon.plist');
+    fs.writeFileSync(plistFile, renderDaemonPlist('en5'));
+    const lint = childProcess.spawnSync('/usr/bin/plutil', ['-lint', plistFile], { encoding: 'utf8' });
+    if (lint.status !== 0) throw new Error('Offline Ethernet daemon plist is malformed: ' + lint.stdout + lint.stderr);
+    const json = childProcess.spawnSync('/usr/bin/plutil', ['-convert', 'json', '-o', '-', plistFile], { encoding: 'utf8' });
+    if (json.status !== 0) throw new Error('Could not read the daemon plist: ' + json.stderr);
+    const parsed = JSON.parse(json.stdout);
+    assert.equal(parsed.Label, daemonLabel);
+    assert.equal(parsed.RunAtLoad, true);
+    assert.equal(parsed.KeepAlive, false);
+    assert.deepEqual(parsed.ProgramArguments, ['/bin/bash', installedHelper, 'start', 'en5', stateDir]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
   console.log('Offline Ethernet self-test passed');
 }
 
@@ -165,4 +292,7 @@ if (require.main === module) {
   }
 }
 
-module.exports = { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir };
+module.exports = {
+  parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir,
+  renderDaemonPlist, daemonLabel, daemonPlist, installDir, installedHelper
+};
