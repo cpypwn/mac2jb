@@ -9,7 +9,10 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir } = require('./gui-offline-ethernet.cjs');
+const {
+  parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir,
+  renderDaemonPlist, daemonLabel, installedHelper
+} = require('./gui-offline-ethernet.cjs');
 
 test('root-owned live service is not misclassified as stale', () => {
   assert.equal(processAlive(321, () => { throw Object.assign(new Error('permission'), { code: 'EPERM' }); }), true);
@@ -66,6 +69,25 @@ test('stale listener state still requires explicit restoration', t => {
 test('privileged commands cannot redirect state to an arbitrary path', () => {
   assert.equal(requireStateDir(stateDir), stateDir);
   assert.throws(() => requireStateDir('/tmp/offline'), /state directory/);
+});
+
+test('the responder is launched as a valid launchd job, not a backgrounded process', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-offline-ethernet-plist-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'daemon.plist');
+  fs.writeFileSync(file, renderDaemonPlist('en7'));
+  const lint = childProcess.spawnSync('/usr/bin/plutil', ['-lint', file], { encoding: 'utf8' });
+  assert.equal(lint.status, 0, lint.stdout + lint.stderr);
+  const json = childProcess.spawnSync('/usr/bin/plutil', ['-convert', 'json', '-o', '-', file], { encoding: 'utf8' });
+  assert.equal(json.status, 0, json.stderr);
+  const parsed = JSON.parse(json.stdout);
+  assert.equal(parsed.Label, daemonLabel);
+  assert.equal(parsed.RunAtLoad, true);
+  // KeepAlive must be false so a clean stop or an expected error exit does not restart-loop.
+  assert.equal(parsed.KeepAlive, false);
+  // The daemon runs helper.sh from the stable root-owned copy, with the hard-coded state dir.
+  assert.deepEqual(parsed.ProgramArguments, ['/bin/bash', installedHelper, 'start', 'en7', stateDir]);
+  assert.ok(installedHelper.startsWith('/Library/Application Support/mac2jb/'));
 });
 
 async function freePort() {
