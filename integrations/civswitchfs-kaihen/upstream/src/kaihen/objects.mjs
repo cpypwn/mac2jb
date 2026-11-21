@@ -54,11 +54,9 @@ export async function openNotifier(context) {
             readU64LE(backend, 0x18) === BigInt(B + 0x10),
             "notifier event-list identity differs");
         const eventHandle = readU32LE(backend, 0x24);
-        // The upper bound is a garbage filter, not a layout invariant: the FS
-        // process's handle values grow with its session churn (observed
-        // 0x2040071 after a day of chain runs on one boot; fresh boots sit
-        // near 0x1448085). Anything canonical and non-tiny passes.
-        check(eventHandle >= 0x8000 && eventHandle < 0x8000000,
+        // The handle number grows with FS session churn. Retain the lower
+        // sanity check; GetEventHandle verifies the actual handle below.
+        check(eventHandle >= 0x8000,
             "notifier event handle implausible: " + hex(eventHandle));
         proof = {object: location.object, B, handleField: B + 0x24, eventHandle};
     });

@@ -7,7 +7,7 @@
 //                         [--force] [--no-hbmenu] [--no-programs]
 //
 // DIR is the unpacked kaiHEN release, in our SD-shaped layout (default:
-// kaiHEN-20261116 next to this
+// kaiHEN-20261117.1 next to this
 // repository). The main CivSwitchFS payload must have succeeded on this boot.
 
 import fs from "node:fs";
@@ -20,8 +20,8 @@ import {buildPayload, ROOT} from "./bundle.mjs";
 
 const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 // ROOT is the repo root; the default ship sits NEXT TO the repo
-// (../kaiHEN-20261116), per the README.
-const DEFAULT_SHIP = path.join(ROOT, "..", "kaiHEN-20261116");
+// (../kaiHEN-20261117.1), per the README.
+const DEFAULT_SHIP = path.join(ROOT, "..", "kaiHEN-20261117.1");
 const TIMEOUT_MS = 900_000;
 
 const sdPath = {
@@ -223,15 +223,10 @@ function chunkPayload(base64) {
 
 async function main() {
     const options = parse(process.argv.slice(2));
-    // Same layout probe as manifestFor: shaped ships keep the chain files
-    // under kaihen/bin/, official zips at the root.
-    const shaped = await fsp.access(path.join(options.ship,
-        "kaihen/bin/bootstrap.bin")).then(() => true, () => false);
-    const prefix = shaped ? "kaihen/bin/" : "";
     for (const file of ["bootstrap.bin", "ro/main", "hen/main", "game/main"]) {
-        const present = fs.statSync(path.join(options.ship, prefix + file),
+        const present = fs.statSync(path.join(options.ship, file),
             {throwIfNoEntry: false})?.isFile();
-        if (!present) throw Error(`Missing ${path.join(options.ship, prefix + file)}`);
+        if (!present) throw Error(`Missing ${path.join(options.ship, file)}`);
     }
     const files = await manifestFor(options);
     const total = files.reduce((sum, file) => sum + file.size, 0);

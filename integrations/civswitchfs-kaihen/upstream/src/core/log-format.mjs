@@ -100,7 +100,11 @@ export function formatFailureSuffix(result) {
 }
 
 export function formatAliasTiming(alias, elapsedMs) {
-    return " (elapsed " + seconds(elapsedMs) + ")";
+    const waves = Number(alias?.copyWavesTotal) || 0;
+    const perWave = waves
+        ? seconds(elapsedMs / waves) + "/wave"
+        : "n/a per wave";
+    return " (elapsed " + seconds(elapsedMs) + "; " + perWave + ")";
 }
 
 
@@ -115,6 +119,7 @@ export function formatAddressResults(address, elapsedMs) {
     const pages = p.pages || 0;
     const root = p.root || 0;
     const period = p.period || 0;
+    const other = Math.max(0, elapsedMs - addressReads - metadata - pages - root - period);
 
     const addressStatus = address.addressReadVerified ? "passed" : "rejected";
     let aliasStatus;
@@ -161,24 +166,38 @@ export function formatAddressResults(address, elapsedMs) {
     const failureInfo = failureParts.join("");
 
     return [
-        "Address: " + addressStatus +
-            " · candidates=" + address.addressCandidatesTested +
-            " · valid plans=" + address.validAddressPlans +
-            " · alias=" + aliasStatus +
-            " · bucket period=" + periodStatus +
-            " · " + seconds(addressReads + period) +
+        "Address qualification: read " + addressStatus +
+            "; candidates=" + address.addressCandidatesTested +
+            "; changed-link seeds=" + address.changedLinkCandidates +
+            "; valid plans=" + address.validAddressPlans +
+            "; alias recheck=" + aliasStatus +
+            "; period=" + periodStatus +
+            "; plan-read=" + seconds(addressReads) +
+            "; period-time=" + seconds(period) +
+            "; total=" + seconds(addressReads + period) +
             failureInfo,
 
-        "Metadata: anchors=" + address.metadataAnchorChecks +
-            " · pages=" + address.metadataPageChecks +
-            " · probes=" + address.metadataPageProbes +
-            " · " + seconds(metadata + pages),
+        "Metadata: link checks=" + address.metadataAnchorChecks +
+            "; valid pages=" + address.metadataPageChecks +
+            "; probes=" + address.metadataPageProbes +
+            "; discovery=" + seconds(metadata) +
+            "; page=" + seconds(pages) +
+            "; total=" + seconds(metadata + pages),
 
         "FSP root: " + rootStatus +
-            " · candidates=" + address.rootCandidateScans +
-            " · PID=" + (address.rootPidRead ? "read" : "not read") +
-            " · scan=" + seconds(root) +
-            " · total=" + seconds(elapsedMs)
+            "; scans=" + address.rootCandidateScans +
+            "; PID " + (address.rootPidRead ? "read" : "not read") +
+            "; more candidates may qualify=" +
+                Boolean(address.rootCandidateRetryable) +
+            "; time=" + seconds(root) +
+            "; chunks=" + (p.rootChunksRead || 0) +
+            "; clear/read/scan/lookup=" +
+                seconds(p.rootClear || 0) + "/" +
+                seconds(p.rootRead || 0) + "/" +
+                seconds(p.rootScan || 0) + "/" +
+                seconds(p.rootLookup || 0) +
+            "; plans/other=" + seconds(other) +
+            "; total=" + seconds(elapsedMs)
     ];
 }
 
@@ -454,8 +473,7 @@ const CANARY_STATE_LABELS = {
     "window-valid-no-flip": "qualified window, no flip",
     "raw-flip-outside-window": "flip outside qualified window",
     "post-health-failure": "post-flip health check failed",
-    "worker-unsafe": "worker state unsafe",
-    "user-stopped": "stopped by user"
+    "worker-unsafe": "worker state unsafe"
 };
 
 export function formatCanaryResult(control, config) {
@@ -479,67 +497,90 @@ export function formatCanaryResult(control, config) {
             (adjustedFromControls ? " from control waves" : "")
         : "";
 
-    const counts = control.profileCounts || {};
-    const controls = [
-        ["pin", (counts["abort-control"] || 0) > 0,
-            control.pinFirstWaveQualified],
-        ["abort", (counts["abort-control"] || 0) > 0,
-            control.abortControlPassed],
-        ["hole", (counts["abort-hole-control"] || 0) > 0,
-            control.abortHoleControlPassed],
-        ["extent", (counts["extent-present"] || 0) > 0,
-            control.extentQualified],
-        ["negative", (counts.negative || 0) > 0,
-            control.negativeControlPassed]
-    ];
-    const failedControls = controls
-        .filter(([, attempted, passed]) => attempted && !passed)
-        .map(([name]) => name);
+    if (control.canaryQualified) {
+        return "CANARY FLIPPED (positiveAttempts=" +
+            control.positiveAttempts + ", qualifiedWindows=" +
+            control.positiveWindows + ")" + timingAdjustmentSuffix;
+    }
 
+    const controls = [
+        "pin=" + Boolean(control.pinFirstWaveQualified),
+        "abort=" + Boolean(control.abortControlPassed),
+        "hole=" + Boolean(control.abortHoleControlPassed),
+        "extent=" + Boolean(control.extentQualified),
+        "negative=" + Boolean(control.negativeControlPassed)
+    ].join(",");
+
+    const counts = control.profileCounts || {};
+    const attemptsByProfile =
+        "abort=" + (counts["abort-control"] || 0) +
+        ",hole=" + (counts["abort-hole-control"] || 0) +
+        ",extentAbsent=" + (counts["extent-absent"] || 0) +
+        ",extentPresent=" + (counts["extent-present"] || 0) +
+        ",negative=" + (counts.negative || 0) +
+        ",positive=" + (counts.positive || 0);
+
+    const records = control.positiveWindowRecords || [];
     const timing = collectTimingIssues(control, config);
     const otherIssues = summarizeRejectedGates(control, timing);
 
     const label = CANARY_STATE_LABELS[control.campaignState] || control.campaignState;
-    const healthIssue = control.positiveHealthFailures
-        ? ["post-wave canary health failed " +
-            control.positiveHealthFailures + " time(s)"] : [];
-    const totalIssues = [...new Set([
-        ...timing.messages, ...healthIssue, ...otherIssues
-    ])];
-    const issueSummary = totalIssues.length
-        ? "; issue=" + totalIssues.slice(0, 2).join("; ") +
-            (totalIssues.length > 2 ? "; +" + (totalIssues.length - 2) + " more" : "")
-        : "";
-    const positiveSummary = control.positiveAttempts
-        ? "positive=" + control.positiveAttempts +
-            " waves, windows=" + control.positiveWindows + "/" +
-            control.positiveAttempts + ", qualified flips=" +
-            control.positiveQualifiedFlips +
-            (control.positiveOutsideWindowFlips
-                ? ", outside-window flips=" + control.positiveOutsideWindowFlips
-                : "")
-        : "positive waves=not run";
-    const controlSummary = control.controlsQualified
-        ? "controls=passed"
-        : failedControls.length
-            ? "controls failed=" + failedControls.join(",")
-            : "controls incomplete";
+    let outcome;
+    switch (control.campaignState) {
+    case "controls-incomplete":
+        outcome = "Canary not qualified";
+        break;
+    case "worker-unsafe":
+        outcome = "Canary run aborted";
+        break;
+    case "post-health-failure":
+        outcome = "Canary flip rejected";
+        break;
+    case "raw-flip-outside-window":
+        outcome = "Canary flip outside qualified window";
+        break;
+    default:
+        outcome = "Canary didn't flip";
+    }
 
-    if (control.canaryQualified)
-        return "CANARY FLIPPED · " + positiveSummary + timingAdjustmentSuffix;
+    let controlsStatus = "incomplete";
+    if (control.controlsQualified) {
+        controlsStatus = "passed";
+    }
 
-    const outcome = control.campaignState === "worker-unsafe"
-        ? "Canary aborted"
-        : control.campaignState === "user-stopped"
-            ? "Canary stopped"
-            : control.campaignState === "post-health-failure"
-                ? "Canary flip rejected"
-                : "Canary not qualified";
-    return outcome + " (" + label + ") · " + controlSummary +
-        " · " + positiveSummary +
-        " · workers=" + (control.workerStateSafe ? "safe" : "unsafe") +
-        " · stop=" + humanStopReason(control) +
-        issueSummary + timingAdjustmentSuffix;
+    let workerStatus = "unsafe";
+    if (control.workerStateSafe) {
+        workerStatus = "safe";
+    }
+
+    let timingFindingSuffix = "";
+    if (timing.messages.length) {
+        timingFindingSuffix = "; timing findings={" +
+            timing.messages.join("; ") + "}";
+    }
+
+    let otherIssueSuffix = "";
+    if (otherIssues.length) {
+        otherIssueSuffix = "; other issues={" +
+            otherIssues.join("; ") + "}";
+    }
+
+    return outcome + " (" + label + ")" +
+        "; controls=" + controlsStatus +
+        "{" + controls + "}" +
+        "; attemptsByProfile={" + attemptsByProfile + "}" +
+        "; positiveAttempts=" + control.positiveAttempts +
+        "; nextProfile=" + (control.nextProfile || "done") +
+        "; waveCap=" + config.MAX_CONTROL_WAVES +
+        "; stopReason=" + humanStopReason(control) +
+        "; worker state " + workerStatus +
+        "; qualifiedWindows=" + control.positiveWindows + "/" + records.length +
+        "; observedFlips=" + control.positiveObservedRedirects +
+        "; outsideWindowFlips=" + control.positiveOutsideWindowFlips +
+        "; qualifiedFlips=" + control.positiveQualifiedFlips +
+        "; postHealthFailures=" + control.positiveHealthFailures +
+        timingFindingSuffix + otherIssueSuffix +
+        timingAdjustmentSuffix;
 }
 
 
@@ -549,27 +590,29 @@ export function formatCanaryResult(control, config) {
 
 export function formatAliasResult(alias) {
     if (alias.aliasInstalled) {
-        return "Cache alias installed · " + alias.copyStepsCompleted +
-            "/7 steps · " + alias.copyWavesTotal + " waves.";
+        return "Cache alias installed (" + alias.copyStepsCompleted +
+            "/7 copy steps; waves=" + alias.copyWavesTotal + ").";
     }
 
-    const reasons = Object.entries(alias.copyFailureCounts || {})
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 2)
-        .map(([reason, count]) => reason.replace(/-/g, " ") + " " + count)
-        .join(", ") || "none";
-
-    const failedSteps = (alias.copyStepFailures || []).map(step =>
-        step.step + " (" + step.reason.replace(/-/g, " ") +
-        ", " + step.attempts + " tries)")
+    const reasons = Object.keys(alias.copyFailureCounts || {}).sort()
+        .map(r => r + ":" + alias.copyFailureCounts[r])
         .join(",") || "none";
 
-    return "Cache alias rejected · " + alias.copyStepsCompleted +
-        "/7 steps · " + alias.copyWavesTotal + " waves · workers=" +
-        (alias.workerStateSafe ? "safe" : "unsafe") +
-        " · main cause=" + (alias.copyFailureReason || "unknown").replace(/-/g, " ") +
-        " · frequent failures=" + reasons +
-        " · failed steps=" + failedSteps + ".";
+    const failedSteps = (alias.copyStepFailures || []).map(step =>
+        "step" + step.step + "{reason=" + step.reason +
+        ",attempts=" + step.attempts +
+        ",windowRejects=" + step.windowRejects +
+        ",preReleaseRejects=" + step.preReleaseRejects +
+        ",pathMismatches=" + step.pathMismatches + "}")
+        .join(",") || "none";
+
+    return "Cache alias was not installed (" +
+        alias.copyStepsCompleted + "/7 copy steps" +
+        "; waves=" + alias.copyWavesTotal +
+        "; worker state " + (alias.workerStateSafe ? "safe" : "unsafe") +
+        "; reason=" + (alias.copyFailureReason || "unknown") +
+        "; failures={" + reasons + "}" +
+        "; failedSteps={" + failedSteps + "}).";
 }
 
 
@@ -713,10 +756,6 @@ export function formatRetirementResult(retired) {
             (retired?.failureReason || "cleanup-safety-not-verified") +
             "; close=" + formatCode(retired?.candidateCloseResult) + ").";
     }
-
-    if (retired.candidateCacheRetirementSkipped)
-        return "Candidate readback matches the original data; retirement waves " +
-            "were skipped and candidate storage closed.";
 
     if (retired.candidateCacheRetired)
         return "Candidate cache retired and candidate storage closed.";

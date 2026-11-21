@@ -1,8 +1,4 @@
-import coreRuntime, {waitMs} from "../runtime.mjs";
-import {
-    emitFastStage,
-    isVerboseLogging
-} from "../log-stage.mjs";
+import coreRuntime from "../runtime.mjs";
 
 const {
   GADGET_MEMSET,
@@ -23,7 +19,7 @@ const {
   writeDirtyData
 } = coreRuntime;
 
-export const WINDOW_RATE_THRESHOLD = 0.8;
+export const WINDOW_RATE_THRESHOLD = 0.5;
 const TIMING_NOISE_FLOOR_US = 75;
 const TIMING_MAX_STEP_US = 250;
 const TIMING_MAX_DRIFT_US = 1000;
@@ -68,8 +64,7 @@ export async function runControlWaveLoop({
   setupPath,
   setupPkt,
   timingBaseline = null,
-  allowTimingAdjustments = true,
-  shouldStop = null
+  allowTimingAdjustments = true
 }) {
   let canaryQualified;
   let dirtyWriteBuf;
@@ -101,7 +96,6 @@ export async function runControlWaveLoop({
     var waveTimingRecords = [];
     var verboseWaveLines = [];
     var timingAdjustments = [];
-    var stoppedByUser = false;
   var pinQualificationDiagnostics = null;
     wavesStarted = 0;
     wavesJoined = 0;
@@ -113,15 +107,7 @@ export async function runControlWaveLoop({
         guardDelays: config.guardDelays.slice()
     };
 
-    // Give queued controller input a chance to run before starting the first
-    // wave, then yield after each wave so a stop press prevents the next one.
-    await waitMs(0);
     for (var attempt = 0; attempt < config.MAX_CONTROL_WAVES; attempt++) {
-        if (shouldStop?.()) {
-            stoppedByUser = true;
-            workflowStopReason = "stopped-by-user";
-            break;
-        }
         if (canaryQualified) break;
         var profile = nextProfile;
 
@@ -291,20 +277,15 @@ export async function runControlWaveLoop({
             nextProfile = "positive";
         }
 
-        if (isVerboseLogging())
-            verboseWaveLines.push(helpers.formatWaveSummaryLine(
-                attempt + 1, profile, wResult, null, {config}));
+        verboseWaveLines.push(helpers.formatWaveSummaryLine(
+            attempt + 1, profile, wResult,
+            wResult.window ? "QUALIFIED" : "REJECTED", {config}));
 
-        await waitMs(0);
-        if (shouldStop?.()) {
-            stoppedByUser = true;
-            workflowStopReason = "stopped-by-user";
-            break;
-        }
     }
 
-    // Emit wave output after the loop so logging cannot perturb wave timing.
-    for (const line of verboseWaveLines) await emitFastStage(line);
+    // The runtime log policy suppresses these lines unless verbose logging is
+    // enabled. Emit after the wave loop so diagnostics do not delay a wave.
+    for (const line of verboseWaveLines) await log(line);
 
     const positiveAttempts = profileCounts.positive || 0;
     let timingRecords = null;
@@ -327,15 +308,13 @@ export async function runControlWaveLoop({
         }
     }
 
-    if (allowTimingAdjustments && !stoppedByUser &&
-        !canaryQualified && timingRecords) {
+    if (allowTimingAdjustments && !canaryQualified && timingRecords) {
         const changes = applyTimingAdjustments(timingRecords, config, baseline,
             timingSource === "control");
         for (const change of changes) {
             timingAdjustments.push({
                 afterWave: wavesJoined,
-                reason: timingSource + "-window-rate-below-" +
-                    Math.round(WINDOW_RATE_THRESHOLD * 100) + "-percent",
+                reason: timingSource + "-window-rate-below-50-percent",
                 source: timingSource,
                 ...change
             });
@@ -349,8 +328,6 @@ export async function runControlWaveLoop({
         campaignState = "worker-unsafe";
     } else if (positiveHealthFailures > 0) {
         campaignState = "post-health-failure";
-    } else if (stoppedByUser) {
-        campaignState = "user-stopped";
     } else if (canaryQualified) {
         campaignState = "flip-qualified";
     } else if (controlsQualified && positiveWindows > 0) {
@@ -366,7 +343,6 @@ export async function runControlWaveLoop({
     return {ok: true, canaryQualified, dirtyWriteBuf, dirtyWritePkt,
       pinFirstWaveQualified, pinHandle, wavesJoined, wavesStarted,
       workerStateSafe, campaignState, controlsQualified, nextProfile,
-      stoppedByUser,
       workflowStopReason,
       profileCounts,
       abortControlPassed, abortHoleControlPassed, extentQualified,

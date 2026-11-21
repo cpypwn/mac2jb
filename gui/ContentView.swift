@@ -40,6 +40,7 @@ struct ContentView: View {
     @StateObject private var kaiHEN = KaiHENModel()
     @StateObject private var civKaiHEN = CivSwitchKaiHENModel()
     @StateObject private var seedsowKaiHEN = SeedsowKaiHENModel()
+    @StateObject private var seedsowSemiUntethered = SeedsowSemiUntetheredModel()
     @StateObject private var artemisFS = ArtemisFSModel()
     @StateObject private var dnsSwitch = DNSwitchModel()
     @StateObject private var offlineEthernet = OfflineEthernetModel()
@@ -91,7 +92,13 @@ struct ContentView: View {
         showCivSwitchFirstTime && !showCivSwitchSetup &&
         [.typing, .verifying, .stopping].contains(civSwitch.phase)
     }
-    private var configurationLocked: Bool { model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning || model.sessionCleanupRunning || civSwitch.isRunning || civApps.isActive || civFS.isRunning || kaiHEN.isRunning || civKaiHEN.isRunning || seedsowKaiHEN.isRunning || artemisFS.isRunning || !canConfigure }
+    private var configurationLocked: Bool {
+        model.hasLiveWorkers || model.driverSetupRunning || model.rpcDiscoveryRunning ||
+        model.sessionCleanupRunning || civSwitch.isRunning || civApps.isActive ||
+        civFS.isRunning || kaiHEN.isRunning || civKaiHEN.isRunning ||
+        seedsowKaiHEN.isRunning || seedsowSemiUntethered.isRunning ||
+        artemisFS.isRunning || !canConfigure
+    }
     private var civSwitchAddressValid: Bool {
         let parts = civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines)
             .split(separator: ".", omittingEmptySubsequences: false)
@@ -242,6 +249,7 @@ struct ContentView: View {
             kaiHEN.stop()
             civKaiHEN.stop()
             seedsowKaiHEN.stop()
+            seedsowSemiUntethered.stop()
             artemisFS.stop()
             dnsSwitch.stopForTermination()
             webKitResearch.stopForTermination()
@@ -266,6 +274,7 @@ struct ContentView: View {
             kaiHEN.stop()
             civKaiHEN.stop()
             seedsowKaiHEN.stop()
+            seedsowSemiUntethered.stop()
             artemisFS.stop()
         }
         .onChange(of: model.phase) { _, phase in
@@ -603,31 +612,28 @@ struct ContentView: View {
 
     private var offlineEthernetSheet: some View {
         sheetFrame(title: "Offline Ethernet",
-                   subtitle: "Connect the Switch directly to a dedicated Mac Ethernet adapter.",
+                   subtitle: "Connect the Switch directly to your Mac with an Ethernet cable.",
                    compact: true,
+                   contentSpacing: 4,
                    close: { showOfflineEthernetSetup = false }) {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .bottom, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Mac Ethernet adapter")
-                            .font(.system(size: 12, weight: .semibold))
-                        Picker("Mac Ethernet adapter", selection: $offlineEthernet.selectedInterface) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Mac Ethernet connection")
+                        .font(.system(size: 12, weight: .semibold))
+                    HStack(spacing: 8) {
+                        Picker("Mac Ethernet connection", selection: $offlineEthernet.selectedInterface) {
                             ForEach(offlineEthernet.adapters) { adapter in
                                 Text("\(adapter.label) · \(adapter.interface)").tag(adapter.interface)
                             }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
-                        .frame(width: 270, alignment: .leading)
-                        .disabled(offlineEthernet.active || offlineEthernet.needsRestore)
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-                    Button("Refresh") { offlineEthernet.refreshAdapters() }
-                        .disabled(offlineEthernet.active)
                         .fixedSize(horizontal: true, vertical: false)
+                        .disabled(offlineEthernet.active || offlineEthernet.needsRestore)
+                        Button("Refresh") { offlineEthernet.refreshAdapters() }
+                            .disabled(offlineEthernet.active)
+                    }
                 }
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 HStack(spacing: 10) {
                     Button("Start offline Ethernet") { offlineEthernet.start() }
                         .disabled(!offlineEthernet.canStart || dnsSwitch.isActive || model.runtime == nil)
@@ -644,6 +650,11 @@ struct ContentView: View {
                     .foregroundStyle(offlineEthernet.phase == "failed" ? .orange : ink)
                 if !offlineEthernet.actionError.isEmpty {
                     Text(offlineEthernet.actionError).foregroundStyle(.orange)
+                }
+                if !offlineEthernet.logPath.isEmpty {
+                    Button("Open Offline Ethernet log") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: offlineEthernet.logPath))
+                    }
                 }
                 if offlineEthernet.active {
                     Text(offlineEthernet.switchSeen ? "Switch request received: \(offlineEthernet.lastSwitchRequest)" :
@@ -1483,6 +1494,7 @@ struct ContentView: View {
             Text("Run the current kaiHEN release through Civilization VII. Requires firmware 23.0.1, a physical Civilization VII v1.0.0 cartridge and an SD card")
                 .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
+            kaiHENSDControls
             Button("Jailbreak with kaiHEN") {
                 kaiHEN.start(consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
                              runtimeRoot: model.runtime?.root)
@@ -1490,7 +1502,15 @@ struct ContentView: View {
             }
             .buttonStyle(PrimaryActionStyle())
             .disabled(!civLoaderConfirmed || !civSwitchAddressValid || model.runtime == nil || configurationLocked || updater.blocksNewSession)
-            kaiHENSDControls
+            Button("Semi-untethered · experimental") {
+                civKaiHEN.startInstall(
+                    consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
+                    runtimeRoot: model.runtime?.root)
+                if civKaiHEN.phase != .idle { showCivSwitchSetup = false }
+            }
+            .buttonStyle(.bordered)
+            .disabled(!civLoaderConfirmed || !civSwitchAddressValid || model.runtime == nil ||
+                      configurationLocked || updater.blocksNewSession)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1555,19 +1575,6 @@ struct ContentView: View {
             }
             .font(.system(size: 12, weight: .semibold))
             .buttonStyle(.bordered)
-            HStack(spacing: 10) {
-                Button("Install persistent kaiHEN trigger") {
-                    civKaiHEN.startInstall(
-                        consoleAddress: civSwitchConsoleAddress.trimmingCharacters(in: .whitespacesAndNewlines),
-                        runtimeRoot: model.runtime?.root)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!civSwitchAddressValid || model.runtime == nil || configurationLocked || updater.blocksNewSession)
-                Text("Experimental; not recommended")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.orange)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 10) {
                 if civSwitch.canSendPayload {
                     Button("Send JavaScript…") { chooseCivSwitchDirectPayload() }
@@ -1650,7 +1657,7 @@ struct ContentView: View {
         sheetFrame(title: "Seedsow Lullaby", subtitle: "Run kaiHEN through the Artemis loader.",
                    compact: true,
                    close: { showSeedsowKaiHENSetup = false },
-                   closeDisabled: seedsowKaiHEN.isRunning) {
+                   closeDisabled: seedsowKaiHEN.isRunning || seedsowSemiUntethered.isRunning) {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Load the Artemis launcher save in Seedsow Lullaby, then press Y to open HTTP mode. Keep the game open and the Switch and Mac on the same network.")
                     .font(.system(size: 12)).foregroundStyle(Mac2jbTheme.muted)
@@ -1669,9 +1676,14 @@ struct ContentView: View {
                 }
                 .buttonStyle(PrimaryActionStyle())
                 .disabled(!seedsowHTTPConfirmed || !civSwitchAddressValid || model.runtime == nil || configurationLocked || updater.blocksNewSession)
+                SeedsowSemiUntetheredView(
+                    model: seedsowSemiUntethered,
+                    runtimeRoot: model.runtime?.root,
+                    canStart: seedsowHTTPConfirmed && !configurationLocked && !updater.blocksNewSession,
+                    address: $civSwitchConsoleAddress)
             }
         }
-        .interactiveDismissDisabled(seedsowKaiHEN.isRunning)
+        .interactiveDismissDisabled(seedsowKaiHEN.isRunning || seedsowSemiUntethered.isRunning)
     }
 
     private func chooseCivSwitchDirectPayload() {
@@ -2153,11 +2165,12 @@ struct ContentView: View {
         }.disabled(configurationLocked)
     }
 
-    private func sheetFrame<Content: View>(title: String, subtitle: String, compact: Bool = false, close: @escaping () -> Void,
+    private func sheetFrame<Content: View>(title: String, subtitle: String, compact: Bool = false,
+                                         contentSpacing: CGFloat = 24, close: @escaping () -> Void,
                                          closeDisabled: Bool = false,
                                          skip: (() -> Void)? = nil, skipDisabled: Bool = false,
                                          @ViewBuilder content: () -> Content) -> some View {
-        let contents = VStack(alignment: .leading, spacing: 24) {
+        let contents = VStack(alignment: .leading, spacing: contentSpacing) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(title).font(.system(size: 26, weight: .bold, design: .rounded))

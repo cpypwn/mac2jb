@@ -20,9 +20,9 @@ an all-in-one ns2 jailbreaking tool for Mac.
 
 ### direct offline ethernet
 
-mac2jb can connect to the Switch through a dedicated Mac ethernet adapter
-without a router. connect that adapter directly to the Switch dock or ethernet
-adapter, then open **Offline Ethernet** on mac2jb's main screen and start the
+mac2jb can connect to the Switch directly by ethernet without a router. any
+compatible Mac ethernet adapter works. connect it to the Switch dock or
+ethernet adapter, then open **Offline Ethernet** on mac2jb's main screen and start the
 responder. macOS asks for administrator access to add a temporary
 `192.168.2.2/24` address and listen on local DNS and HTTP ports. mac2jb uses
 `192.168.2.2` as the host address for this connection.
@@ -163,10 +163,9 @@ kaiHEN SD files with **Write files to SD card…** or **Prepare copy folder**,
 confirm that the loader is open, and choose **Jailbreak with kaiHEN**. wait
 for the HEN PID and completion message before leaving the game.
 
-developer options also offer **Install persistent kaiHEN trigger**. after
-installation, later **Load Game** launches can run the FS and kaiHEN chain
-without the Mac host. this semi-untethered path is experimental and not
-recommended.
+the **Semi-untethered · experimental** option in the Civilization VII setup
+window installs a persistent kaiHEN trigger. later **Load Game** launches can
+run without the Mac host.
 
 ### SmileBASIC 4
 
@@ -185,6 +184,11 @@ in Seedsow Lullaby and press **Y** to enter HTTP mode. enter the Switch IPv4
 address in mac2jb, confirm that HTTP mode is open, then start the jailbreak.
 keep Seedsow and mac2jb open while the host runs.
 
+the **Semi-untethered · experimental** option in the Seedsow setup window uses
+the [Seedsow uploader](https://gitlab.com/rushinz/seedsow-semi-untethered).
+it requires an existing Artemis save in HTTP mode. back up the save before uploading.
+uploading its scripts does not verify FS escalation.
+
 after kaiHEN starts, close the entry-point game normally. hold **R** while
 opening a native Switch 2 game to open hbmenu. on a fresh setup, the first
 launch may save the game's policy and open the game normally; close it and
@@ -197,141 +201,6 @@ SaveKit, CivSwitch loader controls, and research utilities. **CivHomebrew** runs
 `.civapp` packages through the CivSwitch loader; its **Browse apps** catalog
 defaults to [civapp-db](https://github.com/cpypwn/civapp-db) and accepts custom
 sources.
-
-## save data
-
-after 4/4 verification with RPC held, choose **Start SaveKit** to inspect,
-export, or change a game's save. close the game first. to export it, select
-the title and account, choose **Back up save**, then **Open verified save
-export**. keep the complete folder, including `manifest.json`.
-
-SaveKit backs up and verifies an existing save before a write, restore, or
-delete. mac2jb does not bundle game saves.
-
-## homebrew
-
-for a supported ns2jb host-only session with held RPC, choose MintBrew after
-4/4 verification in **Console & Developer Options**. you can also attach to
-an existing local held-RPC session there.
-
-to try a different standalone launcher while rpc stays held, click **Stop
-current homebrew** and wait until mac2jb confirms that it stopped cleanly.
-then choose another homebrew from the same panel. this switch is experimental;
-if cleanup or rpc verification fails, restart the Switch and begin a new
-session. inside MintBrew, use B or Minus to return from an app to its list.
-
-MintBrew combines Stremio, Froggy Road, OunceCake, ftpd-sb, a CPU-to-GPU
-probe, Hello World and a CHIP-8 test emulator. add or remove compatible gpu apps
-while it is open, then refresh the list on the Switch. hold B or Minus to return
-from a running app and choose another in the same held rpc session.
-
-ftpd-sb shares SmileBASIC's `/save` and `/tmp` files with read/write access
-and `/rom` with read-only access. press A in ftpd-sb to start its server, then
-connect to the console IP shown on screen using anonymous, passive FTP on port
-5000. ftpd-sb does not expose other games' files; use OunceCake for a selected
-game's read-only WebDAV share.
-
-in MintBrew's OunceCake app, press A on a game to share its files. the Switch
-shows both the HTTP/WebDAV address and the read-only FTP address for an
-anonymous, passive FTP client on this Mac. the root WebDAV page offers **Download
-all as ZIP on this Mac**
-when the game's file count permits it; WebDAV and FTP remain available for
-larger games. keep mac2jb open while transferring files. press B to close the
-share and return to the game list; hold B or Minus to return to MintBrew.
-
-OunceCake is also available directly from the post-jailbreak or developer
-held-rpc homebrew choices. enter the Switch's IPv4 address, choose WebDAV or
-FTP on this Mac, then select a game. mac2jb displays the address to use. the
-FTP address uses `127.0.0.1` and works on the Mac running mac2jb.
-
-the CPU-to-GPU probe is an experimental display
-check and does not run arbitrary CPU application code. the CHIP-8 test emulator
-runs its original moving-sprite program on the gpu: use the D-pad to move, A to
-recenter, and B or Minus to return. it does not load external ROMs. its 60 Hz
-timers use the verified console CPU clock through the CPU-to-GPU mailbox, with
-a GPU frame fallback.
-
-the earlier GPU MintNES and MintFTP prototypes remain in the source tree.
-neither is included in the MintBrew app list. a separate native MintNES test
-app is included with HBLauncher.
-HBLauncher is a separate native ABI 3 choice after a fresh Cellenseres or
-kurumuz held rpc session. this release includes its Hello CPU and GPU Triangle sample apps,
-plus MintNES. MintNES runs its NES CPU and graphics emulation on the Switch CPU
-and displays the result through HBLauncher's renderer. it includes the
-open-source Diamond Chase ROM. place supported `.nes` files in
-`/sd/roms/nes` on the Switch SD card, or enter another folder under `/sd/` in
-mac2jb's SD ROM folder field. mac2jb reads those files through held rpc before
-HBLauncher starts and adds them to MintNES's ROM list without changing the SD
-card. for Mac ROMs, click **open MintNES ROM folder** and add `.nes` files there.
-the bundled ROM remains available if the SD folder is absent. press X in the
-MintNES ROM list to refresh Mac ROMs added or removed during this session.
-MintNES currently supports mapper 0 ROMs with 16 or 32 KB PRG and CHR ROM or
-RAM. MintNES presses NES Start once after a short loading delay unless you
-press Plus first. Plus sends NES Start, X sends Select, A/B are NES A/B, and
-the D-pad or left stick moves. press Minus once during a game to return to the ROM
-list; hold Minus to return to HBLauncher. the native audio path is attempted
-and falls back to silent play if the console rejects it.
-choose HBLauncher before starting MintBrew or another app, then use its app
-library on the Switch. you can open the native apps folder in mac2jb and add
-compatible built ABI 3 packages before launching it. the current MintBrew GPU
-session keeps its own display resources alive, so native apps cannot yet be
-opened from MintBrew's menu in the same session.
-
-the [Animal Crossing](https://github.com/ravensclawx/AnimalCrossing-HBLauncher)
-and [Twilight Princess](https://github.com/ravensclawx/TwilightPrincess-HBLauncher)
-ports need their own built packages, the HBLauncher Linux personality runtime,
-user-supplied GameCube game data and a local file server. neither game is
-bundled or verified in this Mac release.
-
-Stremio runs from MintBrew and requires Stremio installed on the Mac. leave the
-manual add-on field empty to use account add-ons.
-
-Stremio sends larger video and menu frames through a dedicated tcp receiver in
-the existing held session. small frames that fit one rpc write keep the existing
-path. audio and session control still use rpc. keep the Mac and Switch on the
-same network; the receiver stops if a complete frame cannot be confirmed.
-use the d-pad to move through the playback controls and audio/subtitle options;
-move the left stick left or right to seek while the playback controls are open.
-while browsing, L/R switches the top tabs. resume reuses the last selected source
-for that video when it is still available; a new movie or episode opens source
-selection. use the Switch's volume controls for playback volume.
-
-for extra launcher apps, click open apps folder below MintBrew and copy the
-complete compatible app folder into its app folder during the held rpc session.
-add or remove app folders while the launcher is open, then refresh its app list
-on the Switch.
-keep your originals elsewhere; each new session has a fresh app library.
-
-**Custom homebrew** is an experimental developer choice under **Hold RPC after
-success** for a built GPU app, native HBLauncher ABI 3 app, launcher folder or
-supported RPC package in the current held session. choose the built folder after 4/4
-verification. native apps require kurumuz, Cellenseres or Astral. an
-OunceCake-compatible WebDAV package also needs the Switch's IPv4 address. launch formats are validated before
-transfer; an unsupported folder is rejected while RPC remains held.
-
-## modloader
-
-with a microSD card inserted and ns2jb or CivSwitch holding a verified 4/4 RPC session,
-put mods on the Switch SD card under `SD:/ns2jb-modloader/contents/<TITLE_ID>/romfs/`
-or `SD:/ns2jb-modloader/contents/<TITLE_ID>/exefs/`, where `TITLE_ID` is the
-game's 16-digit title ID. global patches can go under
-`SD:/ns2jb-modloader/exefs_patches/`. choose **Install modloader** to run all
-compatible mods already on the SD card in one session. if you would like to
-add more mods to your SD card, choose **Write mods to SD card, then install modloader…**
-and select an unpacked folder with `contents/` and/or `exefs_patches/`.
-mac2jb copies the mods to the Switch SD card, verifies the files, then starts
-the modloader using all compatible mods now on the card. files already there
-with the same contents are skipped; files with the same path and different
-contents are replaced. other mods stay in place. game files and mods are not
-bundled.
-
-wait for **READY**, then choose **Finish session** and let the host close.
-close SmileBASIC or Civilization VII without restarting the Switch, then open the modded game.
-the installed overlay lasts until the console reboots. modloader uses this
-session as its final action; choose it before another homebrew app. it supports
-RomFS and ExeFS replacements, IPS patches and `.pchtxt` patches. runtime
-cheats need a separate runtime. see [ns2jb-modloader](https://github.com/SebaaMG/ns2jb-modloader)
-for the complete mod layout and compatibility notes.
 
 ## finish or retry
 
@@ -422,31 +291,11 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 
 ## credits
 
-- [Gezine](https://github.com/Gezine) — [CivSwitch](https://github.com/Gezine/CivSwitch), the Civilization VII chat entry point, payload and USB macro adapted for the Mac flow.
-- [XITRIX](https://github.com/XITRIX) — [CivHomebrew](https://github.com/XITRIX/CivHomebrew) and [Moonlight-CivSwitch](https://github.com/XITRIX/Moonlight-CivSwitch), the CivSwitch launcher and Sunshine client fetched on request.
-- [Rodpad](https://github.com/Rodpad) — [SW2NES](https://github.com/Rodpad/SW2NES), the bundled CivHomebrew NES emulator.
-- [THZoria](https://github.com/THZoria) and [SaoriYuki](https://github.com/THZoria/jellyfin) — the bundled CivHomebrew Jellyfin client.
-- [pepsipu](https://gitlab.com/pepsipu) — [ns2jb](https://gitlab.com/pepsipu/ns2jb), the original Switch 2 exploit and filesystem research.
-- [kurumuz](https://gitlab.com/kurumuz) — [ns2jb](https://gitlab.com/kurumuz/ns2jb), compatibility updates, microSD Express update support and demo support.
-- [BermTheSequel](https://gitlab.com/BermTheSequel) — [ns2jb2](https://gitlab.com/BermTheSequel/ns2jb2), demo support.
-- [shinyquagsire](https://github.com/shinyquagsire23) — [libusbd](https://github.com/shinyquagsire23/libusbd) and [macos_usb_gadget_poc](https://github.com/shinyquagsire23/macos_usb_gadget_poc), usb device emulation and macOS gadget-driver work.
-- [duszmox](https://github.com/duszmox) — [PR #11](https://github.com/cpypwn/mac2jb/pull/11), automatic USB controller discovery through the IORegistry.
-- [misshexa66](https://github.com/misshexa66) — the original [OunceCake](https://github.com/misshexa66/OunceCake), game-content export.
-- [alula](https://github.com/alula) — [switch-artemis-launcher](https://github.com/alula/switch-artemis-launcher), the Seedsow and Nora save launchers and HTTP interface.
-- [purple442](https://github.com/purple442) — [Seedsow Lua Editor Pro](https://github.com/purple442/seedsow-lua-editor-pro), the Lua editor project.
-- [soniciso1](https://github.com/soniciso1) — [Seedsow full-game patch](https://github.com/alula/switch-artemis-launcher/pull/8), full-game save research.
-- [figurophobia](https://github.com/figurophobia) — [Gravity Circuit Switch RCE](https://github.com/figurophobia/GravCirc-Switch-rce), the Gravity Circuit Lua/FTP launcher.
-- [Luminger](https://github.com/Luminger) — [Balatro Switch RCE](https://github.com/Luminger/balatro-switch-rce), Lua/FTP research used by Gravity Circuit Switch RCE.
-- [smarkyie](https://github.com/smarkyie) — [NSP-Box](https://github.com/smarkyie/NSP-Box), the extracted-snapshot packager adapted for Mac.
-- [fab918](https://github.com/fab918) — [nxformat](https://github.com/fab918/nxformat), the bundled NX archive tool.
-- [a55uka](https://github.com/a55uka) — [nup](https://github.com/a55uka/nup), the NUP format and reference tool fetched on request.
-- [Cellenseres](https://github.com/Cellenseres) — the [ns2jb host](https://github.com/Cellenseres/ns2jb) with retained rpc and native IPC handling, and the updated [OunceCake fork](https://github.com/Cellenseres/OunceCake) for read-only HTTP and WebDAV game browsing.
-- [SebaaMG](https://github.com/SebaaMG) — [ns2jb-modloader](https://github.com/SebaaMG/ns2jb-modloader), the RomFS and ExeFS loader integrated for held RPC sessions.
-- [ravensclawx](https://github.com/ravensclawx) — [HBLauncher](https://github.com/ravensclawx/HBLauncher), the native app launcher and sdk, and [ftpd-sb](https://github.com/ravensclawx/ftpd-sb), bundled with MintBrew and the base for the MintFTP prototype.
-- [niftynova](https://github.com/NiftyNova) — [gpubrewlauncher](https://github.com/NiftyNova/GPUBrewLauncher), the updated gpu app launcher.
-- [Stremio](https://github.com/Stremio/stremio-web) — the official app icon used in MintBrew.
-- [Jmesmykil](https://github.com/Jmesmykil) — [Switch 2 captive portal research scripts](https://github.com/Jmesmykil/switch2-captive-portal-research), included with permission for browser diagnostics.
-- [Khronos Group](https://github.com/KhronosGroup) — [glslang](https://github.com/KhronosGroup/glslang) and [SPIRV-Tools](https://github.com/KhronosGroup/SPIRV-Tools), shader compilation and validation.
-- [Northernside](https://github.com/Northernside) — [PR #9](https://github.com/cpypwn/mac2jb/pull/9), measured keystroke timing for the bootstrap ETA.
+- [ouncebrew](https://github.com/ouncebrew/kaihen) — kaiHEN.
+- [Gezine](https://github.com/Gezine/CivSwitch) and [s8n](https://github.com/s8n/CivSwitchFS-kaiHEN) — the Civilization VII entry point and kaiHEN path.
+- [pepsipu](https://gitlab.com/pepsipu/ns2jb) and [kurumuz](https://gitlab.com/kurumuz/ns2jb) — the SmileBASIC entry point and host.
+- [Malev0](https://github.com/Malev0/seedsow-fs-kaihen) — the Seedsow kaiHEN path.
+- [shinyquagsire](https://github.com/shinyquagsire23/libusbd) — macOS USB gadget support.
+- [dougchansan](https://github.com/dougchansan/ns2-savekit) — SaveKit.
 
 see the bundled notices, licenses and upstream documentation for attribution and reuse terms.

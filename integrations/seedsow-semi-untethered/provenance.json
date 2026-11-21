@@ -1,0 +1,21 @@
+{
+  "source": "https://gitlab.com/rushinz/seedsow-semi-untethered",
+  "commit": "3423c53eb337618e4eaa64d42d9c37411c48326e",
+  "files": {
+    "lua/core2.lua": "cabfc21025ffb279e43e153e026791f30d67ba41beed4e455826255535a49179",
+    "lua/exploita2.lua": "f1c5ef76feae14a6257319144977a658768806fb11fd80893c89b8f34c6c18f7",
+    "lua/inject2.lua": "253b498ddecb2d4dd1e6b8a89c144c49ee87965e3450f4aa9d7e4ce6afed4ca9",
+    "lua/s2_fs.lua": "cef0a029a61e90b85623e361dc9c8620cb0e82f767ff5a7007adebf1c54f1b1c",
+    "lua/s2_fshlp.lua": "69dcf6f1beea81ec1bbf63c5d92bce378f0113c73c1a10bfcc66bfbf81329cdc",
+    "lua/s2_kaihen.lua": "e463183661d1434a6707a1e3754130339b798e0e68133badfc1f479b7e3fe3fd",
+    "lua/s2_kh_ro.lua": "cba5d9c638461153f708ecb9e3e60ca7b4ba60589cece101d0923e44b0126827",
+    "lua/s2_main.lua": "0ae5ab77bfa18c21e3ff9bb52845d3830135c258065b58fc6b688b9f29016d1e",
+    "lua/s2_prim.lua": "d5e5f38157b094d2b7690a9a5fd7dc918ed27c8830f274046a85dd8bb72276ae",
+    "lua/s2_promote.lua": "7ff6e97c6bd56d3583eeb1a31f00c915f3c5e8847e51553eabf474d4add05f61",
+    "lua/s2_race.lua": "1eabf275deb8d9205a7c33248a63ae931ca12e3937dc5de456cfb54caeb73a6a",
+    "lua/s2_rt.lua": "a945473b48f2ad15f83c634da7accd610036ad149fb3f14db52e944547ebde90",
+    "lua/s2_scan.lua": "e7751fb30d70d1fb9266237c679c1aeba383582e557067ead3cc404d69978a8a",
+    "lua/s2_wave.lua": "2012b141239f454711daff821b1b7cef1a3f69a6fbb0927fe499707850cc1cd6",
+    "tools/upload-semi-untethered.cjs": "26fad6224723ce0a73b4fe19cdc19a11f16650ea8c1025e9dd3675af5ab30853"
+  }
+}

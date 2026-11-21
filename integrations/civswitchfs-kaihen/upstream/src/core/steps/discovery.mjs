@@ -320,7 +320,6 @@ export async function qualifyAddressPlan({
   candidateHandle,
   collectTimingProfile = false,
   reportProgress = null,
-  shouldStop = null,
   pointerCandidates,
   primeHex,
   rootSession,
@@ -459,8 +458,7 @@ export async function qualifyAddressPlan({
                     if (addressPlan) {
                         var periodStartedAt = collectTimingProfile ? Date.now() : 0;
                         var periodResult = await helpers.qualifyCacheBucketPeriod({
-                            candidateHandle, primeHex, storageHandle, addressCopy,
-                            shouldStop
+                            candidateHandle, primeHex, storageHandle, addressCopy
                         });
                         if (collectTimingProfile)
                             timingProfile.period = (timingProfile.period || 0) +
@@ -478,8 +476,7 @@ export async function qualifyAddressPlan({
                     // A changed-link pointer is only a seed. Derive and validate
                     // allocator metadata anchors before attempting the layout
                     // capture; continue through bounded candidates on no-match.
-                    for (var ai = 0; addressPlan && !shouldStop?.() &&
-                        ai < candidatePlans.length; ai++) {
+                    for (var ai = 0; addressPlan && ai < candidatePlans.length; ai++) {
                         var addressCandidate = candidatePlans[ai];
                         addressPlan = addressCandidate.plan;
                         addressCandidatesTested++;
@@ -495,7 +492,7 @@ export async function qualifyAddressPlan({
                         var candidateResult = await helpers.verifyAddressCandidate(
                             addressPlan, addressLabel, ai + 1, {
                                 config, addressPlan, candidateHandle, storageHandle,
-                                addressCopy, shouldStop
+                                addressCopy
                             });
                         if (collectTimingProfile)
                             timingProfile.addressReads =
@@ -557,7 +554,7 @@ export async function qualifyAddressPlan({
                             var stopSeedScan = false;
                             var rootScansForSeed = 0;
                             var pageProbesBeforeSeed = metadataPageProbes;
-                            for (var mi = 0; !shouldStop?.() &&
+                            for (var mi = 0;
                                 mi < metadataDiscovery.anchors.length &&
                                     rootCandidateScans < config.MAX_ROOT_LAYOUT_SCANS &&
                                     metadataPageProbes < config.MAX_METADATA_PAGE_PROBES;
@@ -571,7 +568,7 @@ export async function qualifyAddressPlan({
                                     allPointerTargets, {
                                         config, addressPlan, metadataPageProbes,
                                         storageHandle, candidateHandle, savedHandle,
-                                        addressCopy, shouldStop
+                                        addressCopy
                                     });
                                 if (collectTimingProfile)
                                     timingProfile.pages = (timingProfile.pages || 0) +

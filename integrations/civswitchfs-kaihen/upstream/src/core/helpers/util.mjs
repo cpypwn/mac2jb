@@ -123,147 +123,171 @@ export function padRight(s, len) {
     return s;
 }
 
-const WAVE_REJECTION_LABELS = {
-    reservation: "reservations",
-    "workers-done": "workers incomplete",
-    transport: "IPC failed",
-    "workers-join": "workers did not join",
-    "protected-10": "worker flags",
-    "release-sent": "release failed",
-    signal: "completion signal",
-    "trig-span": "trigger timing unavailable",
-    "shape-10": "overlap pattern",
-    "margin>=300": "margin below 300µs",
-    "no-abort": "unexpected abort",
-    tails: "path fragments",
-    commit: "save commit",
-    read: "storage read",
-    paths: "path results",
-    "pin-shape": "pin reply",
-    "clear-ok": "heap clear",
-    "pre-ok": "heap probe",
-    "heap-restore": "heap counters",
-    "pin-cost": "pin allocation",
-    "pin-window": "pin timing",
-    "pin-1st": "initial pin",
-    "pre-release": "cache hold"
-};
-
-function waveStatus(profile, result, verdict) {
-    if (profile === "abort-control")
-        return result.abortControl ? "PASS · expected abort" : "REJECTED";
-    if (profile === "abort-hole-control")
-        return result.abortHoleControl ? "PASS · expected abort" : "REJECTED";
-    if (profile === "extent-present")
-        return result.extentQualified ? "PASS · marker found" : "REJECTED";
-    if (profile === "negative")
-        return result.negativeControl ? "PASS · expected error" : "REJECTED";
-    if (profile === "positive") {
-        if (result.canaryRedirect) return "QUALIFIED FLIP";
-        if (result.observedCanaryRedirect && !result.window)
-            return "FLIP OUTSIDE WINDOW";
-        if (result.window) return "WINDOW OK · no flip";
-        return "REJECTED";
-    }
-    if (profile === "extent-absent") return "REFERENCE";
-    if (profile.indexOf("cache") === 0 ||
-        /accepted|copy-ok/i.test(String(verdict || ""))) {
-        return /accepted|copy-ok/i.test(String(verdict || ""))
-            ? "ACCEPTED" : "REJECTED";
-    }
-    return verdict || (result.window ? "WINDOW OK" : "REJECTED");
-}
-
-function isCacheCopyProfile(profile, verdict) {
-    return profile.indexOf("cache") === 0 ||
-        /header copy/i.test(String(verdict || ""));
-}
-
-function waveRejectionSummary(result, config, profile, verdict) {
-    const reasons = [];
-    for (const key of result.rejections || []) {
-        let label = WAVE_REJECTION_LABELS[key] || key.replace(/-/g, " ");
-        if (key === "shape-10") label += " " + result.shape + "/10";
-        if (key === "paths" && result.changedPaths?.length)
-            label += ": " + result.changedPaths.join(",");
-        if (!reasons.includes(label)) reasons.push(label);
+export function formatWaveSummaryLine(id, profile, result, verdict, input) {
+    const config = input.config;
+    var canary;
+    if (result.canaryType === 0) {
+        canary = "DIR";
+    } else if (result.canaryType === 1) {
+        canary = "file";
+    } else if (result.canaryType == null) {
+        canary = "?";
+    } else {
+        canary = "err";
     }
 
-    if (isCacheCopyProfile(profile, verdict) && result.window) {
-        if (result.preReleaseUsed == null ||
-            result.preReleaseUsed < config.FIELD_MINIMUM_CACHE_HELD) {
-            reasons.push("cache hold below minimum");
-        } else if (result.changedPaths?.length) {
-            reasons.push("unexpected path result");
+    var rejects = "-";
+    if (result.rejections && result.rejections.length) {
+        rejects = result.rejections.join(",");
+    }
+
+    var changedPaths = "none";
+    if (result.changedPaths && result.changedPaths.length) {
+        changedPaths = result.changedPaths.join(",");
+    }
+
+    var windowStatus = "no";
+    if (result.window) {
+        windowStatus = "pass";
+    }
+
+    var margin = "NA";
+    if (result.margin != null) {
+        margin = result.margin + "us";
+    }
+
+    var triggerStatus = "clear";
+    if (result.triggerAborted) {
+        triggerStatus = "aborted";
+    }
+
+    var preRelease = "NA";
+    if (result.preReleaseUsed != null) {
+        preRelease = "0x" + Number(result.preReleaseUsed).toString(16);
+    }
+
+    var isControlProfile = profile === "abort-control" ||
+        profile === "abort-hole-control" || profile === "extent-absent" ||
+        profile === "extent-present" || profile === "negative" ||
+        profile === "positive";
+    var line = "Wave " + pad2(id) + " [" + profile + "] " + verdict +
+        " | window=" + windowStatus +
+        " overlap=" + result.shape + "/10 margin=" +
+        margin +
+        " trigger=" + triggerStatus +
+        " canary=" + canary +
+        " paths=" + changedPaths +
+        " preRelease=" + preRelease +
+        " gates=" + rejects;
+
+    var failedSends = [];
+    for (var si = 0; result.sendCodes && si < result.sendCodes.length; si++) {
+        if (result.sendCodes[si] !== 0) {
+            var sendCode = result.sendCodes[si];
+
+            if (sendCode == null) {
+                sendCode = 0xFFFFFFFF;
+            }
+
+            failedSends.push(config.roleShort[si] + ":" +
+                hex32(sendCode));
+        }
+    }
+    if (failedSends.length) {
+        line += " tx=" + failedSends.join("/");
+    }
+
+    if (isControlProfile) {
+        if (result.canaryResult != null) {
+            line += " canaryIPC=" + hex32(result.canaryResult) + "/t" + canary;
+        }
+
+        if (result.triggerResult != null) {
+            line += " triggerIPC=" + hex32(result.triggerResult) +
+                "/t" + result.triggerType;
+        }
+
+        if (result.postCanaryHealth) {
+            var health = result.postCanaryHealth;
+            line += " postTx=" + hex32(health.transport) + " post=" +
+                hex32(health.result) + "/t" + health.type +
+                " healthy=" + health.healthy;
+        }
+
+        if (result.observedCanaryRedirect != null) {
+            line += " flipObserved=" + result.observedCanaryRedirect;
+        }
+
+        if (result.guardSamples) {
+            var guards = result.guardSamples;
+            line += " guards=" + guards.completed + "/" + guards.earlyHole +
+                "/" + guards.spacing;
+        }
+
+        if (result.pinDiagnostics && result.pinDiagnostics.created) {
+            var pin = result.pinDiagnostics;
+            var persistentBytes = pin.persistentBytes;
+            if (persistentBytes == null) {
+                persistentBytes = "NA";
+            }
+
+            var startOffset = "NA";
+            if (pin.startOffsetUs != null) {
+                startOffset = pin.startOffsetUs.toFixed(0);
+            }
+
+            var endMargin = "NA";
+            if (pin.endMarginUs != null) {
+                endMargin = pin.endMarginUs.toFixed(0);
+            }
+
+            line += " pin=" + hex32(pin.result) + " moves/copies=" +
+                pin.moves + "/" + pin.copies + " cost=" +
+                persistentBytes +
+                "/" + pin.expectedBytes + " gaps(start/end)=" +
+                startOffset + "/" + endMargin +
+                "us shape/cost/window=" + pin.shapeOk + "/" + pin.costOk +
+                "/" + pin.windowOk + " restored=" + pin.restored;
+        }
+    } else {
+        if (result.canaryResult != null && result.canaryResult !== 0) {
+            line += " canaryResult=" + hex32(result.canaryResult);
+        }
+
+        if (result.triggerAborted) {
+            line += " triggerResult=" + hex32(result.triggerResult);
         }
     }
 
-    if (result.postCanaryHealth && !result.postCanaryHealth.healthy)
-        reasons.push("post-wave canary health");
-
-    if (!reasons.length) {
-        if (profile === "abort-control" || profile === "abort-hole-control")
-            reasons.push("abort check did not match");
-        else if (profile === "extent-present")
-            reasons.push("marker result did not match");
-        else if (profile === "negative")
-            reasons.push("expected error was not returned");
-        else if (profile === "positive")
-            reasons.push(result.window
-                ? "canary did not flip" : "window gates did not qualify");
-        else if (result.changedPaths?.length)
-            reasons.push("changed paths: " + result.changedPaths.join(","));
+    if (result.shapeMissing && result.shapeMissing.length) {
+        line += " shapeMissing=" + result.shapeMissing.join("/");
     }
 
-    if (reasons.length > 2)
-        return reasons.slice(0, 2).join(", ") + " +" +
-            (reasons.length - 2) + " checks";
-    return reasons.join(", ");
-}
-
-export function formatWaveSummaryLine(id, profile, result, verdict, input) {
-    const config = input.config;
-    const status = waveStatus(profile, result, verdict);
-    const isCacheProfile = isCacheCopyProfile(profile, verdict);
-    let line = "Wave " + pad2(id) + " [" + profile + "] " + status;
-
-    if (profile === "extent-absent") {
-        line += " · window=" + (result.window ? "OK" : "no");
-        if (result.triggerCanonical != null)
-            line += " · trigger=0x" +
-                Number(result.triggerCanonical).toString(16);
+    if (result.marginSlackUs != null) {
+        line += " marginSlack=" + result.marginSlackUs.toFixed(0) + "us";
     }
 
-    if (["abort-control", "abort-hole-control", "extent-present",
-        "negative", "extent-absent", "positive"].indexOf(profile) >= 0 &&
-        result.canaryType != null) {
-        line += " · canary=" + (result.canaryType === 1 ? "file" :
-            result.canaryType === 0 ? "DIR" : "error");
+    if (result.preReleaseSlackBytes != null) {
+        line += " preSlack=" + result.preReleaseSlackBytes + "B";
     }
 
-    if (profile === "abort-control" && result.pinDiagnostics?.created)
-        line += " · pin=" + (result.pinFirstWaveQualified ? "OK" : "not qualified");
-
-    if (result.margin != null)
-        line += " · margin=" + result.margin + "/300µs";
-
-    if (profile === "positive") {
-        if (result.canaryRedirect) line += " · post-check=OK";
+    if (isControlProfile && result.roleTimings) {
+        var timingParts = [];
+        for (var ti = 0; ti < config.roleLabels.length; ti++) {
+            var timing = result.roleTimings[config.roleLabels[ti]];
+            if (timing) {
+                timingParts.push(config.roleShort[ti] + "=" +
+                    timing.relStartUs.toFixed(0) + ".." +
+                    timing.relEndUs.toFixed(0));
+            }
+        }
+        line += " spans(us=relTriggerStart/end):" + timingParts.join(",");
     }
 
-    if (isCacheProfile) {
-        const held = result.preReleaseUsed == null
-            ? "n/a" : "0x" + Number(result.preReleaseUsed).toString(16);
-        line += " · cache=" + held + "/0x" +
-            Number(config.FIELD_MINIMUM_CACHE_HELD).toString(16);
+    if (result.readResult != null && result.readResult !== 0) {
+        line += " read=" + hex32(result.readResult);
     }
 
-    if (status === "REJECTED" || status === "FLIP OUTSIDE WINDOW") {
-        const reasons = waveRejectionSummary(result, config, profile, verdict);
-        if (reasons) line += " · cause: " + reasons;
-    }
-    if (result.postCanaryHealth && !result.postCanaryHealth.healthy)
-        line += " · post-check failed";
     return line;
 }
 

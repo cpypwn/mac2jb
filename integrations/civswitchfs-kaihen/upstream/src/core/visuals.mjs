@@ -4,8 +4,6 @@ const LOGGER_KEY = "__CIVSWITCHFS_VISUAL_LOGGER_V2__";
 const LOGGER_STATE_KEY = "__CIVSWITCHFS_VISUAL_LOG_STATE_V2__";
 const LEGACY_LOGGER_KEY = "__CIVSWITCHFS_VISUAL_LOGGER__";
 const LEGACY_STATE_KEY = "__CIVSWITCHFS_VISUAL_LOG_STATE__";
-const INPUT_CONTROL_STATE_KEY = "__CIVSWITCHFS_INPUT_CONTROL_STATE_V1__";
-const INPUT_CONTROL_VERSION = 4;
 const BETTER_CONSOLE_FORWARDER = "__civSwitchBetterConsoleForwarder";
 const LOG_LABEL = "CivSwitchFS logs";
 
@@ -96,6 +94,7 @@ function installVisualLogPatchFor(api) {
         if (!state.output || !state.output.isConnected) {
             state.output = document.createElement("div");
             state.output.setAttribute("aria-label", LOG_LABEL);
+            state.output.setAttribute("tabindex", "0");
             state.output.setAttribute("role", "log");
             state.compact = applyConsoleStyle(state.output, document);
             document.body.appendChild(state.output);
@@ -163,201 +162,6 @@ export async function clearVisualLog() {
     if (output) output.textContent = "";
 }
 
-export function installRunInputControls({
-    onResetTimings, onStop, onToggleVerbose
-} = {}) {
-    const window = globalThis.window;
-    if (!window?.addEventListener) return {dispose() {}};
-
-    const existingControls = globalThis[INPUT_CONTROL_STATE_KEY];
-    if (existingControls) {
-        if (existingControls.version === INPUT_CONTROL_VERSION &&
-            typeof existingControls.setRunCallbacks === "function") {
-            existingControls.setRunCallbacks({
-                onResetTimings, onStop, onToggleVerbose
-            });
-            return existingControls;
-        }
-        existingControls.dispose?.();
-    }
-
-    const statuses = window.InputActionStatuses || {
-        START: 0,
-        FINISH: 1,
-        UPDATE: 2
-    };
-    let disposed = false;
-    let inputTimer = null;
-    let lastResetRequest = 0;
-    let runCallbacks = {onResetTimings, onStop, onToggleVerbose};
-    let controllerPrevious = Object.create(null);
-    let lastVerboseToggleAt = 0;
-    const engineActionActive = {reset: false, stop: false};
-
-    function consume(event) {
-        event?.preventDefault?.();
-        event?.stopImmediatePropagation?.();
-    }
-
-    function requestReset(event) {
-        if (typeof runCallbacks.onResetTimings !== "function") return false;
-        consume(event);
-        const now = Date.now();
-        if (now - lastResetRequest < 100) return true;
-        lastResetRequest = now;
-        runCallbacks.onResetTimings();
-        return true;
-    }
-
-    function requestStop(event) {
-        if (typeof runCallbacks.onStop !== "function") return false;
-        consume(event);
-        runCallbacks.onStop();
-        return true;
-    }
-
-    function requestToggleVerbose() {
-        if (typeof runCallbacks.onToggleVerbose !== "function") return false;
-        const now = Date.now();
-        if (now - lastVerboseToggleAt < 180) return true;
-        lastVerboseToggleAt = now;
-        runCallbacks.onToggleVerbose();
-        return true;
-    }
-
-    function handleEngineAction(event, action) {
-        const callback = action === "reset"
-            ? runCallbacks.onResetTimings : runCallbacks.onStop;
-        if (typeof callback !== "function") return;
-
-        const isFinished = event.detail?.status === statuses.FINISH;
-        const isActive = engineActionActive[action];
-        consume(event);
-        if (!isActive) {
-            if (action === "reset") requestReset(event);
-            else requestStop(event);
-        }
-        engineActionActive[action] = !isFinished;
-    }
-
-    function handleEngineToggle(event) {
-        if (typeof runCallbacks.onToggleVerbose !== "function") return;
-        const status = event.detail?.status;
-        const isStart = status === statuses.START ||
-            String(status).toLowerCase() === "start";
-        const isFinished = status === statuses.FINISH ||
-            String(status).toLowerCase() === "finish";
-        if (!isStart && !isFinished && status != null) return;
-        consume(event);
-        if (!isFinished) requestToggleVerbose();
-    }
-
-    function onEngineInput(event) {
-        if (disposed) return;
-        const detail = event.detail || {};
-        const name = typeof detail.name === "string"
-            ? detail.name.toLowerCase() : "";
-        let isCancel = false;
-        // Use the game's cancel helper when available; raw action names vary.
-        try {
-            isCancel = typeof event.isCancelInput === "function" &&
-                event.isCancelInput() === true;
-        } catch (ignored) {}
-
-        if (isCancel || name === "back" ||
-            name === "cancel" || name === "ui-back") {
-            handleEngineAction(event, "stop");
-            return;
-        }
-
-        if (name === "shell-action-1") {
-            handleEngineAction(event, "reset");
-            return;
-        }
-
-        if (name === "shell-action-2" || name === "shell-action-y" ||
-            name === "button-y" || name === "gamepad-y" || name === "y") {
-            handleEngineToggle(event);
-            return;
-        }
-    }
-
-    function pollGamepad() {
-        const navigator = typeof window.navigator?.getGamepads === "function"
-            ? window.navigator : globalThis.navigator;
-        if (!navigator || typeof navigator.getGamepads !== "function") return;
-
-        let pads;
-        try {
-            pads = navigator.getGamepads();
-        } catch (ignored) {
-            return;
-        }
-
-        let pad = null;
-        let fallbackPad = null;
-        for (let index = 0; index < pads.length; index++) {
-            const candidate = pads[index];
-            if (!candidate || candidate.connected === false) continue;
-            if (!fallbackPad && candidate.buttons?.length >= 4)
-                fallbackPad = candidate;
-            if (candidate.mapping === "standard") {
-                pad = candidate;
-                break;
-            }
-        }
-        if (!pad) pad = fallbackPad;
-        if (!pad) {
-            controllerPrevious = Object.create(null);
-            return;
-        }
-
-        function pressed(index) {
-            return Boolean(pad.buttons[index] && pad.buttons[index].pressed);
-        }
-
-        // Standard Gamepad layout: Nintendo B is south (0), Y is west (2), X is north (3).
-        for (const button of [0, 2, 3]) {
-            const current = pressed(button);
-            if (current && controllerPrevious[button] !== true) {
-                if (button === 3) requestReset();
-                else if (button === 2) requestToggleVerbose();
-                else requestStop();
-            }
-            controllerPrevious[button] = current;
-        }
-    }
-
-    window.addEventListener("engine-input", onEngineInput, true);
-
-    inputTimer = setInterval(pollGamepad, 40);
-
-    const controls = {
-        version: INPUT_CONTROL_VERSION,
-        setRunCallbacks(callbacks = {}) {
-            runCallbacks = callbacks;
-            engineActionActive.reset = false;
-            engineActionActive.stop = false;
-            lastResetRequest = 0;
-            lastVerboseToggleAt = 0;
-        },
-        clearRunActions() {
-            runCallbacks = {onResetTimings: null, onStop: null,
-                onToggleVerbose: null};
-        },
-        dispose() {
-            if (disposed) return;
-            disposed = true;
-            if (inputTimer !== null) clearInterval(inputTimer);
-            window.removeEventListener("engine-input", onEngineInput, true);
-            if (globalThis[INPUT_CONTROL_STATE_KEY] === controls)
-                delete globalThis[INPUT_CONTROL_STATE_KEY];
-        }
-    };
-    globalThis[INPUT_CONTROL_STATE_KEY] = controls;
-    return controls;
-}
-
 function removeLegacyOutput(document) {
     const state = globalThis[LEGACY_STATE_KEY];
     const output = state?.output ||
@@ -389,7 +193,7 @@ function applyConsoleStyle(output, document) {
         boxSizing: "border-box",
         margin: "0",
         padding: "10px 0 22px",
-        overflowY: "hidden",
+        overflowY: "auto",
         overflowX: "hidden",
         fontFamily: "Consolas, 'Liberation Mono', monospace",
         fontSize: compact ? "15px" : "18px",
@@ -420,7 +224,7 @@ function applyLegacyConsoleStyle(output, document) {
         boxSizing: "border-box",
         margin: "0",
         padding: "10px 14px 22px",
-        overflowY: "hidden",
+        overflowY: "auto",
         overflowX: "hidden",
         fontFamily: "Consolas, 'Liberation Mono', monospace",
         fontSize,

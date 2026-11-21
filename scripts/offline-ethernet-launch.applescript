@@ -8,7 +8,7 @@ on run argv
     set interfaceName to item 5 of argv
 
     if actionName is "start" then
-        set commandText to "trap '' HUP; /usr/bin/nohup " & quoted form of nodePath & " " & quoted form of helperPath & " start --interface " & quoted form of interfaceName & " --state-dir " & quoted form of statePath & " > /dev/null 2>&1 < /dev/null &"
+        set commandText to quoted form of nodePath & " " & quoted form of helperPath & " start --interface " & quoted form of interfaceName & " --state-dir " & quoted form of statePath
     else if actionName is "stop" or actionName is "restore" then
         set commandText to quoted form of nodePath & " " & quoted form of helperPath & " " & actionName & " --state-dir " & quoted form of statePath
     else

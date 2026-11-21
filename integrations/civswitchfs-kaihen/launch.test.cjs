@@ -13,10 +13,10 @@ test('pinned runtime and SD assets verify without downloads', () => {
   bridge.verifyAssets(runtimeRoot);
   bridge.verifyAssets(runtimeRoot, {sd: true});
   const entries = bridge.readSdFiles(bridge.paths(runtimeRoot));
-  assert.equal(entries.get('kaihen/bin/bootstrap.bin').length, 28012);
+  assert.equal(entries.get('kaihen/bin/bootstrap.bin').length, 27948);
   assert.equal(entries.get('kaihen/bin/ro/main').length, 23854);
-  assert.equal(entries.get('kaihen/bin/hen/main').length, 78761);
-  assert.equal(entries.get('kaihen/bin/game/main').length, 62943);
+  assert.equal(entries.get('kaihen/bin/hen/main').length, 78765);
+  assert.equal(entries.get('kaihen/bin/game/main').length, 63424);
   assert.equal(entries.get('hbmenu.nro').length, 11790974);
   assert.equal(entries.get('switch/ounceshell/ounceshell.nro').length, 22294859);
   assert.equal(entries.has('switch/kaihen-stremio/kaihen-stremio.nro'), false);

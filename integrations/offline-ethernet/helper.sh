@@ -22,7 +22,7 @@ PHASE=''
 write_status() {
   (( CAN_STATUS )) || return 0
   local tmp="$STATUS.tmp.$$"
-  printf '%s\n%s\n' "$1" "$2" > "$tmp"
+  printf '%s\n%s\n%s\n' "$1" "$2" "${MAC2JB_OFFLINE_LAUNCH_TOKEN:-}" > "$tmp"
   /bin/chmod 644 "$tmp"
   /bin/mv -f "$tmp" "$STATUS"
   PHASE="$1"
@@ -127,7 +127,7 @@ check_forwarding() {
 check_default_route() {
   local default_if
   default_if="$(/sbin/route -n get default 2>/dev/null | /usr/bin/awk '/^[[:space:]]*interface: /{print $2;exit}')" || true
-  [[ "$default_if" != "$IFACE" ]] || err "$IFACE is the current Internet uplink; use a dedicated adapter"
+  [[ "$default_if" != "$IFACE" ]] || err "$IFACE is the current Internet connection; choose the Ethernet connection that runs directly to the Switch"
 }
 
 check_subnet_conflicts() {
@@ -241,7 +241,13 @@ restore() {
   write_status restored 'Temporary Mac address removed; original settings were preserved'
 }
 
+prepare() {
+  check_platform
+  prepare_state_dir "${2:-}"
+}
+
 case "$MODE" in
+  prepare) prepare "$@" ;;
   start) start "$@" ;;
   stop) stop "$@" ;;
   restore) restore "$@" ;;

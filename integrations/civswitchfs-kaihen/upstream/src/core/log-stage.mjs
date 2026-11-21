@@ -1,8 +1,7 @@
 // Stage-logging helpers for the payload supervisor.
 //
-// Stage messages stay visible in every mode; raw helper logs stay hidden.
-// Stage output is written without per-line attempt prefixes; core.js emits one
-// standalone attempt header.
+// Stage messages are marked for the loader's log filter and written without
+// per-line attempt prefixes. core.js emits one standalone attempt header.
 
 import coreRuntime, {waitMs} from "./runtime.mjs";
 
@@ -19,13 +18,10 @@ export function setVerboseLogging(enabled) {
     return previous;
 }
 
-export function isVerboseLogging() {
-    return verboseLogging;
-}
-
 export function stageOnlyLog(message) {
     if (typeof message === "string" && message.startsWith(STAGE_LOG_MARKER))
         return message.slice(STAGE_LOG_MARKER.length);
+    if (verboseLogging && typeof message === "string") return message;
     return null;
 }
 
@@ -34,8 +30,7 @@ export async function emitFastStage(message) {
 }
 
 export async function emitVerboseStage(message) {
-    if (verboseLogging && message)
-        await emitFastStage(message);
+    if (verboseLogging && message) await emitFastStage(message);
 }
 
 export async function emitStage(message) {

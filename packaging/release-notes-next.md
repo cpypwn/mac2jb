@@ -1,5 +1,6 @@
-- make kaiHEN the main jailbreak flow with Civilization VII, SmileBASIC 4, and Seedsow Lullaby entry points.
-- add guided SD card preparation and first-time setup for the Civilization VII and SmileBASIC 4 routes.
-- add direct offline Ethernet setup for a Switch connected to a dedicated Mac adapter.
-- move advanced held-RPC and research controls into developer options, and organize host, console, timeout, and keyboard settings around the jailbreak flow.
-- remove bundled game save installers while keeping SaveKit available for user-supplied saves.
+<!-- mac2jb-update: {"build":549,"minimumBuild":406} -->
+
+- fix Offline Ethernet startup and show the startup log when setup fails.
+- update the bundled CivSwitchFS kaiHEN files.
+- add experimental semi-untethered actions to the Civilization VII and Seedsow Lullaby setup windows.
+- simplify Offline Ethernet setup text and controls.

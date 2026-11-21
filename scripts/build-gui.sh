@@ -101,6 +101,7 @@ fi
 "$NODE_BINARY" --test "${civswitch_tests[@]}"
 "$NODE_BINARY" --test integrations/kaihen/launch.test.cjs integrations/kaihen/ns2jb-launch.test.cjs
 "$NODE_BINARY" --test integrations/seedsow-kaihen/launch.test.cjs
+"$NODE_BINARY" integrations/seedsow-semi-untethered/upload.cjs --check
 "$NODE_BINARY" --test integrations/civswitchfs-kaihen/launch.test.cjs
 "$NODE_BINARY" --test integrations/artemis-fs/fs-host.test.cjs
 "$NODE_BINARY" --test scripts/test-cli-usb-fallback.cjs
@@ -196,6 +197,7 @@ perl -c "$PAYLOAD/integrations/offline-ethernet/Responder.pl"
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-package.cjs" --self-test "$PAYLOAD"
 "$NODE_BINARY" "$PAYLOAD/scripts/check-webkit-research.cjs"
 "$NODE_BINARY" "$PAYLOAD/integrations/civswitch/verify.cjs" --runtime
+"$NODE_BINARY" "$PAYLOAD/integrations/seedsow-semi-untethered/upload.cjs" --check
 if [ -f "$PAYLOAD/integrations/civswitch/send-hello.cjs" ]; then
     "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/send-hello.cjs"
 fi

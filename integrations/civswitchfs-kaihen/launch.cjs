@@ -42,7 +42,7 @@ function paths(runtimeRoot) {
   const root = path.resolve(runtimeRoot, relativeRoot);
   return {
     root,
-    zip: path.join(root, 'assets', 'kaiHEN-20261116-civswitchfs.zip'),
+    zip: path.join(root, 'assets', 'kaiHEN-20261117.1-civswitchfs.zip'),
     chain: path.join(root, 'upstream', 'dist', 'chain.js'),
     bootstrap: path.join(root, 'upstream', 'dist', 'persist', 'persist-bootstrap.js'),
     template: path.join(root, 'upstream', 'dist', 'persist', 'save-template.bin'),
@@ -200,7 +200,7 @@ async function runOnce(host, runtimeRoot, transport = send) {
     if (line.includes('=== HEN IS RUNNING ===')) running = true;
     const progress = chainProgress(line);
     if (progress) emit('progress', progress.phase, progress.message);
-    if (line.startsWith('KH: FAILED at stage') || line.startsWith('PAYLOAD ERROR:'))
+    if (line.includes('FAILED at stage') || line.startsWith('PAYLOAD ERROR:'))
       failure = line;
     if (line) emit('log', 'running', line);
   });
@@ -261,7 +261,7 @@ function writeSdFolder(destination, entries, overwrite = false) {
 function prepareSD(runtimeRoot) {
   const files = verifyAssets(runtimeRoot, {sd: true});
   fs.mkdirSync(applicationSupport, {recursive: true});
-  const folder = fs.mkdtempSync(path.join(applicationSupport, 'SD-root-20261116-'));
+  const folder = fs.mkdtempSync(path.join(applicationSupport, 'SD-root-20261117.1-'));
   try {
     writeSdFolder(folder, readSdFiles(files));
   } catch (error) {

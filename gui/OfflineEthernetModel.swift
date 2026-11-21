@@ -12,7 +12,7 @@ import Combine
     @Published private(set) var adapters: [Adapter] = []
     @Published var selectedInterface = ""
     @Published private(set) var phase = "idle"
-    @Published private(set) var message = "Choose a dedicated Ethernet adapter"
+    @Published private(set) var message = "Choose the Mac Ethernet connection"
     @Published private(set) var active = false
     @Published private(set) var needsRestore = false
     @Published private(set) var switchSeen = false
@@ -99,10 +99,10 @@ import Combine
         Task {
             let result = await Self.runProcess(executable: "/usr/bin/osascript", arguments: arguments)
             if result.code != 0 {
-                if phase == "starting" { phase = "idle" }
-                actionError = "\(action.capitalized) failed: \(Self.short(result.output))"
+                actionError = "\(action.capitalized) failed (exit \(result.code)): \(Self.short(result.output))"
             }
             await refreshStatus()
+            if result.code != 0 && phase == "starting" { phase = "failed" }
         }
     }
 
@@ -170,6 +170,6 @@ import Combine
 
     private nonisolated static func short(_ output: String) -> String {
         let value = output.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? "No details available" : String(value.prefix(400))
+        return value.isEmpty ? "No details available" : String(value.suffix(400))
     }
 }

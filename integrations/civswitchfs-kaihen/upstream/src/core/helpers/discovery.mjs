@@ -392,8 +392,7 @@ export async function qualifyMetadataPage(anchor, label, pointerTargets, input) 
 
     var headerCopy = await installAddressHeader({...addressCopy,
         desiredBytes: plan.bytes,
-        stageName: "cache-metadata-page-" + metadataPageProbes,
-        shouldStop: input.shouldStop});
+        stageName: "cache-metadata-page-" + metadataPageProbes});
     addressCopy = headerCopy.addressCopy;
     if (!headerCopy.ok) {
         return withStepData({ok: false, continueScan: false,
@@ -460,8 +459,7 @@ export async function verifyAddressCandidate(plan, label, index, input) {
     }
 
     var headerCopy = await installAddressHeader({...addressCopy,
-        desiredBytes: plan.bytes, stageName: "cache-address-" + index,
-        shouldStop: input.shouldStop});
+        desiredBytes: plan.bytes, stageName: "cache-address-" + index});
     addressCopy = headerCopy.addressCopy;
     if (!headerCopy.ok) {
         await log("ADDRESS " + label +

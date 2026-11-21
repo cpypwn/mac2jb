@@ -9,7 +9,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir } = require('./gui-offline-ethernet.cjs');
+const { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir, waitForStartup } = require('./gui-offline-ethernet.cjs');
 
 test('root-owned live service is not misclassified as stale', () => {
   assert.equal(processAlive(321, () => { throw Object.assign(new Error('permission'), { code: 'EPERM' }); }), true);
@@ -66,6 +66,23 @@ test('stale listener state still requires explicit restoration', t => {
 test('privileged commands cannot redirect state to an arbitrary path', () => {
   assert.equal(requireStateDir(stateDir), stateDir);
   assert.throws(() => requireStateDir('/tmp/offline'), /state directory/);
+});
+
+test('startup waits for the current helper and surfaces its failure', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-offline-startup-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const log = path.join(dir, 'startup.log');
+  fs.writeFileSync(log, 'Launching /bin/bash helper.sh start en10\nERROR: port 53 is unavailable\n');
+  const child = { exitCode: null, signalCode: null, once() {} };
+  let reads = 0;
+  await waitForStartup(child, 'new-attempt', log, () => {
+    reads += 1;
+    return reads === 1 ? 'ready\nOld helper\nold-attempt\n' : 'ready\nNew helper\nnew-attempt\n';
+  }, async () => {});
+  assert.equal(reads, 2);
+  await assert.rejects(waitForStartup(child, 'new-attempt', log,
+    () => 'failed\nPort 53 unavailable\nnew-attempt\n', async () => {}),
+  /Port 53 unavailable/);
 });
 
 async function freePort() {

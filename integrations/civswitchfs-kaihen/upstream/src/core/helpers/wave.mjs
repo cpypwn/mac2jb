@@ -249,10 +249,6 @@ export function analyzeWave(profile, wave, waveData, group, createPinThisWave, i
     let savedHandle = input.savedHandle;
     let setupPath = input.setupPath;
     let setupPkt = input.setupPkt;
-    var canonicalResultCode = function(result) {
-        var raw = Number(result) >>> 0;
-        return raw === 0xFFFFFFFF ? raw : raw & 0x3FFFFF;
-    };
     var spans = collectSpans(waveData.frames, sendIndices, config.roleLabels);
     var trigSpan = null;
     for (var si = 0; si < spans.length; si++)
@@ -370,11 +366,9 @@ export function analyzeWave(profile, wave, waveData, group, createPinThisWave, i
     var changedPaths = [];
     if (canaryResult !== 0 || canaryType !== 1) changedPaths.push("canary");
     for (var fi = 0; fi < fillerResults.length; fi++)
-        if (canonicalResultCode(fillerResults[fi]) !== 0x202)
-            changedPaths.push("filler" + fi);
+        if (fillerResults[fi] !== 0x202) changedPaths.push("filler" + fi);
     for (var gi = 0; gi < guardResults.length; gi++)
-        if (canonicalResultCode(guardResults[gi]) !== 0x202)
-            changedPaths.push("guard" + gi);
+        if (guardResults[gi] !== 0x202) changedPaths.push("guard" + gi);
 
     var selectedMarker = triggerResult === 0 && triggerType === 1;
     var observedCanaryRedirect = canaryResult === 0 && canaryType === 0 &&
@@ -388,12 +382,8 @@ export function analyzeWave(profile, wave, waveData, group, createPinThisWave, i
     var releaseWasSent = sendCodes[9] === 0;
     var isPositiveProfile = profile === "positive" || profile.indexOf("cache") === 0;
     var pathsExpected = fillerResults.every(function(r) {
-        var canonical = canonicalResultCode(r);
-        return canonical === 0x202 ||
-            (isPositiveProfile && canonical === 0x2EEA02);
-    }) && guardResults.every(function(r) {
-        return canonicalResultCode(r) === 0x202;
-    });
+        return r === 0x202 || (isPositiveProfile && r === 0x2EEA02);
+    }) && guardResults.every(function(r) { return r === 0x202; });
 
     var window = Boolean(reservationExpected && wave.done === 13 &&
         transportOk === 13 && wave.joined === 13 &&
@@ -470,12 +460,6 @@ export function analyzeWave(profile, wave, waveData, group, createPinThisWave, i
             completed: scv,
             earlyHole: sev,
             spacing: ssv
-        },
-        pathReplyResults: {
-            filler0: fillerResults[0],
-            filler1: fillerResults[1],
-            guard0: guardResults[0],
-            guard1: guardResults[1]
         },
         pinDiagnostics: {
             created: createPinThisWave,

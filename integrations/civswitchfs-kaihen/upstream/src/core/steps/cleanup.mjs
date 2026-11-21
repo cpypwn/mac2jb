@@ -18,9 +18,8 @@ export async function retireCandidateCacheAndClose({
   retireRetainedEndpoint,
   workerStateSafe,
 }) {
-    // S21: Verify the synthetic cache entry, retiring it only if needed.
+    // S21: Retire the synthetic cache entry before closing the candidate.
     let candidateCacheRetired = false;
-    let candidateCacheRetirementSkipped = false;
     var candidateCloseSafe = workerStateSafe;
     var workersQuiesced = workerStateSafe === true;
     var stateSafe = workerStateSafe === true;
@@ -98,7 +97,6 @@ export async function retireCandidateCacheAndClose({
         stateSafe = workersQuiesced;
         candidateCloseSafe = retirement.ok && workersQuiesced;
         candidateCacheRetired = retirement.candidateCacheRetired;
-        candidateCacheRetirementSkipped = retirement.retirementSkipped === true;
         if (!retirement.ok)
             retirementFailureReason = "candidate-cache-retirement-failed";
         addressCopy = {...retirement.addressCopy, candidateCacheRetired};
@@ -112,8 +110,8 @@ export async function retireCandidateCacheAndClose({
             if (candidateCloseResult !== 0)
                 retirementFailureReason = "candidate-close-failed";
         } catch (closeError) {
-            // Cache safety was verified before close. A failed close leaks the
-            // service handle, but does not leave an active cache alias behind.
+            // The cache entry is already retired. A failed close leaks the
+            // service handle, but does not leave a live cache alias behind.
             candidateHandle = 0;
             retirementFailureReason = "candidate-close-threw: " +
                 closeError.message;
@@ -126,7 +124,6 @@ export async function retireCandidateCacheAndClose({
     }
 
   return {ok: true, addressCopy, candidateCacheRetired, candidateHandle,
-      candidateCacheRetirementSkipped,
       workerStateSafe: stateSafe, workersQuiesced, candidateCloseResult,
       failureReason: retirementFailureReason};
 }

@@ -3,13 +3,16 @@
 
 const assert = require('node:assert/strict');
 const childProcess = require('node:child_process');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { setTimeout: delay } = require('node:timers/promises');
 
 const stateDir = '/Library/Application Support/mac2jb/offline-ethernet';
 const root = path.resolve(__dirname, '..');
 const helper = path.join(root, 'integrations/offline-ethernet/helper.sh');
 const responder = path.join(root, 'integrations/offline-ethernet/Responder.pl');
+const startupLog = path.join(stateDir, 'startup.log');
 
 function parseOptions(args) {
   const options = {};
@@ -81,11 +84,14 @@ function readStatus(dir) {
   const active = processAlive(pid);
   const phase = (recordedPhase === 'ready' || recordedPhase === 'starting') && !active
     ? 'stale' : recordedPhase;
-  const logPath = path.join(dir, 'ethernet.log');
+  const responderLog = path.join(dir, 'ethernet.log');
+  const launchLog = path.join(dir, 'startup.log');
+  const logPath = (phase === 'ready' && active && fs.existsSync(responderLog))
+    ? responderLog : fs.existsSync(launchLog) ? launchLog : fs.existsSync(responderLog) ? responderLog : '';
   let log = '';
   try {
-    const stat = fs.statSync(logPath);
-    const fd = fs.openSync(logPath, 'r');
+    const stat = fs.statSync(responderLog);
+    const fd = fs.openSync(responderLog, 'r');
     try {
       const bytes = Math.min(stat.size, 65536);
       const buffer = Buffer.alloc(bytes);
@@ -110,7 +116,31 @@ function readStatus(dir) {
   };
 }
 
-function runPrivileged(action, options) {
+function startupError(prefix, logFile = startupLog) {
+  const detail = readText(logFile).trim().split(/\r?\n/).slice(-12).join('\n');
+  return new Error(detail ? `${prefix}\n${detail}` : prefix);
+}
+
+async function waitForStartup(child, token, logFile = startupLog, read = readText, sleep = delay) {
+  let spawnError;
+  child.once('error', error => { spawnError = error; });
+  for (let attempt = 0; attempt < 240; attempt += 1) {
+    await sleep(250);
+    if (spawnError) throw startupError(`Offline Ethernet launch failed: ${spawnError.message}`, logFile);
+    const [phase, message, reportedToken] = read(path.join(stateDir, 'status.txt')).split(/\r?\n/);
+    if (reportedToken === token && phase === 'failed') {
+      throw startupError(`Offline Ethernet helper failed: ${message}`, logFile);
+    }
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw startupError(`Offline Ethernet helper exited before ready (exit ${child.exitCode ?? child.signalCode})`, logFile);
+    }
+    if (reportedToken === token && phase === 'ready') return;
+  }
+  child.kill('SIGTERM');
+  throw startupError('Offline Ethernet did not become ready within 60 seconds', logFile);
+}
+
+async function runPrivileged(action, options) {
   if (process.platform !== 'darwin') throw new Error('Offline Ethernet requires macOS');
   if (process.getuid?.() !== 0) throw new Error(action + ' requires macOS administrator access');
   requireStateDir(options['state-dir']);
@@ -121,9 +151,37 @@ function runPrivileged(action, options) {
     args.push(name);
   }
   args.push(stateDir);
-  const result = childProcess.spawnSync('/bin/bash', args, { stdio: 'inherit' });
-  if (result.error) throw result.error;
-  process.exitCode = result.status ?? 1;
+  if (action !== 'start') {
+    const result = childProcess.spawnSync('/bin/bash', args, { encoding: 'utf8' });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error(`${action} failed (exit ${result.status ?? result.signal}): ${result.stderr.trim()}`);
+    return;
+  }
+
+  const prepared = childProcess.spawnSync('/bin/bash', [helper, 'prepare', stateDir], { encoding: 'utf8' });
+  if (prepared.error) throw prepared.error;
+  if (prepared.status !== 0) {
+    throw new Error(`Offline Ethernet preparation failed (exit ${prepared.status ?? prepared.signal}): ${prepared.stderr.trim()}`);
+  }
+  const flags = fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | (fs.constants.O_NOFOLLOW || 0);
+  const fd = fs.openSync(startupLog, flags, 0o644);
+  fs.fchmodSync(fd, 0o644);
+  const token = crypto.randomUUID();
+  const invocation = `/bin/bash ${args.map(value => JSON.stringify(value)).join(' ')}`;
+  fs.writeSync(fd, `Launching ${invocation}\n`);
+  let child;
+  try {
+    child = childProcess.spawn('/bin/bash', args, {
+      detached: true,
+      stdio: ['ignore', fd, fd],
+      env: { ...process.env, MAC2JB_OFFLINE_LAUNCH_TOKEN: token }
+    });
+  } finally {
+    fs.closeSync(fd);
+  }
+  await waitForStartup(child, token);
+  child.unref();
+  console.log(`Offline Ethernet ready on ${options.interface}; helper PID ${child.pid}; startup log ${startupLog}`);
 }
 
 function selfTest() {
@@ -159,10 +217,10 @@ function main(args) {
 }
 
 if (require.main === module) {
-  try { main(process.argv.slice(2)); } catch (error) {
+  Promise.resolve().then(() => main(process.argv.slice(2))).catch(error => {
     console.error(error.message);
     process.exitCode = 1;
-  }
+  });
 }
 
-module.exports = { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir };
+module.exports = { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir, waitForStartup };

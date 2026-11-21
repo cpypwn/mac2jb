@@ -14,10 +14,10 @@ export const RO_TITLE = 0x0400000000000037n;   // system RO title (launch + dono
 export const HEN_TITLE = 0x040000000000003an;  // HEN title (bootstrap's own launch)
 
 export const SD_MANIFEST = {
-    "bootstrap": {path: "/kaihen/bin/bootstrap.bin", size: 28012},
+    "bootstrap": {path: "/kaihen/bin/bootstrap.bin", size: 27948},
     "ro": {path: "/kaihen/bin/ro/main", size: 23854},
-    "hen": {path: "/kaihen/bin/hen/main", size: 78761},
-    "game": {path: "/kaihen/bin/game/main", size: 62943},
+    "hen": {path: "/kaihen/bin/hen/main", size: 78765},
+    "game": {path: "/kaihen/bin/game/main", size: 63424},
     // Payload files, not chain-critical: the HEN boots without them
     // (hbmenu is what holding R opens; programs/ is OunceShell).
     "hbmenu": {path: "/hbmenu.nro", size: 11790974, optional: true},
