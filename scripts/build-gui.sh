@@ -70,6 +70,7 @@ bash scripts/test-typing-preferences.sh
 bash scripts/test-network-selection.sh
 osacompile -o "$BUILD/offline-ethernet.scpt" scripts/offline-ethernet-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
+MACOSX_DEPLOYMENT_TARGET=14.0 make vendor/libusbd/libusbd.dylib
 civswitch_tests=(integrations/civswitch/probe.test.cjs integrations/civswitch/send-payload.test.cjs integrations/civswitch/install-persistent.test.cjs integrations/civswitch/fs-host.test.cjs scripts/test-civswitch-hid.cjs)
 if [ -f integrations/civswitch/send-hello.test.cjs ] && [ -f integrations/civswitch/send-hello.cjs ]; then
     civswitch_tests+=(integrations/civswitch/send-hello.test.cjs)
