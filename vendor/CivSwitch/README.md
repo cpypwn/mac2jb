@@ -3,8 +3,9 @@
 XSS toolchain for the Switch 1 edition of Civilization 7.  
 Only the **1.0.0** version of the game in physical cartridge is supported.  
 
-Tested at Switch 1 fw 22.5.0, Switch 2 fw 20.4.0 and 23.0.1 using pi pico 2 (RP2350)  
-pi pico 1 (RP2040) is untested.  
+Every switch 1/2 firmware 20.x.x and up to current version (23.0.1) should work.  
+
+Tested at Switch 1 fw 22.5.0, Switch 2 fw 20.4.0 and 23.0.1  
 
 Two components:
 
@@ -21,12 +22,25 @@ Two components:
 
 ## Workflow
 
+[Video Tutorial](https://www.reddit.com/r/switch2hacks/comments/1xll4wf/civswitch_hack_start_to_finish/) from switch2hacks reddit
+
 1. **Build + flash** the loader UF2 (see PicoSwitch/README.md).
 
-   On the Switch, change system language to English(US).  
+   On the Switch, go to "System" menu and change system language to English(US).  
+   Go to "Controllers & Accessories" menu and change USB Keyboard to English(US).  
+   
+   These are required to type "English" letters (code) using USB keyboard.  
+   (Higher fw might not need to change system language as they support typing english without language change)  
+   
+   NOTE for JP-only Switch2 : 
+   1. If you have another Switch, you can connect the two consoles via local wireless multiplayer and plug the Pico on the other device, allowing it to send the payload over the network.  
+   2. Use jis builds of pico uf2 firmware and enable english input at on screen keyboard settings.  
+   
+   Connect to Internet using [90DNS](https://gitlab.com/a/90dns) to block Nintendo servers. (WARNING : YOU MUST READ 90DNS INSTRUCTION CAREFULLY, IF NOT GAME WILL BE LOCKED)  
+   
    Then launch game and navigate main menu -> MULTIPLAYER -> WIRELESS -> CREATE GAME -> HOST LOBBY -> CHAT then plug the Pico in (in docked mode, focus the chat box first to receive Pico input).  
 
-   The Pico types the chat XSS (~87 lines, ~15 min); the Remote JS Loader comes up on the console (TCP :9026) for that session.  
+   The Pico types the chat XSS (~87 lines, ~20 min); the Remote JS Loader comes up on the console (TCP :9026) for that session.  
 2. **Install the persistent boot trigger** from the PC: `python installer-creator/install.py <console-ip>` — uploads the save template, splices the compressed payload into it on-console, wipes `save:/saves/Single/`, and writes the trigger.
 3. From then on, every boot: main menu -> Load Game -> the payload runs from savedata (and if the payload is the loader, :9026 is up at boot — and survives console sleep/wake).  
 4. You can revert system language after installer finished.  
@@ -49,9 +63,7 @@ git clone --branch 2.3.1 --depth 1 --recurse-submodules --shallow-submodules htt
 export PICO_SDK_PATH=$HOME/pico-sdk
 cd PicoSwitch
 npm install                    # terser for compress.js
-node compress.js               # reads ../core.js -> payload.txt
-cmake --preset pico2 && cmake --build --preset pico2    # RP2350 -> build-pico2/src/civ7-pico2.uf2
-cmake --preset pico1 && cmake --build --preset pico1    # RP2040 -> build-pico1/src/civ7-pico1.uf2
+./build_all.sh                 # payload + all four variants: pico1/pico2 x us/jis
 ```
 
 ## Credits

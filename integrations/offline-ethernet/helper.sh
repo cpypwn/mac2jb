@@ -196,7 +196,7 @@ start() {
   /usr/bin/perl "$BASE/Responder.pl" --serve --log "$LOG" &
   SERVER_PID=$!
   /bin/sleep 1
-  /bin/kill -0 "$SERVER_PID" 2>/dev/null || err 'DNS or HTTP port 53/80 is unavailable; stop DNSwitch or another listener'
+  /bin/kill -0 "$SERVER_PID" 2>/dev/null || err 'DNS or HTTP port 53/80 is unavailable; stop another listener'
   /usr/bin/perl "$BASE/Responder.pl" --probe || err 'The offline connection responder failed its local check'
   write_status ready "Ready on $IFACE; set the Switch wired address to $SWITCH_IP"
   while true; do

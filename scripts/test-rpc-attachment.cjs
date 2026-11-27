@@ -170,13 +170,13 @@ test('a proven pre-transfer failure releases only its own claim and permits anot
 
 test('exclusive source reservation allows only one attachment and never duplicates helper attempt marker', async t => {
   const f = await fixture(t), first = await f.attach(), second = await f.attach();
-  const settled = await Promise.allSettled([first.claimApplication('stremio'), second.claimApplication('ouncecake')]);
+  const settled = await Promise.allSettled([first.claimApplication('mintbrew'), second.claimApplication('ouncecake')]);
   assert.equal(settled.filter(row => row.status === 'fulfilled').length, 1);
   assert.equal(settled.filter(row => row.status === 'rejected').length, 1);
   const owner = JSON.parse(await fs.readFile(path.join(f.directory, OWNER)));
-  assert.ok(['stremio','ouncecake'].includes(owner.application));
+  assert.ok(['mintbrew','ouncecake'].includes(owner.application));
   await assert.rejects(fs.access(path.join(f.directory, ATTEMPT)), {code:'ENOENT'});
-  const winner = owner.application === 'stremio' ? first : second;
+  const winner = owner.application === 'mintbrew' ? first : second;
   await write(path.join(f.directory, ATTEMPT), {application:owner.application});
   assert.equal((await winner.verify()).ready, true);
   await assert.rejects(winner.claimApplication(owner.application), /already used/);
@@ -184,11 +184,11 @@ test('exclusive source reservation allows only one attachment and never duplicat
 
 test('source attempt already consumed or claimed after preparation cannot launch another helper', async t => {
   const f = await fixture(t), context = await f.attach();
-  await write(path.join(f.directory, ATTEMPT), {application:'stremio'});
+  await write(path.join(f.directory, ATTEMPT), {application:'mintbrew'});
   await assert.rejects(context.claimApplication('ouncecake'), /Another homebrew attempt/);
   await assert.rejects(fs.access(path.join(f.directory, OWNER)), {code:'ENOENT'});
   await assert.rejects(f.attach(), /already has a homebrew attempt/);
-  assert.equal(JSON.parse(await fs.readFile(path.join(f.directory, ATTEMPT))).application, 'stremio');
+  assert.equal(JSON.parse(await fs.readFile(path.join(f.directory, ATTEMPT))).application, 'mintbrew');
 });
 
 test('wrong source, changed copied code and added executable code are rejected before live requests', async t => {
@@ -206,7 +206,7 @@ test('wrong source, changed copied code and added executable code are rejected b
   assert.equal(f.requests.length, 0); assert.equal(f.retainedRequests.length, 0);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres', 'astral'])
+for (const hostId of ['kurumuz'])
 test(hostId+' held source attaches across the current host picker using its own pinned code', async t => {
   const f = await fixture(t, hostId), context = await f.attach();
   assert.match(context.description, new RegExp(hostId, 'i'));
@@ -214,7 +214,7 @@ test(hostId+' held source attaches across the current host picker using its own 
   assert.equal((await validateManifest(f.root, f.directory, context.manifestPath)).profileId, hostId);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres', 'astral'])
+for (const hostId of ['kurumuz'])
 test(hostId+' SaveKit patched host attaches only with the exact verified overlay', async t => {
   const f = await fixture(t, hostId, true), expected = expectedPatchedSource(f.root, hostId);
   const context = await f.attach();
@@ -226,7 +226,7 @@ test(hostId+' SaveKit patched host attaches only with the exact verified overlay
 });
 
 test('changed SaveKit overlay and closed RPC reject attachment before live requests', async t => {
-  const altered = await fixture(t, 'cellenseres', true);
+  const altered = await fixture(t, 'kurumuz', true);
   await fs.appendFile(path.join(altered.directory, 'shared/ipc.cjs'), '\n');
   await assert.rejects(altered.attach(), /changed host code/);
   assert.equal(altered.requests.length, 0);
@@ -293,7 +293,7 @@ test('wrong live endpoint identity and unready native status cannot authorize at
 
 test('lost proof invalidates authorization permanently without touching source host or proof', async t => {
   const f = await fixture(t), context = await f.attach();
-  await context.claimApplication('stremio');
+  await context.claimApplication('mintbrew');
   await update(f.resultFile, value => {value.rpc.state = 'stopped';});
   const stopped = await fs.readFile(f.resultFile);
   await assert.rejects(context.verify(), /no longer available/);
@@ -353,7 +353,7 @@ test('a retained operation busy reply is not replayed or mistaken for source los
   assert.equal((await context.verify()).retainedBusy, true);
   assert.equal(f.retainedRequests.length, count+1);
   await fs.access(context.manifestPath);
-  await assert.rejects(context.claimApplication('stremio'), /Another memory request is active/);
+  await assert.rejects(context.claimApplication('mintbrew'), /Another memory request is active/);
   await assert.rejects(fs.access(path.join(f.directory, OWNER)), {code:'ENOENT'});
 });
 

@@ -5,13 +5,12 @@ const check=(v,m)=>{if(!v)throw Error(m);};
 const NES_FRAMES=2400,NES_SLOT_BYTES=16384,NES_EVENT_COUNT=64,NES_QUEUE_TARGET=4;
 function synth(kind,style='mintbrew'){
  if(kind===8){
-  const light=style==='stremio',rate=48000,frames=light?960:1440,pcm=Buffer.alloc(frames*4);let seed=0x6d696e74;
+  const rate=48000,frames=1440,pcm=Buffer.alloc(frames*4);let seed=0x6d696e74;
   for(let i=0;i<frames;i++){
    seed=(Math.imul(seed,1664525)+1013904223)>>>0;
-   const t=i/rate,envelope=Math.pow(1-i/frames,light?4:5),noise=((seed>>>16)/32768-1)*(light?.08:.42);
-   const attack=light?Math.min(1,i/48):1;
-   const sample=Math.round(32767*(light?.055:.13)*attack*envelope*
-    (Math.sin(2*Math.PI*(light?1650-300*t:950+1700*t)*t)+noise));
+   const t=i/rate,envelope=Math.pow(1-i/frames,5),noise=((seed>>>16)/32768-1)*.42;
+   const sample=Math.round(32767*.13*envelope*
+    (Math.sin(2*Math.PI*(950+1700*t)*t)+noise));
    pcm.writeInt16LE(sample,i*4);pcm.writeInt16LE(sample,i*4+2);
   }
   return pcm;

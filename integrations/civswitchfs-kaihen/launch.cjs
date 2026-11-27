@@ -5,19 +5,10 @@ const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
 const net = require('node:net');
-const {execFileSync} = require('node:child_process');
 const {BackupReceiver, consoleAddress} = require('../civswitch/install-persistent.cjs');
 
 const provenance = require('./provenance.json');
 const relativeRoot = path.join('integrations', 'civswitchfs-kaihen');
-const sdFiles = Object.freeze({
-  'kaihen/bin/bootstrap.bin': 'kaihen/bin/bootstrap.bin',
-  'kaihen/bin/ro/main': 'kaihen/bin/ro/main',
-  'kaihen/bin/hen/main': 'kaihen/bin/hen/main',
-  'kaihen/bin/game/main': 'kaihen/bin/game/main',
-  'hbmenu.nro': 'hbmenu.nro',
-  'switch/ounceshell/ounceshell.nro': 'switch/ounceshell/ounceshell.nro'
-});
 const applicationSupport = path.join(os.homedir(), 'Library', 'Application Support', 'mac2jb', 'CivSwitchFS-kaiHEN');
 let activeSocket = null;
 let cancelled = false;
@@ -42,7 +33,6 @@ function paths(runtimeRoot) {
   const root = path.resolve(runtimeRoot, relativeRoot);
   return {
     root,
-    zip: path.join(root, 'assets', 'kaiHEN-20261117.1-civswitchfs.zip'),
     chain: path.join(root, 'upstream', 'dist', 'chain.js'),
     bootstrap: path.join(root, 'upstream', 'dist', 'persist', 'persist-bootstrap.js'),
     template: path.join(root, 'upstream', 'dist', 'persist', 'save-template.bin'),
@@ -51,20 +41,15 @@ function paths(runtimeRoot) {
   };
 }
 
-function verifyAssets(runtimeRoot, {sd = false} = {}) {
+function verifyAssets(runtimeRoot) {
   const files = paths(runtimeRoot);
-  if (sd) {
-    checkedFile(files.zip, provenance.kaihenZipSha256);
-  }
-  else {
-    checkedFile(files.chain, provenance.chainSha256);
-    checkedFile(files.bootstrap, provenance.persistBootstrapSha256);
-    checkedFile(files.template, provenance.saveTemplateSha256);
-    const manifest = JSON.parse(fs.readFileSync(files.manifest, 'utf8'));
-    if (manifest.version !== 'civswitchfs-0.1.0+kaihen' ||
-        manifest.templateSha256 !== provenance.saveTemplateSha256 ||
-        manifest.bytes >= 500000) throw Error('Bundled CivSwitchFS-kaiHEN manifest is incompatible');
-  }
+  checkedFile(files.chain, provenance.chainSha256);
+  checkedFile(files.bootstrap, provenance.persistBootstrapSha256);
+  checkedFile(files.template, provenance.saveTemplateSha256);
+  const manifest = JSON.parse(fs.readFileSync(files.manifest, 'utf8'));
+  if (manifest.version !== 'civswitchfs-0.1.0+kaihen' ||
+      !Number.isInteger(manifest.bytes) || manifest.bytes <= 0 ||
+      manifest.bytes >= 500000) throw Error('Bundled CivSwitchFS-kaiHEN manifest is incompatible');
   return files;
 }
 
@@ -208,92 +193,14 @@ async function runOnce(host, runtimeRoot, transport = send) {
   emit('complete', 'running', 'kaiHEN is running for this boot');
 }
 
-function readSdFiles(files) {
-  const output = new Map();
-  for (const [source, target] of Object.entries(sdFiles)) {
-    const data = execFileSync('/usr/bin/unzip', ['-p', files.zip, source], {maxBuffer: 32 * 1024 * 1024});
-    if (!data.length) throw Error('Bundled kaiHEN SD file is empty: ' + source);
-    output.set(target, data);
-  }
-  return output;
-}
-
-function writeSdFolder(destination, entries, overwrite = false) {
-  fs.mkdirSync(destination, {recursive: true});
-  const backupRoot = overwrite ? fs.mkdtempSync(path.join(applicationSupport, 'sd-backup-')) : null;
-  const replaced = [];
-  const created = [];
-  const temporary = [];
-  let index = 0;
-  try {
-    for (const [relative, data] of entries) {
-      const target = path.join(destination, relative);
-      const parent = path.dirname(target);
-      fs.mkdirSync(parent, {recursive: true});
-      for (let current = parent; current !== destination && current.startsWith(destination + path.sep); current = path.dirname(current)) {
-        if (fs.lstatSync(current).isSymbolicLink()) throw Error('SD destination contains a symbolic link');
-      }
-      if (fs.existsSync(target)) {
-        if (!overwrite) throw Error('Prepared SD folder already contains ' + relative);
-        if (!fs.statSync(target).isFile() || fs.lstatSync(target).isSymbolicLink()) throw Error('SD destination has a non-file entry: ' + relative);
-        const backup = path.join(backupRoot, relative);
-        fs.mkdirSync(path.dirname(backup), {recursive: true});
-        fs.copyFileSync(target, backup, fs.constants.COPYFILE_EXCL);
-        replaced.push({target, backup});
-      } else created.push(target);
-      const temp = path.join(parent, '.' + path.basename(target) + '.mac2jb-' + crypto.randomBytes(4).toString('hex'));
-      temporary.push(temp);
-      fs.writeFileSync(temp, data, {flag: 'wx', mode: 0o600});
-      fs.renameSync(temp, target);
-      temporary.pop();
-      if (digest(fs.readFileSync(target)) !== digest(data)) throw Error('SD write verification failed: ' + relative);
-      emit('progress', 'sd', 'Prepared ' + relative, {current: ++index, total: entries.size});
-    }
-  } catch (error) {
-    for (const temp of temporary) fs.rmSync(temp, {force: true});
-    for (const target of created.reverse()) fs.rmSync(target, {force: true});
-    for (const item of replaced.reverse()) fs.copyFileSync(item.backup, item.target);
-    throw error;
-  }
-  return backupRoot;
-}
-
-function prepareSD(runtimeRoot) {
-  const files = verifyAssets(runtimeRoot, {sd: true});
-  fs.mkdirSync(applicationSupport, {recursive: true});
-  const folder = fs.mkdtempSync(path.join(applicationSupport, 'SD-root-20261117.1-'));
-  try {
-    writeSdFolder(folder, readSdFiles(files));
-  } catch (error) {
-    fs.rmSync(folder, {recursive: true, force: true});
-    throw error;
-  }
-  emit('complete', 'sd', 'Ready-to-copy kaiHEN SD folder prepared', {path: folder});
-  return folder;
-}
-
-function stageSD(volumeRoot, runtimeRoot) {
-  const real = fs.realpathSync(volumeRoot);
-  if (!/^\/Volumes\/[^/]+$/.test(real) || !fs.statSync(real).isDirectory()) {
-    throw Error('Select the root of a mounted Switch SD card');
-  }
-  const files = verifyAssets(runtimeRoot, {sd: true});
-  fs.mkdirSync(applicationSupport, {recursive: true});
-  const backupFolder = writeSdFolder(real, readSdFiles(files), true);
-  emit('complete', 'sd', 'kaiHEN files verified on the selected SD card', {path: real, backup: backupFolder});
-  return real;
-}
-
 async function main(args = process.argv.slice(2)) {
   const command = args[0];
-  if (command === 'prepare-sd' && args.length === 2) return prepareSD(args[1]);
-  if (command === 'stage-sd' && args.length === 3) return stageSD(args[1], args[2]);
   if ((command === 'install' || command === 'run-once') && args.length === 3) {
     const host = consoleAddress(args[1]);
     emit('progress', 'preflight', 'Checking bundled CivSwitchFS-kaiHEN files');
     return command === 'install' ? install(host, args[2]) : runOnce(host, args[2]);
   }
-  throw Error('usage: launch.cjs prepare-sd RUNTIME_ROOT | stage-sd SD_VOLUME_ROOT RUNTIME_ROOT | install SWITCH_IPV4 RUNTIME_ROOT | run-once SWITCH_IPV4 RUNTIME_ROOT');
+  throw Error('usage: launch.cjs install SWITCH_IPV4 RUNTIME_ROOT | run-once SWITCH_IPV4 RUNTIME_ROOT');
 }
 
 if (require.main === module) {
@@ -305,4 +212,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = {paths, verifyAssets, backup, install, runOnce, prepareSD, stageSD, readSdFiles, writeSdFolder, chainProgress, main};
+module.exports = {paths, verifyAssets, backup, install, runOnce, chainProgress, main};

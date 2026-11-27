@@ -17,13 +17,6 @@ const rangeFiles = new Set([
   'engine/switch2/ro/payload/manifest.json'
 ]);
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-test('Astral retains the Kurumuz native range ABI payload', () => {
-  const root = path.resolve(__dirname, '..');
-  for (const name of [...rangeFiles].filter(name =>
-    name !== 'engine/switch2/ro/worker-control.cjs'))
-    assert.equal(sha(fs.readFileSync(path.join(root, 'vendor/ns2jb-hosts/astral', name))),
-      sha(fs.readFileSync(path.join(root, 'vendor/ns2jb-hosts/kurumuz', name))), name);
-});
 const originalLoad = Module._load;
 Module._load = function(request, parent, main) {
   if (parent?.filename.endsWith('/process/client.cjs') && request === '../tools/fs-memory.cjs')
@@ -34,7 +27,7 @@ Module._load = function(request, parent, main) {
 };
 const clients = {};
 try {
-  for (const host of ['kurumuz', 'cellenseres'])
+  for (const host of ['kurumuz'])
     clients[host] = require('../vendor/ns2jb-hosts/' + host + '/engine/switch2/process/client.cjs').Client;
 }
 finally {Module._load = originalLoad;}
@@ -56,8 +49,6 @@ test(host + ' distribution changes only documented local patch files', () => {
     ['engine/shared/stages.cjs', 'engine/switch2/acquire.cjs',
       'engine/switch2/retained/find-metadata.cjs'];
   for (const name of timeoutPatch) assert.equal(changed.delete(name), true);
-  const cleanupPatch = host === 'cellenseres' ? 'engine/switch2/memory/fs-memory-control.cjs' : null;
-  if (cleanupPatch) assert.equal(changed.delete(cleanupPatch), true);
   assert.deepEqual(changed, rangeFiles);
   for (const [name, digest] of distributed)
     assert.equal(sha(fs.readFileSync(path.join(folder, name))), digest, name);
@@ -68,7 +59,6 @@ test(host + ' distribution changes only documented local patch files', () => {
   assert.equal(patch.sourceSha256, sourceDigest(folder, profile));
   assert.deepEqual(patch.hostStageTimeoutPatch, timeoutPatch);
   assert.equal(patch.payloadSha256, distributed.get('engine/switch2/ro/payload/main'));
-  if (cleanupPatch) assert.equal(patch.cleanupPatch, cleanupPatch);
 });
 test(host + ' native range payload maps RX and RW, verifies bounds and rolls back failures', () => {
   const root = path.resolve(__dirname, '..');

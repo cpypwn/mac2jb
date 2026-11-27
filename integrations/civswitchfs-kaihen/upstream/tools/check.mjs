@@ -52,7 +52,7 @@ const payloadFiles = [
     path.join(SRC_DIR, "core", "helpers", "cache.mjs"),
     path.join(SRC_DIR, "core", "helpers", "wave.mjs"),
     path.join(SRC_DIR, "core", "promotion.mjs"),
-    path.join(SRC_DIR, "core", "log-stage.mjs")
+    path.join(SRC_DIR, "core", "logger.mjs")
 ];
 const usedBindings = new Set();
 for (const file of payloadFiles) {

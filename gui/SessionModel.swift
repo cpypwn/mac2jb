@@ -103,7 +103,6 @@ private struct GUIEvent: Decodable {
     let label: String?
     let remainingMs: Double?
     let durationMs: Double?
-    let watchProgress: StremioWatchProgress?
     let games: [OunceCakeGame]?
     let host: String?
     let port: Int?
@@ -266,10 +265,6 @@ private struct GUIEvent: Decodable {
     @Published private(set) var pendingHomebrewAction: String?
     private var modloaderUsedMacFolder = false
     private var pendingCustomConsoleAddress: String?
-    @Published var stremioAddonURL = ""
-    @Published var stremioQuality: StremioQuality = .saved() {
-        didSet { UserDefaults.standard.set(stremioQuality.rawValue, forKey: StremioQuality.preferenceKey) }
-    }
     @Published private(set) var keyboardStatus = "Connect the Switch to use this Mac keyboard."
     @Published var keyboardText = ""
     @Published var keyboardTextAutoIndent = true
@@ -282,11 +277,6 @@ private struct GUIEvent: Decodable {
     @Published private(set) var ounceCakeSession = OunceCakeSession()
     @Published private(set) var ounceCakeFTPURL: String?
     private var ounceCakeFTPRequested = false
-    var accountProgressHandler: ((StremioWatchProgress) -> Void)?
-    var stremioToolsAvailable: Bool {
-        FileManager.default.isExecutableFile(atPath: "/Applications/Stremio.app/Contents/MacOS/ffmpeg") &&
-        FileManager.default.isExecutableFile(atPath: "/Applications/Stremio.app/Contents/MacOS/ffprobe")
-    }
     private(set) var runtime: BundledRuntime?
     @Published private var hostProcess: Process?
     private var hostInput: Pipe?
@@ -519,12 +509,13 @@ private struct GUIEvent: Decodable {
         homebrewApp != .modloader && postRun.canStopHomebrew && !homebrewStopPending &&
         hostProcess?.isRunning == true && hostInput != nil
     }
-    var canLaunchModloader: Bool {
-        canLaunchHomebrew && (isAttachedCivSwitchFS || !isAttachedRPCSession && activeHost.supportsModloader)
-    }
     var canLaunchNativeHBLauncher: Bool {
         canLaunchHomebrew && !isAttachedFilesystemFS &&
         activeHost.supportsNativeHBLauncher && nativeHBLauncherRuntimeAvailable
+    }
+    var canLaunchModloader: Bool {
+        canLaunchHomebrew && !isAttachedArtemisFS &&
+        (isAttachedCivSwitchFS || !isAttachedRPCSession && activeHost.supportsModloader)
     }
     var canDumpSystemCode: Bool {
         !savekitSessionBlocked && !savekitReturnBlocked && activeRunMode != .seedsowSave &&
@@ -822,8 +813,7 @@ private struct GUIEvent: Decodable {
         sdBusy = false; sdRunning = false
         sdMessage = "Hold RPC to browse the Switch SD card read-only"
         homebrewMessage = ""; homebrewFolder = nil; homebrewApp = .mintBrew; pendingHomebrewAction = nil
-        modloaderInstallReady = false
-        modloaderUsedMacFolder = false
+        modloaderInstallReady = false; modloaderUsedMacFolder = false
         homebrewStopPending = false
         pendingCustomConsoleAddress = nil
         ounceCakeSession = OunceCakeSession(); selectedOunceCakeGame = ""
@@ -1115,6 +1105,44 @@ private struct GUIEvent: Decodable {
         NSWorkspace.shared.open(folder)
     }
 
+    private var storedSessionsFolder: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("mac2jb/Sessions", isDirectory: true)
+    }
+
+    var lastStoredSessionID: String? {
+        let manager = FileManager.default
+        guard let folders = try? manager.contentsOfDirectory(at: storedSessionsFolder,
+                                                              includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey],
+                                                              options: [.skipsHiddenFiles]) else { return nil }
+        return folders.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .max { left, right in
+                let first = (try? left.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let second = (try? right.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return first < second
+            }?.lastPathComponent
+    }
+
+    func revealStoredSessions() {
+        guard FileManager.default.fileExists(atPath: storedSessionsFolder.path) else { return }
+        NSWorkspace.shared.open(storedSessionsFolder)
+    }
+
+    func revealStoredLogs() {
+        if let current = diagnosticLogURL, current.path.hasPrefix(storedSessionsFolder.path + "/") {
+            NSWorkspace.shared.activateFileViewerSelecting([current])
+            return
+        }
+        guard let id = lastStoredSessionID else { return }
+        let folder = storedSessionsFolder.appendingPathComponent(id, isDirectory: true)
+        let log = folder.appendingPathComponent("gui-session.log")
+        if FileManager.default.fileExists(atPath: log.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([log])
+        } else {
+            NSWorkspace.shared.open(folder)
+        }
+    }
+
     func revealRunFolder() {
         if let folder = runFolder ?? runtime?.root { NSWorkspace.shared.open(folder) }
     }
@@ -1123,25 +1151,6 @@ private struct GUIEvent: Decodable {
 
     func revealHomebrewLogs() {
         if let folder = homebrewFolder ?? runFolder { NSWorkspace.shared.open(folder) }
-    }
-
-    private func stremioLaunchOptions(accountAddons: [String], libraryItems: [[String: Any]]) -> [String: Any]? {
-        guard accountAddons.count <= 32, libraryItems.count <= 500 else { return nil }
-        let value = stremioAddonURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ["addonUrls": value.isEmpty ? accountAddons : [value],
-                "libraryItems": libraryItems,
-                "quality": stremioQuality.rawValue]
-    }
-
-    func launchMintBrew(accountAddons: [String] = [], libraryItems: [[String: Any]] = []) {
-        guard canLaunchMintBrew,
-              var control = stremioLaunchOptions(accountAddons: accountAddons, libraryItems: libraryItems) else { return }
-        control["action"] = "launch-mintbrew"
-        guard sendHostControl(control) else { return }
-        homebrewApp = .mintBrew
-        postRun.launchHomebrew()
-        homebrewMessage = "Starting MintBrew in the current held session…"
-        presentPostRunState()
     }
 
     func launchNativeHBLauncher(sdRomFolder: String) {
@@ -1187,6 +1196,7 @@ private struct GUIEvent: Decodable {
             : "Checking the selected folder before copying mods to the Switch SD card."
         progressLabel = homebrewMessage
     }
+
 
     func launchCustomHomebrew(folder: URL) {
         guard canLaunchHomebrew else { return }
@@ -1766,13 +1776,6 @@ private struct GUIEvent: Decodable {
             presentPostRunState()
             return
         }
-        if event.type == "account-progress" {
-            guard role == "host", postRun.homebrewAttempted,
-                  homebrewApp == .mintBrew,
-                  let update = event.watchProgress else { return }
-            accountProgressHandler?(update)
-            return
-        }
         if role == "hid", event.partial == true || ["typing", "keyboard-ready", "line-start", "line-complete", "command-start",
             "command-complete", "command-prefix-complete", "transfer-complete"].contains(event.type) {
             currentUSBStepHasProof = true
@@ -2096,18 +2099,14 @@ private struct GUIEvent: Decodable {
         case "modloader-progress":
             guard role == "host", homebrewApp == .modloader,
                   postRun.stage == .held, postRun.homebrewStage == .launching else { return }
-            homebrewMessage = event.message ?? (modloaderUsedMacFolder
-                ? "Writing selected mods to the Switch SD card, then installing the modloader…"
-                : "Installing the modloader using mods on the Switch SD card…")
+            homebrewMessage = event.message ?? "Installing the modloader…"
             progressLabel = homebrewMessage
         case "modloader-ready":
             guard role == "host", homebrewApp == .modloader,
                   postRun.receive("homebrew-running") else { return }
             if let folder = sessionURL(event.path) { homebrewFolder = folder }
             modloaderInstallReady = true
-            homebrewMessage = event.message ?? (isAttachedFilesystemFS
-                ? "Modloader installed. Disconnect this attachment, stop the original FS host, then close \(attachedFilesystemGameName) without restarting the Switch before launching the game. Restart the Switch before installing a different mod."
-                : "Modloader installed. Finish this session, close SmileBASIC without restarting the Switch, then launch the game. Restart the Switch before installing a different mod.")
+            homebrewMessage = event.message ?? "Modloader installed for this boot."
             presentPostRunState()
         case "modloader-failed":
             guard role == "host", homebrewApp == .modloader else { return }
@@ -2269,9 +2268,7 @@ private struct GUIEvent: Decodable {
                 pendingHomebrewAction = nil
                 pendingCustomConsoleAddress = nil
                 homebrewMessage = event.message ?? (action == "modloader-install"
-                    ? modloaderUsedMacFolder
-                      ? "The selected mods folder is invalid. Choose another folder."
-                      : "The Switch SD card mods could not be read."
+                    ? modloaderUsedMacFolder ? "The selected mods folder is invalid. Choose another folder." : "The Switch SD card mods could not be read."
                     : "The selected app folder is invalid. Choose another folder.")
                 presentPostRunState()
                 status = action == "modloader-install"

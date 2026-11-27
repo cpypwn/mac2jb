@@ -6,7 +6,7 @@ test('Discovers complete packages and real shader stages',async()=>{const c=awai
 test('Bundled apps keep the requested order while other apps follow them',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'mintbrew-order-test-'));
  t.after(()=>fs.rm(root,{recursive:true,force:true}));
- const ordered=['stremio-experimental','froggy-road','ouncecake','ftpd-sb','cpu-gpu-probe','hello-world'];
+ const ordered=['froggy-road','ouncecake','ftpd-sb','cpu-gpu-probe','hello-world'];
  for(const id of [...ordered,'custom-app']){
   const folder=path.join(root,id);
   await fs.cp(path.resolve(__dirname,'../apps/hello-world'),folder,{recursive:true});

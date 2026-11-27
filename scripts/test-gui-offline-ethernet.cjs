@@ -9,7 +9,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 const test = require('node:test');
-const { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir, waitForStartup } = require('./gui-offline-ethernet.cjs');
+const { adapterStartIssue, parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir, waitForStartup } = require('./gui-offline-ethernet.cjs');
 
 test('root-owned live service is not misclassified as stale', () => {
   assert.equal(processAlive(321, () => { throw Object.assign(new Error('permission'), { code: 'EPERM' }); }), true);
@@ -29,6 +29,14 @@ test('only physical Ethernet adapters are offered', () => {
     { interface: 'en2', label: 'Ethernet', active: false },
     { interface: 'en7', label: 'USB 10/100/1000 LAN', active: true }
   ]);
+});
+
+test('start reports a missing adapter separately from an inactive link', () => {
+  assert.match(adapterStartIssue([], 'en4'), /No Ethernet adapter detected/);
+  const adapters = [{ interface: 'en4', label: 'Ethernet Adapter', active: false }];
+  assert.match(adapterStartIssue(adapters, 'en5'), /en5 is no longer connected/);
+  assert.match(adapterStartIssue(adapters, 'en4'), /No active Ethernet link on en4/);
+  assert.equal(adapterStartIssue([{ ...adapters[0], active: true }], 'en4'), null);
 });
 
 test('status distinguishes local self-check from real Switch requests', t => {

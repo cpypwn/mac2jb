@@ -32,19 +32,6 @@ import Foundation
         precondition(result.contains(confirmation), result)
         precondition(result.contains("LOADV") == (edition == .demo), result)
         }
-        let suite = "mac2jb-quality-fixture-" + UUID().uuidString
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
-        precondition(StremioQuality.saved(defaults: defaults) == .p720)
-        for quality in StremioQuality.allCases {
-            defaults.set(quality.rawValue, forKey: StremioQuality.preferenceKey)
-            precondition(StremioQuality.saved(defaults: defaults) == quality)
-        }
-        precondition(StremioQuality.allCases.map(\.rawValue) == ["720p", "540p", "360p", "180p"])
-        for invalid: Any in ["", "1080p", "4k", "--unsafe", 1080, true] {
-            defaults.set(invalid, forKey: StremioQuality.preferenceKey)
-            precondition(StremioQuality.saved(defaults: defaults) == .p720)
-        }
-        print("SmileBASIC full and demo SAVE/LOAD confirmation and validated Stremio quality checks passed. No USB input sent.")
+        print("SmileBASIC full and demo SAVE/LOAD confirmation checks passed. No USB input sent.")
     }
 }

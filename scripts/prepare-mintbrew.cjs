@@ -11,7 +11,7 @@ const mintftp = () => require('../integrations/mintbrew-file-explorer/prepare.cj
 const repository = path.resolve(__dirname, '..');
 const source = path.join(repository, 'vendor/MintBrew');
 const baseApps = ['hello-world', 'froggy-road', 'cpu-gpu-probe', 'chip8-test'];
-const runtimeApps = [...baseApps, 'ftpd-sb', 'stremio', 'ouncecake'];
+const runtimeApps = [...baseApps, 'ftpd-sb', 'ouncecake'];
 const check = (condition, message) => {if (!condition) throw Error(message);};
 
 function isTestBuild(runtimeRoot) {
@@ -55,11 +55,6 @@ function inspect(root, prepared, testBuild = false) {
       check(mintnes.id === 'mintnes' && mintnes.format === 'hblauncher.gpu-app' && mintnes.abi === 1,
         'Invalid MintNES test app manifest.');
     }
-    const stremio = path.join(apps, 'stremio');
-    const original = path.join(repository, 'stremio/app');
-    for (const name of fs.readdirSync(original))
-      check(fs.readFileSync(path.join(stremio, name)).equals(fs.readFileSync(path.join(original, name))),
-        'Changed MintBrew Stremio app file: ' + name);
   }
   const shaderRoot = path.join(root, 'homebrew-launcher/shaders');
   for (const stage of ['vert', 'frag', 'comp']) {
@@ -117,8 +112,7 @@ function main(args = process.argv.slice(2)) {
     else mintftp().prepareMintBrew(repository, root);
     if (!fs.existsSync(path.join(root, 'apps/ftpd-sb'))) overlays.installOverlays(repository, path.join(root, 'apps'));
     ouncecake.prepareMintBrew(repository, root);
-    const stremio = path.join(root, 'apps/stremio');
-    if (!fs.existsSync(stremio)) fs.cpSync(path.join(repository, 'stremio/app'), stremio, {recursive: true});
+    fs.rmSync(path.join(root, 'apps/stremio'), {recursive: true, force: true});
   }
   const result = inspect(root, true, testBuild);
   console.log('MintBrew runtime ready: ' + result.apps.join(', '));

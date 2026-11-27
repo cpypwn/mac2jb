@@ -34,7 +34,7 @@ async function main(root=path.resolve(__dirname,'..')) {
       const data=await catalog.scan(launcherEnv.HB_APPS_DIR);
       if(data.rejected.length||!data.apps.length)throw Error(selected.name+' bundled app validation failed: '+JSON.stringify(data.rejected));
       const required=application==='hblauncher'?['hello-world','ftpd-sb']:
-        application==='mintbrew'?['hello-world','froggy-road','ftpd-sb','chip8-test','ouncecake','stremio-experimental',
+        application==='mintbrew'?['hello-world','froggy-road','ftpd-sb','chip8-test','ouncecake',
           ...(testBuild?['mintnes','mintftp']:[])]:
           ['hello-world','froggy-road','ftpd-sb'];
       for(const id of required)

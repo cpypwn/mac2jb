@@ -1,9 +1,9 @@
-// Mount helpers - inspect the SDK mount table and clone a mount handle.
+// Inspect the SDK mount table for a mounted filesystem handle.
 
 // -- Mount table access --------------------------------------------
 
 // Walk the SDK mount table to extract session handle + domain object ID.
-// Returns { handle, objId, accessor, slots } or null on failure.
+// Returns { handle, objId } or null on failure.
 function getMountHandle(name) {
     const nameBuf = allocRawTracked(16);
     writeStr(nameBuf, name);
@@ -18,12 +18,12 @@ function getMountHandle(name) {
     const manager = read64(service + 0x10n);
     const slots   = read64(manager + 0x10n);
     const handle  = Number(read32(slots)) >>> 0;
-    return { handle, objId, accessor: a, slots };
+    return { handle, objId };
 }
 
-// Convenience: get a cloned non-domain handle for a mount.
-// Returns { handle, objId, borrowed } or null on failure.
-// Caller must closeHandle(result.handle) when done.
+// Clone a mount into an owned handle (kaihen donor/save access goes through
+// this). Upstream dropped it as dead code because their tree has no callers
+// — keep it for the chain build.
 function openMount(name) {
     const mount = getMountHandle(name);
     if (!mount) return null;

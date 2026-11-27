@@ -7,9 +7,9 @@ import Foundation
         let sources = BundledUpdateService.loadSources(runtimeRoot: root)
         let ids = sources.map(\.id)
         precondition(ids.count == Set(ids).count)
-        precondition(ids.count >= 20)
-        for id in ["host-kurumuz", "host-cellenseres", "host-pepsipu", "kaihen", "civswitch", "savekit",
-                   "hb-native", "hb-gpu", "ouncecake", "ftpd", "libusbd", "usb-gadget"] {
+        precondition(ids.count >= 9)
+        for id in ["host-kurumuz", "host-pepsipu", "host-BermTheSequel", "kaihen", "civswitch", "savekit",
+                   "ouncecake", "libusbd", "usb-gadget"] {
             precondition(ids.contains(id), "Missing bundled source \(id)")
         }
         precondition(ids.first == "kaihen")
@@ -20,14 +20,12 @@ import Foundation
             precondition(["github.com", "gitlab.com"].contains(source.repository?.host ?? ""))
         }
         precondition(sources.first { $0.id == "host-kurumuz" }?.pinned ==
-            "28f03b5895e5569d8fbc35cbed84906b8f0a65b2")
+            "ae33da13542c616874ec23c56b7b6a660745c5e3")
         precondition(sources.first { $0.id == "kaihen" }?.pinned == "20261117.1")
         let lock = try String(contentsOf: root.appendingPathComponent("upstream.lock"), encoding: .utf8)
-        let homebrew = try String(contentsOf: root.appendingPathComponent("scripts/gui-homebrew.cjs"), encoding: .utf8)
         for id in ["libusbd", "usb-gadget"] {
             precondition(lock.contains(sources.first { $0.id == id }!.pinned))
         }
-        precondition(homebrew.contains(sources.first { $0.id == "hb-gpu" }!.pinned))
 
         let kaihen = sources.first { $0.id == "kaihen" }!
         let current = await BundledUpdateService.inspect(kaihen) { url in
@@ -36,10 +34,15 @@ import Foundation
             return Data(#"{"tag_name":"20261117.1"}"#.utf8)
         }
         precondition(current.status == .current && current.latest == "20261117.1")
+        let release = #"{"tag_name":"20261118"}"#
         let changed = await BundledUpdateService.inspect(kaihen) { _ in
-            Data(#"{"tag_name":"20261118"}"#.utf8)
+            Data(release.utf8)
         }
         precondition(changed.status == .changed && changed.latest == "20261118")
+        let older = await BundledUpdateService.inspect(kaihen) { _ in
+            Data(release.replacingOccurrences(of: "20261118", with: "20261116").utf8)
+        }
+        precondition(older.status == .changed && older.latest == "20261116")
         let malformed = await BundledUpdateService.inspect(kaihen) { _ in
             Data(#"{"tag_name":"../wrong"}"#.utf8)
         }
@@ -50,15 +53,15 @@ import Foundation
         let gitlab = await BundledUpdateService.inspect(kurumuz) { url in
             calls.append(url.absoluteString)
             if url.absoluteString.hasSuffix("/repository/branches/main") {
-                return Data(#"{"commit":{"id":"28f03b5895e5569d8fbc35cbed84906b8f0a65b2"}}"#.utf8)
+                return Data(#"{"commit":{"id":"ae33da13542c616874ec23c56b7b6a660745c5e3"}}"#.utf8)
             }
             return Data(#"{"default_branch":"main"}"#.utf8)
         }
         precondition(gitlab.status == .current)
         precondition(calls.first == "https://gitlab.com/api/v4/projects/kurumuz%2Fns2jb")
         precondition(calls.count == 2)
-        let cellenseres = sources.first { $0.id == "host-cellenseres" }!
-        let githubCommit = await BundledUpdateService.inspect(cellenseres) { url in
+        let civswitch = sources.first { $0.id == "civswitch" }!
+        let githubCommit = await BundledUpdateService.inspect(civswitch) { url in
             if url.absoluteString.hasSuffix("/branches/main") {
                 return Data(#"{"commit":{"sha":"1111111111111111111111111111111111111111"}}"#.utf8)
             }
@@ -66,7 +69,7 @@ import Foundation
         }
         precondition(githubCommit.status == .changed)
         precondition(githubCommit.statusText.contains("differs"))
-        let unavailable = await BundledUpdateService.inspect(cellenseres) { _ in
+        let unavailable = await BundledUpdateService.inspect(civswitch) { _ in
             throw URLError(.notConnectedToInternet)
         }
         precondition(unavailable.status == .unknown && unavailable.latest == "Unknown")

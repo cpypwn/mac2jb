@@ -9,48 +9,8 @@ const bridge = require('./launch.cjs');
 
 const runtimeRoot = path.resolve(__dirname, '../..');
 
-test('pinned runtime and SD assets verify without downloads', () => {
+test('pinned runtime assets verify without downloads', () => {
   bridge.verifyAssets(runtimeRoot);
-  bridge.verifyAssets(runtimeRoot, {sd: true});
-  const entries = bridge.readSdFiles(bridge.paths(runtimeRoot));
-  assert.equal(entries.get('kaihen/bin/bootstrap.bin').length, 27948);
-  assert.equal(entries.get('kaihen/bin/ro/main').length, 23854);
-  assert.equal(entries.get('kaihen/bin/hen/main').length, 78765);
-  assert.equal(entries.get('kaihen/bin/game/main').length, 63424);
-  assert.equal(entries.get('hbmenu.nro').length, 11790974);
-  assert.equal(entries.get('switch/ounceshell/ounceshell.nro').length, 22294859);
-  assert.equal(entries.has('switch/kaihen-stremio/kaihen-stremio.nro'), false);
-});
-
-test('shared kaiHEN SD writer stages verified assets and preserves other files', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-kaihen-sd-'));
-  try {
-    const entries = bridge.readSdFiles(bridge.paths(runtimeRoot));
-    fs.writeFileSync(path.join(root, 'existing.txt'), 'keep');
-    bridge.writeSdFolder(root, entries);
-    assert.deepEqual(fs.readFileSync(path.join(root, 'kaihen/bin/bootstrap.bin')),
-      entries.get('kaihen/bin/bootstrap.bin'));
-    assert.equal(fs.existsSync(path.join(root, 'switch/kaihen-stremio')), false);
-    assert.equal(fs.readFileSync(path.join(root, 'existing.txt'), 'utf8'), 'keep');
-  } finally {
-    fs.rmSync(root, {recursive: true, force: true});
-  }
-});
-
-test('SD folder writer preserves and backs up an existing file', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-civ-kaihen-'));
-  let backup;
-  try {
-    fs.mkdirSync(path.join(root, 'kaihen', 'bin'), {recursive: true});
-    fs.writeFileSync(path.join(root, 'kaihen', 'bin', 'bootstrap.bin'), 'older');
-    const files = new Map([['kaihen/bin/bootstrap.bin', Buffer.from('newer')]]);
-    backup = bridge.writeSdFolder(root, files, true);
-    assert.equal(fs.readFileSync(path.join(root, 'kaihen/bin/bootstrap.bin'), 'utf8'), 'newer');
-    assert.equal(fs.readFileSync(path.join(backup, 'kaihen/bin/bootstrap.bin'), 'utf8'), 'older');
-  } finally {
-    fs.rmSync(root, {recursive: true, force: true});
-    if (backup) fs.rmSync(backup, {recursive: true, force: true});
-  }
 });
 
 test('failed verified backup blocks persistent trigger transfer', async () => {

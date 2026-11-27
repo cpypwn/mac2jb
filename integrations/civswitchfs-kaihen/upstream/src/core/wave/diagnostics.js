@@ -122,7 +122,7 @@ function createWaveDiag() {
                 lines.push(
                     p2((r.waveId || 0) + 1) + "  | " +
                     pR(r.profile || "?", 19) + " | " +
-                    pR(shape + "/10", 5) + " | " +
+                    pR(shape + "/" + (r.overlapCount || "?"), 5) + " | " +
                     pL(mar, 8) + " | " +
                     pR(can, 6) + " | " +
                     pR(windowStatus, 3) + " | " +

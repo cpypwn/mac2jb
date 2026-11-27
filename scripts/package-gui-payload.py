@@ -15,7 +15,6 @@ RUNTIME_MANIFEST = 'packaging/runtime-files.json'
 PREPARED_RUNTIME_PATHS = {
     'vendor/MintBrew/apps/ftpd-sb/app.json',
     'vendor/MintBrew/apps/mintftp/app.json',
-    'vendor/MintBrew/apps/stremio/app.json',
     'vendor/MintBrew/apps/ouncecake/app.json',
     'vendor/HBLauncher/apps/ftpd-sb/app.json',
     'vendor/GPUBrewLauncher/apps/ftpd-sb/app.json',
@@ -26,6 +25,7 @@ RESEARCH_ONLY_FOLDERS = (
 )
 EXCLUDED_PACKAGE_FOLDERS = (
     'integrations/kaihen-stremio',
+    'vendor/ns2jb-hosts/cellenseres', 'vendor/ns2jb-hosts/astral',
 )
 
 
@@ -35,14 +35,13 @@ SOURCE_FILES = (
     'setup.sh', 'fetch-bootstrap.sh', 'make-release-zip.command',
 )
 SOURCE_FOLDERS = (
-    'gui', 'scripts', 'packaging', 'drivers', 'assets', 'vendor', 'stremio',
+    'gui', 'scripts', 'packaging', 'drivers', 'assets', 'vendor',
     'integrations', 'docs', 'tools/bootstrap-kit', 'tools/mcp', '.github',
 )
 RUNTIME_FOLDERS = (
-    'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit', 'vendor/HBLauncher',
-    'vendor/GPUBrewLauncher', 'vendor/MintBrew',
+    'vendor/ns2jb', 'vendor/ns2jb-hosts', 'vendor/ns2-savekit',
     'vendor/CivSwitch/installer-creator/node_modules',
-    'vendor/OunceCake', 'vendor/OunceCake-Civ7', 'vendor/switch2-captive-portal-research', 'assets', 'drivers', 'stremio',
+    'vendor/OunceCake', 'vendor/OunceCake-Civ7', 'assets', 'drivers',
     'integrations',
 )
 OMITTED_RUNTIME_FOLDERS = (
@@ -52,13 +51,18 @@ OMITTED_RUNTIME_FOLDERS = (
     'integrations/luna-editor',
     'integrations/mintbrew-file-explorer',
     'integrations/mintbrew-native/upstream/apps/mintnes/tests/build',
+    'integrations/mintbrew-native',
+    'integrations/mintbrew-stremio', 'integrations/nsp-box',
+    'integrations/civ-stremio', 'integrations/kaihen-stremio',
+    'integrations/civhomebrew-catalog', 'integrations/sw2nes', 'integrations/jellyfin',
+    'integrations/nup-support', 'integrations/browser-probes',
+    'vendor/switch2-captive-portal-research',
 )
 PERSONAL_SHOWCASE_PATHS = (
     'scripts/build-seedsow-full-showcase.cjs',
     'integrations/civswitch/hello.js',
     'integrations/civswitch/send-hello.cjs',
     'integrations/civswitch/send-hello.test.cjs',
-    'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
     'integrations/balatro-rce/showcase.lua',
     'integrations/balatro-rce/build-showcase.py',
     'integrations/seedsow-lua',
@@ -68,33 +72,9 @@ PERSONAL_SHOWCASE_PATHS = (
     'integrations/artemis/README-seedsow-full-showcase.txt',
     'integrations/artemis/seedsowhax-v1-mac2jb.zip',
     'integrations/artemis/norahax-v1-mac2jb.zip',
-    'integrations/artemis/seedsowhax-v2-mac2jb.zip',
-    'integrations/artemis/norahax-v2-mac2jb.zip',
-    'integrations/artemis/hamihax-v2-mac2jb.zip',
-    'integrations/artemis/norahax-nora1-mac2jb.zip',
-    'integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
     'integrations/gravcirc-rce/cpypwn-circuit-showcase.lua',
     'integrations/gravcirc-rce/build-cpypwn-save.py',
     'integrations/gravcirc-rce/send-showcase.py',
-)
-UNBUNDLED_SAVE_COMPONENTS = (
-    'integrations/artemis',
-    'integrations/seedsow-editor-pro',
-    'integrations/seedsow-lua',
-    'integrations/balatro-rce/balatro-switch-rce-1.1.0.zip',
-    'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
-    'integrations/gravcirc-rce/GC-v1.1.zip',
-    'integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
-    'packaging/ArtemisLauncher-v1.json',
-    'packaging/ArtemisLauncher-v2.json',
-    'packaging/ArtemisLauncher-seedsow-full.json',
-    'packaging/ArtemisLauncher-upstream-saves.json',
-    'packaging/ArtemisLauncher-nora1.json',
-    'packaging/ArtemisLauncher-bundles.json',
-    'packaging/SeedsowEditorPro-v0.4.0.json',
-    'packaging/GravCirc-v1.1.json',
-    'packaging/GravCirc-v1.1-SHA256SUMS',
-    'vendor/ns2-savekit/Seedsow-Lua-Editor-Save.zip',
 )
 BLOCKED_PARTS = {
     '.git', '.build', 'runs', 'dumps', '__pycache__', 'xcuserdata',
@@ -105,9 +85,6 @@ BLOCKED_SUFFIXES = {
 }
 EXECUTABLES = {
     'node', 'mac2jb-send', 'mac2jb-commands', 'mac2jb-keyboard', 'mac2jb-civswitch-hid',
-    'homebrew/bin/spirv-val', 'homebrew/bin/glslangValidator',
-    'homebrew/python/bin/python3', 'homebrew/python/bin/python3.13',
-    'tools/nxformat/1.0.4/bin/nxconvert',
 }
 
 REMOVED_COMPONENTS = (
@@ -167,9 +144,7 @@ def safe(relative, source, test_build=False):
     if any(name == prefix or name.startswith(prefix + '/') for prefix in EXCLUDED_PACKAGE_FOLDERS):
         return False
     removed = any(name == component or name.startswith(component + '/') for component in REMOVED_COMPONENTS)
-    unbundled_save = any(name == component or name.startswith(component + '/')
-                         for component in UNBUNDLED_SAVE_COMPONENTS)
-    if unbundled_save or removed:
+    if removed:
         return False
     if parts[:3] == ('tools', 'mcp', 'node_modules') or (
         parts[:2] == ('tools', 'bootstrap-kit') and len(parts) > 2 and parts[2].startswith('generated')
@@ -251,7 +226,7 @@ def stage(root, payload, node):
     (source / 'packaging/test-build.json').write_text(marker)
     copy_file(root, root / RUNTIME_MANIFEST, payload / RUNTIME_MANIFEST)
     (payload / 'packaging/runtime-homebrew.json').write_text(
-        json.dumps({'allowed': ['mintbrew', 'native-hblauncher', 'ouncecake', 'custom-homebrew']}, indent=2) + '\n'
+        json.dumps({'allowed': ['ouncecake']}, indent=2) + '\n'
     )
     for name in SOURCE_FILES:
         if (root / name).exists():
@@ -260,11 +235,20 @@ def stage(root, payload, node):
         copy_tree(root, folder, source, test_build=test_build)
     for folder in RUNTIME_FOLDERS:
         copy_tree(root, folder, payload, runtime=True, test_build=test_build)
-    if not test_build:
-        for folder in OMITTED_RUNTIME_FOLDERS:
-            target = payload / folder
-            if target.exists():
-                shutil.rmtree(target)
+    always_omit = {
+        'integrations/mintbrew-native',
+        'integrations/mintbrew-stremio', 'integrations/nsp-box',
+        'integrations/civ-stremio', 'integrations/kaihen-stremio',
+        'integrations/civhomebrew-catalog', 'integrations/sw2nes', 'integrations/jellyfin',
+        'integrations/nup-support', 'integrations/browser-probes',
+        'vendor/switch2-captive-portal-research',
+    }
+    for folder in OMITTED_RUNTIME_FOLDERS:
+        if test_build and folder not in always_omit:
+            continue
+        target = payload / folder
+        if target.exists():
+            shutil.rmtree(target)
     for name in manifest['copyFiles']:
         if not copy_file(root, root / name, payload / name):
             raise SystemExit('Missing GUI build input: ' + name)
@@ -313,7 +297,7 @@ def archive(payload, build, source_archive):
                     entry.uid = entry.gid = 0
                     entry.uname = entry.gname = ''
                     entry.mtime = 0
-                    entry.mode = 0o755 if relative == 'tools/nxformat/1.0.4/bin/nxconvert' else (
+                    entry.mode = (
                         0o700 if item.is_dir() or relative in EXECUTABLES else 0o600
                     )
                     if item.is_file():

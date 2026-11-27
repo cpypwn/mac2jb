@@ -4,7 +4,7 @@ const {promisify}=require('node:util');
 const {inflateSync}=require('node:zlib');
 const run=promisify(execFile);
 const ROOT=path.resolve(__dirname,'../apps'),MAX_APPS=32,SLOT_BYTES=131072,ATLAS_BYTES=1024*2048;
-const DEFAULT_ORDER=new Map(['stremio-experimental','froggy-road','ouncecake','ftpd-sb','cpu-gpu-probe','hello-world'].map((id,index)=>[id,index]));
+const DEFAULT_ORDER=new Map(['froggy-road','ouncecake','ftpd-sb','cpu-gpu-probe','hello-world'].map((id,index)=>[id,index]));
 const order=id=>DEFAULT_ORDER.get(id)??DEFAULT_ORDER.size;
 const check=(v,m)=>{if(!v)throw Error(m);};
 async function asset(root,name,max){

@@ -98,9 +98,8 @@ export function readFsAddressBytes(input) {
                         ? "none" : hex32(reply.cmifError)) +
                     " offset=0x" + requestOffset.toString(16) +
                     " size=0x" + requestSize.toString(16)};
-        var nonPoison = copyBytes
-            ? hasByteDifferent(outputBuf + BigInt(prefix), take, 0xA5)
-            : hasByteDifferentFast(outputBuf + BigInt(prefix), take, 0xA5);
+        var nonPoison = hasByteDifferentFast(
+            outputBuf + BigInt(prefix), take, 0xA5);
         if (!nonPoison)
             return {ok: false, fatal: true,
                 error: "read window remained poison"};
@@ -123,171 +122,212 @@ export function padRight(s, len) {
     return s;
 }
 
+const WAVE_REJECTION_LABELS = {
+    reservation: "reservations",
+    "workers-done": "workers incomplete",
+    transport: "IPC failed",
+    "workers-join": "workers did not join",
+    "protected": "worker flags",
+    "release-sent": "release failed",
+    signal: "completion signal",
+    "trig-span": "trigger timing unavailable",
+    "shape": "overlap pattern",
+    "margin>=300": "margin below 300µs",
+    "no-abort": "unexpected abort",
+    tails: "path fragments",
+    commit: "save commit",
+    read: "storage read",
+    paths: "path results",
+    "pin-shape": "pin reply",
+    "clear-ok": "heap clear",
+    "pre-ok": "heap probe",
+    "heap-restore": "heap counters",
+    "pin-cost": "pin allocation",
+    "pin-window": "pin timing",
+    "pin-1st": "initial pin",
+    "pre-release": "cache hold"
+};
+
+function waveStatus(profile, result, verdict) {
+    if (profile === "abort-control")
+        return result.abortControl ? "PASS · expected abort" : "REJECTED";
+    if (profile === "abort-hole-control")
+        return result.abortHoleControl ? "PASS · expected abort" : "REJECTED";
+    if (profile === "extent-present")
+        return result.extentQualified ? "PASS · marker found" : "REJECTED";
+    if (profile === "negative")
+        return result.negativeControl ? "PASS · expected error" : "REJECTED";
+    if (profile === "positive") {
+        if (result.canaryRedirect) return "QUALIFIED FLIP";
+        if (result.observedCanaryRedirect && !result.window)
+            return "FLIP OUTSIDE WINDOW";
+        if (result.window) return "WINDOW OK · no flip";
+        return "REJECTED";
+    }
+    if (profile === "extent-absent") return "REFERENCE";
+    if (profile.indexOf("cache") === 0 ||
+        /accepted|copy-ok/i.test(String(verdict || ""))) {
+        return /accepted|copy-ok/i.test(String(verdict || ""))
+            ? "ACCEPTED" : "REJECTED";
+    }
+    return verdict || (result.window ? "WINDOW OK" : "REJECTED");
+}
+
+function isCacheCopyProfile(profile, verdict) {
+    return profile.indexOf("cache") === 0 ||
+        /header copy/i.test(String(verdict || ""));
+}
+
+function waveRejectionSummary(result, config, profile, verdict) {
+    const reasons = [];
+    for (const key of result.rejections || []) {
+        let label = WAVE_REJECTION_LABELS[key] || key.replace(/-/g, " ");
+        if (key === "shape") label += " " + result.shape + "/" +
+            config.OVERLAP_COUNT;
+        if (key === "paths" && result.changedPaths?.length)
+            label += ": " + result.changedPaths.join(",");
+        if (!reasons.includes(label)) reasons.push(label);
+    }
+
+    if (isCacheCopyProfile(profile, verdict) && result.window) {
+        if (result.preReleaseUsed == null ||
+            result.preReleaseUsed < config.FIELD_MINIMUM_CACHE_HELD) {
+            reasons.push("cache hold below minimum");
+        } else if (result.changedPaths?.length) {
+            reasons.push("unexpected path result");
+        }
+    }
+
+    if (result.postCanaryHealth && !result.postCanaryHealth.healthy)
+        reasons.push("post-wave canary health");
+
+    if (!reasons.length) {
+        if (profile === "abort-control" || profile === "abort-hole-control")
+            reasons.push("abort check did not match");
+        else if (profile === "extent-present")
+            reasons.push("marker result did not match");
+        else if (profile === "negative")
+            reasons.push("expected error was not returned");
+        else if (profile === "positive")
+            reasons.push(result.window
+                ? "canary did not flip" : "window gates did not qualify");
+        else if (result.changedPaths?.length)
+            reasons.push("changed paths: " + result.changedPaths.join(","));
+    }
+
+    if (reasons.length > 2)
+        return reasons.slice(0, 2).join(", ") + " +" +
+            (reasons.length - 2) + " checks";
+    return reasons.join(", ");
+}
+
+function formatPathReplyCode(value) {
+    if (value == null) return "na";
+    var raw = Number(value) >>> 0;
+    if (raw === 0xFFFFFFFF) return "send-failed";
+    var canonical = raw & 0x3FFFFF;
+    return raw === canonical
+        ? "0x" + raw.toString(16)
+        : "0x" + raw.toString(16) + "/0x" + canonical.toString(16);
+}
+
+function formatRenameInputDiagnostics(diagnostics) {
+    if (!diagnostics) return "path-inputs=unavailable";
+    var labels = [
+        ["src", "fillerSource"], ["dst", "fillerDestination"],
+        ["guard0", "guardSource"], ["guard1", "guardDestination"]
+    ];
+    var summaries = [];
+    for (var i = 0; i < labels.length; i++) {
+        var label = labels[i][0];
+        var name = labels[i][1];
+        var before = diagnostics.before?.[name];
+        var after = diagnostics.after?.[name];
+        if (!before?.available || !after?.available) {
+            summaries.push(label + "=unavailable");
+            continue;
+        }
+        var beforeStatus = before.matchesExpected ? "ok" : "diff@" +
+            (before.firstDiff ? before.firstDiff.offset : "?");
+        var afterStatus = after.matchesExpected ? "ok" : "diff@" +
+            (after.firstDiff ? after.firstDiff.offset : "?");
+        var status = beforeStatus + ">" + afterStatus +
+            (before.hash !== after.hash ? "/mutated" : "");
+        summaries.push(label + "/" + before.size + "=0x" +
+            before.hash.toString(16) + ">0x" + after.hash.toString(16) +
+            "/" + status);
+    }
+    var descriptorStatus = diagnostics.descriptorsOk ? "ok" : "bad";
+    if (!diagnostics.descriptorsOk && diagnostics.descriptors?.roles) {
+        var badRoles = diagnostics.descriptors.roles.filter(role =>
+            role.descriptors.some(desc => !desc.matchesExpected));
+        descriptorStatus += ":" + badRoles.map(role => "W" + role.role + "[" +
+            role.descriptors.map((desc, index) => index + ":" +
+                desc.index + "/" + desc.size + "@0x" +
+                desc.address.toString(16) + "/0x" +
+                desc.word0.toString(16) + "/0x" +
+                desc.word1.toString(16)).join(",") + "]").join(";");
+    }
+    return "path-inputs=" + summaries.join(",") + ";xdesc=" +
+        descriptorStatus;
+}
+
 export function formatWaveSummaryLine(id, profile, result, verdict, input) {
     const config = input.config;
-    var canary;
-    if (result.canaryType === 0) {
-        canary = "DIR";
-    } else if (result.canaryType === 1) {
-        canary = "file";
-    } else if (result.canaryType == null) {
-        canary = "?";
-    } else {
-        canary = "err";
+    const status = waveStatus(profile, result, verdict);
+    const isCacheProfile = isCacheCopyProfile(profile, verdict);
+    let line = "Wave " + pad2(id) + " [" + profile + "] " + status;
+
+    if (profile === "extent-absent") {
+        line += " · window=" + (result.window ? "OK" : "no");
+        if (result.triggerCanonical != null)
+            line += " · trigger=0x" +
+                Number(result.triggerCanonical).toString(16);
     }
 
-    var rejects = "-";
-    if (result.rejections && result.rejections.length) {
-        rejects = result.rejections.join(",");
+    if (["abort-control", "abort-hole-control", "extent-present",
+        "negative", "extent-absent", "positive"].indexOf(profile) >= 0 &&
+        result.canaryType != null) {
+        line += " · canary=" + (result.canaryType === 1 ? "file" :
+            result.canaryType === 0 ? "DIR" : "error");
     }
 
-    var changedPaths = "none";
-    if (result.changedPaths && result.changedPaths.length) {
-        changedPaths = result.changedPaths.join(",");
+    if (profile === "abort-control" && result.pinDiagnostics?.created)
+        line += " · pin=" + (result.pinFirstWaveQualified ? "OK" : "not qualified");
+
+    if (result.margin != null)
+        line += " · margin=" + result.margin + "/300µs";
+
+    if (profile === "positive") {
+        if (result.canaryRedirect) line += " · post-check=OK";
     }
 
-    var windowStatus = "no";
-    if (result.window) {
-        windowStatus = "pass";
+    if (isCacheProfile) {
+        const held = result.preReleaseUsed == null
+            ? "n/a" : "0x" + Number(result.preReleaseUsed).toString(16);
+        line += " · cache=" + held + "/0x" +
+            Number(config.FIELD_MINIMUM_CACHE_HELD).toString(16);
     }
 
-    var margin = "NA";
-    if (result.margin != null) {
-        margin = result.margin + "us";
+    if (result.pathReplyResults) {
+        const paths = result.pathReplyResults;
+        const parts = [];
+        if (paths.filler0 != null) parts.push("f0:" + formatPathReplyCode(paths.filler0));
+        if (paths.filler1 != null) parts.push("f1:" + formatPathReplyCode(paths.filler1));
+        parts.push("g0:" + formatPathReplyCode(paths.guard0));
+        parts.push("g1:" + formatPathReplyCode(paths.guard1));
+        line += " · RenameFile=" + parts.join(",");
     }
+    if (result.renameInputDiagnostics)
+        line += " · " + formatRenameInputDiagnostics(
+            result.renameInputDiagnostics);
 
-    var triggerStatus = "clear";
-    if (result.triggerAborted) {
-        triggerStatus = "aborted";
+    if (status === "REJECTED" || status === "FLIP OUTSIDE WINDOW") {
+        const reasons = waveRejectionSummary(result, config, profile, verdict);
+        if (reasons) line += " · cause: " + reasons;
     }
-
-    var preRelease = "NA";
-    if (result.preReleaseUsed != null) {
-        preRelease = "0x" + Number(result.preReleaseUsed).toString(16);
-    }
-
-    var isControlProfile = profile === "abort-control" ||
-        profile === "abort-hole-control" || profile === "extent-absent" ||
-        profile === "extent-present" || profile === "negative" ||
-        profile === "positive";
-    var line = "Wave " + pad2(id) + " [" + profile + "] " + verdict +
-        " | window=" + windowStatus +
-        " overlap=" + result.shape + "/10 margin=" +
-        margin +
-        " trigger=" + triggerStatus +
-        " canary=" + canary +
-        " paths=" + changedPaths +
-        " preRelease=" + preRelease +
-        " gates=" + rejects;
-
-    var failedSends = [];
-    for (var si = 0; result.sendCodes && si < result.sendCodes.length; si++) {
-        if (result.sendCodes[si] !== 0) {
-            var sendCode = result.sendCodes[si];
-
-            if (sendCode == null) {
-                sendCode = 0xFFFFFFFF;
-            }
-
-            failedSends.push(config.roleShort[si] + ":" +
-                hex32(sendCode));
-        }
-    }
-    if (failedSends.length) {
-        line += " tx=" + failedSends.join("/");
-    }
-
-    if (isControlProfile) {
-        if (result.canaryResult != null) {
-            line += " canaryIPC=" + hex32(result.canaryResult) + "/t" + canary;
-        }
-
-        if (result.triggerResult != null) {
-            line += " triggerIPC=" + hex32(result.triggerResult) +
-                "/t" + result.triggerType;
-        }
-
-        if (result.postCanaryHealth) {
-            var health = result.postCanaryHealth;
-            line += " postTx=" + hex32(health.transport) + " post=" +
-                hex32(health.result) + "/t" + health.type +
-                " healthy=" + health.healthy;
-        }
-
-        if (result.observedCanaryRedirect != null) {
-            line += " flipObserved=" + result.observedCanaryRedirect;
-        }
-
-        if (result.guardSamples) {
-            var guards = result.guardSamples;
-            line += " guards=" + guards.completed + "/" + guards.earlyHole +
-                "/" + guards.spacing;
-        }
-
-        if (result.pinDiagnostics && result.pinDiagnostics.created) {
-            var pin = result.pinDiagnostics;
-            var persistentBytes = pin.persistentBytes;
-            if (persistentBytes == null) {
-                persistentBytes = "NA";
-            }
-
-            var startOffset = "NA";
-            if (pin.startOffsetUs != null) {
-                startOffset = pin.startOffsetUs.toFixed(0);
-            }
-
-            var endMargin = "NA";
-            if (pin.endMarginUs != null) {
-                endMargin = pin.endMarginUs.toFixed(0);
-            }
-
-            line += " pin=" + hex32(pin.result) + " moves/copies=" +
-                pin.moves + "/" + pin.copies + " cost=" +
-                persistentBytes +
-                "/" + pin.expectedBytes + " gaps(start/end)=" +
-                startOffset + "/" + endMargin +
-                "us shape/cost/window=" + pin.shapeOk + "/" + pin.costOk +
-                "/" + pin.windowOk + " restored=" + pin.restored;
-        }
-    } else {
-        if (result.canaryResult != null && result.canaryResult !== 0) {
-            line += " canaryResult=" + hex32(result.canaryResult);
-        }
-
-        if (result.triggerAborted) {
-            line += " triggerResult=" + hex32(result.triggerResult);
-        }
-    }
-
-    if (result.shapeMissing && result.shapeMissing.length) {
-        line += " shapeMissing=" + result.shapeMissing.join("/");
-    }
-
-    if (result.marginSlackUs != null) {
-        line += " marginSlack=" + result.marginSlackUs.toFixed(0) + "us";
-    }
-
-    if (result.preReleaseSlackBytes != null) {
-        line += " preSlack=" + result.preReleaseSlackBytes + "B";
-    }
-
-    if (isControlProfile && result.roleTimings) {
-        var timingParts = [];
-        for (var ti = 0; ti < config.roleLabels.length; ti++) {
-            var timing = result.roleTimings[config.roleLabels[ti]];
-            if (timing) {
-                timingParts.push(config.roleShort[ti] + "=" +
-                    timing.relStartUs.toFixed(0) + ".." +
-                    timing.relEndUs.toFixed(0));
-            }
-        }
-        line += " spans(us=relTriggerStart/end):" + timingParts.join(",");
-    }
-
-    if (result.readResult != null && result.readResult !== 0) {
-        line += " read=" + hex32(result.readResult);
-    }
-
+    if (result.postCanaryHealth && !result.postCanaryHealth.healthy)
+        line += " · post-check failed";
     return line;
 }
 
@@ -361,6 +401,30 @@ export function buffersEqual(a, b, length) {
     return true;
 }
 
+export function buffersEqualFast(a, b, length) {
+    // Whole-word comparison is safe when both addresses have the same
+    // alignment. Retain the general bytewise path for unequal alignments.
+    if ((a & 7n) !== (b & 7n)) return buffersEqual(a, b, length);
+
+    var alignment = Number(a & 7n);
+    var prefix = alignment === 0 ? 0 : 8 - alignment;
+    var offset = 0;
+    var prefixEnd = Math.min(prefix, length);
+    for (; offset < prefixEnd; offset++) {
+        if (Number(read8(a + BigInt(offset))) !==
+            Number(read8(b + BigInt(offset)))) return false;
+    }
+    for (; offset + 8 <= length; offset += 8) {
+        if (read64(a + BigInt(offset)) !==
+            read64(b + BigInt(offset))) return false;
+    }
+    for (; offset < length; offset++) {
+        if (Number(read8(a + BigInt(offset))) !==
+            Number(read8(b + BigInt(offset)))) return false;
+    }
+    return true;
+}
+
 export function hasByteDifferent(addr, length, value) {
     for (var i = 0; i < length; i++)
         if (Number(read8(addr + BigInt(i))) !== value) return true;
@@ -370,6 +434,11 @@ export function hasByteDifferent(addr, length, value) {
 export function hasByteDifferentFast(addr, length, value) {
     var repeatedWord = BigInt(value) * 0x0101010101010101n;
     var offset = 0;
+    var alignment = Number(addr & 7n);
+    var prefix = alignment === 0 ? 0 : 8 - alignment;
+    var prefixEnd = Math.min(prefix, length);
+    for (; offset < prefixEnd; offset++)
+        if (Number(read8(addr + BigInt(offset))) !== value) return true;
     for (; offset + 8 <= length; offset += 8) {
         if (read64(addr + BigInt(offset)) !== repeatedWord) return true;
     }

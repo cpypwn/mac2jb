@@ -10,7 +10,7 @@ function verify(root, source = false) {
   const payload = fs.readFileSync(path.join(directory, 'payload.txt'));
   const digest = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
   if (provenance.upstream !== 'https://github.com/Gezine/CivSwitch' ||
-      provenance.commit !== '10b38e9f5abfd13a4b0bec8af24b026e44567da3' ||
+      provenance.commit !== 'f6b0f2bd285e7b32c0a1968181046f18edd79708' ||
       provenance.installerUpstreamCommit !== 'b1aa49dfbad6858c83da7b471baa49603f686258' ||
       provenance.installerSha256 !== 'e04dcc41c1ad85d5a9c138edd93bd2f7eb752fda872a258c1e1906eb1136c349' ||
       provenance.license !== 'MIT' || digest(payload) !== provenance.payloadSha256) {

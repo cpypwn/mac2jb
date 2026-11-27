@@ -30,8 +30,6 @@ struct GlassPanel: ViewModifier {
     }
 }
 
-/// Interpolate the height used by layout, so surrounding views move with the
-/// expansion rather than jumping to their final positions ahead of its drawing.
 struct AnimatedExpansionLayout: AnimatableModifier {
     var height: CGFloat
 
@@ -66,5 +64,28 @@ struct PrimaryActionStyle: ButtonStyle {
             .background(enabled ? Mac2jbTheme.mint.opacity(configuration.isPressed ? 0.76 : 1) : .white.opacity(0.07),
                         in: RoundedRectangle(cornerRadius: large ? 17 : compact ? 10 : 12, style: .continuous))
             .scaleEffect(configuration.isPressed && enabled ? 0.985 : 1)
+    }
+}
+
+struct MintDropdownLabel: View {
+    let title: String
+    var width: CGFloat? = nil
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if width != nil { Spacer(minLength: 0) }
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(Mac2jbTheme.mint)
+        .padding(.horizontal, 10)
+        .frame(width: width, height: 24)
+        .background(Mac2jbTheme.mint.opacity(0.085),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }

@@ -443,13 +443,6 @@ test('launch configurations reject unsupported input before reserving a native a
     {action: 'launch-stremio'},
     {action: 'launch-ouncecake', consoleAddress: 'host.example'},
     {action: 'launch-ouncecake', consoleAddress: '192.0.2.9', mode:'bad'},
-    {action: 'launch-mintbrew', addonUrls: Array(33).fill('https://test/manifest.json')},
-    {action: 'launch-mintbrew', addonUrls: ['x'.repeat(4097)]},
-    {action: 'launch-mintbrew', addonUrls: [5]},
-    {action: 'launch-mintbrew', libraryItems: [null]},
-    {action: 'launch-mintbrew', libraryItems: [[]]},
-    {action: 'launch-mintbrew', libraryItems: Array(501).fill({})},
-    {action: 'launch-mintbrew', quality: '4k'},
     {action: 'launch-custom-homebrew'},
     {action: 'launch-custom-homebrew', customHomebrewPath: 'relative/app'},
     {action: 'launch-custom-homebrew', customHomebrewPath: '/tmp/app\nother'}
@@ -512,15 +505,6 @@ test('attached custom native app rejects a non-Kurumuz host before claiming',asy
   assert.equal(session.calls.some(row=>row[0]==='claim'),false);
   assert.equal(session.calls.filter(row=>row[0]==='preflight-cleanup').length,1);
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
-  session.send({action:'finish'});assert.equal(await session.done,0);
-});
-for (const hostId of ['cellenseres', 'astral'])
-test('attached custom native app accepts a '+hostId+' held session',async t=>{
-  const session=fixture(t,{profileId:hostId});await session.attach();
-  session.send({action:'launch-custom-homebrew',customHomebrewPath:'/Users/test/ABI3App'});
-  assert.equal((await session.wait('homebrew-accepted')).customHomebrewKind,'native-app');
-  await session.wait('homebrew-running');
-  assert.deepEqual(session.calls.filter(row=>row[0]==='claim'),[['claim','native-hblauncher']]);
   session.send({action:'finish'});assert.equal(await session.done,0);
 });
 test('attached direct OunceCake fork uses the catalog and selected WebDAV endpoint',async t=>{
@@ -621,8 +605,7 @@ for (const [action, application, name] of [
   ['launch-ouncecake', 'ouncecake', 'gui-ouncecake.cjs']
 ]) test(application + ' claims the original run once before the correct local helper starts', async t => {
   const session = fixture(t); await session.attach();
-  const command = {action, consoleAddress: '192.0.2.9', quality: '540p', addonUrls: ['https://test/manifest.json'],
-    libraryItems: [{id: 'tt1'}], customHomebrewPath: '/Users/test/My App'};
+  const command = {action, consoleAddress: '192.0.2.9', customHomebrewPath: '/Users/test/My App'};
   session.send(command); session.send(command); await session.wait('action-rejected'); await session.wait('homebrew-started');
   assert.deepEqual(session.calls.filter(row => row[0] === 'claim'), [['claim', application]]);
   const call = session.calls.find(row => row[0] === 'spawn');
@@ -634,9 +617,7 @@ for (const [action, application, name] of [
   if (application === 'custom-homebrew') assert.deepEqual(call[2].slice(2), ['--app-folder', root + '/runs/staged/my-gpu-app']);
   if (application === 'mintbrew') {
     assert.deepEqual(call[2].slice(2), []);
-    assert.deepEqual(JSON.parse(session.children[0].input), {addonUrls: command.addonUrls, libraryItems: command.libraryItems, quality:'540p'});
-    session.children[0].event({type: 'account-progress', watchProgress: {id: 'tt1', time: 12}});
-    assert.equal((await session.wait('account-progress')).watchProgress.time, 12);
+    assert.deepEqual(JSON.parse(session.children[0].input), {});
   } else if (application === 'ouncecake') assert.deepEqual(JSON.parse(session.children[0].input), {consoleAddress: '192.0.2.9', port: 2121});
   session.send({action: 'finish'}); assert.equal(await session.done, 0);
   assert.deepEqual(session.children[0].signals, [['SIGTERM', false]]);

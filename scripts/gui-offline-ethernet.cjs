@@ -67,6 +67,20 @@ function listAdapters() {
   }));
 }
 
+function adapterStartIssue(adapters, name) {
+  if (adapters.length === 0) {
+    return 'No Ethernet adapter detected. Connect one to this Mac and refresh.';
+  }
+  const selected = adapters.find(adapter => adapter.interface === name);
+  if (!selected) {
+    return `Ethernet adapter ${name} is no longer connected. Reconnect it and refresh.`;
+  }
+  if (!selected.active) {
+    return `No active Ethernet link on ${name}. Check the adapter, cable, and Switch dock, then refresh.`;
+  }
+  return null;
+}
+
 function readText(file) {
   try { return fs.readFileSync(file, 'utf8'); } catch { return ''; }
 }
@@ -158,6 +172,25 @@ async function runPrivileged(action, options) {
     return;
   }
 
+  const currentStatus = readStatus(stateDir);
+  if (currentStatus.active) {
+    throw new Error('Offline Ethernet is already running. Stop it before starting another session.');
+  }
+  let adapters;
+  try { adapters = listAdapters(); }
+  catch (error) { throw new Error(`Could not check Ethernet adapters: ${error.message}`); }
+  const adapterIssue = adapterStartIssue(adapters, options.interface);
+  if (adapterIssue) throw new Error(adapterIssue);
+
+  // Restore an address left by a previous session before starting this one.
+  if (currentStatus.needsRestore) {
+    const cleanup = childProcess.spawnSync('/bin/bash', [helper, 'restore', stateDir], { encoding: 'utf8' });
+    if (cleanup.error) throw cleanup.error;
+    if (cleanup.status !== 0) {
+      throw new Error(`Previous Offline Ethernet cleanup failed (exit ${cleanup.status ?? cleanup.signal}): ${cleanup.stderr.trim()}`);
+    }
+  }
+
   const prepared = childProcess.spawnSync('/bin/bash', [helper, 'prepare', stateDir], { encoding: 'utf8' });
   if (prepared.error) throw prepared.error;
   if (prepared.status !== 0) {
@@ -223,4 +256,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir, waitForStartup };
+module.exports = { adapterStartIssue, parseHardwarePorts, processAlive, readStatus, requireStateDir, stateDir, waitForStartup };

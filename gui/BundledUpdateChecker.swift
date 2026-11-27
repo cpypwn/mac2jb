@@ -53,18 +53,8 @@ enum BundledUpdateService {
     private static let specs: [Spec] = [
         .init(id: "kaihen", name: "kaiHEN", repository: "https://github.com/ouncebrew/kaihen", file: "integrations/kaihen/provenance.json", keys: ["release"], kind: .release),
         .init(id: "civswitch", name: "CivSwitch", repository: "https://github.com/Gezine/CivSwitch", file: "integrations/civswitch/provenance.json", keys: ["commit"], kind: .commit),
-        .init(id: "civ-homebrew", name: "CivHomebrew", repository: "https://github.com/XITRIX/CivHomebrew", file: "packaging/CivHomebrew-source.json", keys: ["commit"], kind: .commit, note: "Downloaded when requested"),
-        .init(id: "moonlight-civ", name: "Moonlight for CivSwitch", repository: "https://github.com/XITRIX/Moonlight-CivSwitch", file: "packaging/Moonlight-CivSwitch-source.json", keys: ["tag"], kind: .release, note: "Downloaded when requested"),
         .init(id: "savekit", name: "ns2-savekit", repository: "https://github.com/dougchansan/ns2-savekit", file: "vendor/ns2-savekit/provenance.json", keys: ["savekit", "revision"], kind: .commit),
         .init(id: "ouncecake", name: "OunceCake", repository: "https://github.com/Cellenseres/OunceCake", file: "packaging/OunceCake-provenance.json", keys: ["commit"], kind: .commit),
-        .init(id: "modloader", name: "ns2jb-modloader", repository: "https://github.com/SebaaMG/ns2jb-modloader", file: "integrations/ns2jb-modloader/provenance.json", keys: ["commit"], kind: .commit),
-        .init(id: "hb-native", name: "HBLauncher native runtime", repository: "https://github.com/ravensclawx/HBLauncher", file: "integrations/mintbrew-native/build-report.json", keys: ["upstreamCommit"], kind: .commit),
-        .init(id: "gpubrew", name: "GPUBrewLauncher", repository: "https://github.com/NiftyNova/GPUBrewLauncher", file: "packaging/GPUBrewLauncher-provenance.json", keys: ["commit"], kind: .commit),
-        .init(id: "ftpd", name: "ftpd-sb", repository: "https://github.com/ravensclawx/ftpd-sb", file: "packaging/ftpd-sb-v0.1.0-provenance.json", keys: ["tag"], kind: .release),
-        .init(id: "nsp-box", name: "NSP-Box", repository: "https://github.com/smarkyie/NSP-Box", file: "integrations/nsp-box/provenance.json", keys: ["revision"], kind: .commit),
-        .init(id: "nup", name: "nup", repository: "https://github.com/a55uka/nup", file: "packaging/NUP-source.json", keys: ["commit"], kind: .commit, note: "Downloaded when requested"),
-        .init(id: "nxformat", name: "nxformat", repository: "https://github.com/fab918/nxformat", file: "packaging/NXFormat-source.json", keys: ["release"], kind: .release, note: "Downloaded when requested"),
-        .init(id: "browser-research", name: "Switch 2 browser research", repository: "https://github.com/Jmesmykil/switch2-captive-portal-research", file: "packaging/switch2-browser-research-provenance.json", keys: ["revision"], kind: .commit)
     ]
 
     private static func string(at keys: [String], in file: URL) -> String? {
@@ -117,17 +107,13 @@ enum BundledUpdateService {
         let hosts = (try? Data(contentsOf: hostURL)).flatMap { try? JSONDecoder().decode(Hosts.self, from: $0) }
         var sources: [BundledUpdateSource] = []
         for host in hosts?.profiles ?? [] {
-            if host.id == "astral" { continue }
             sources.append(.init(id: "host-" + host.id, name: host.label + " host",
                                  repository: repository(host.upstream),
                                  pinned: validPin(host.revision, kind: .commit) ? host.revision : "Unknown",
-                                 kind: .commit,
-                                 note: host.id == "kurumuz" ? "Astral uses a locally modified Kurumuz base" : ""))
+                                 kind: .commit, note: ""))
         }
         sources.insert(source(specs[0], root: root), at: 0)
         sources.append(contentsOf: specs.dropFirst().map { source($0, root: root) })
-        sources.append(.init(id: "hb-gpu", name: "HBLauncher GPU runtime", repository: repository("https://github.com/ravensclawx/HBLauncher"),
-                             pinned: "b40723be04baa51e5d1f121a1e2242c4167b6cbc", kind: .commit, note: ""))
         sources.append(.init(id: "libusbd", name: "libusbd", repository: repository("https://github.com/shinyquagsire23/libusbd"),
                              pinned: "4fe5521e424061b823c3f7aebaa754150f94a821", kind: .commit, note: ""))
         sources.append(.init(id: "usb-gadget", name: "macOS USB gadget driver", repository: repository("https://github.com/shinyquagsire23/macos_usb_gadget_poc"),

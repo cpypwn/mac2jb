@@ -9,6 +9,7 @@
     "persist:build": "node tools/persist-build.mjs",
     "persist:install": "node tools/persist-install.mjs",
     "persist:chain": "node tools/persist-install.mjs --chain",
+    "persist:split": "node tools/persist-install.mjs --split",
     "send": "node tools/send.mjs",
     "send:chain": "node tools/send.mjs --entry src/chain.mjs",
     "check": "node tools/check.mjs",

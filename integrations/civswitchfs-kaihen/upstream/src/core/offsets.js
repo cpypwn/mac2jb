@@ -16,7 +16,6 @@ const SM_Finalize = sdk_base + 0x14c990n; // FinalizeHipcServiceResolution
 const F_CloseHandle = sdk_base + 0x168be4n; // svc #0x16 wrapper
 
 // -- Threading (nn::os::*) - offsets confirmed by the reference on same SDK -
-const F_ExitThread = sdk_base + 0x142410n; // nn::os::ExitCurrentThread
 const F_Sleep = sdk_base + 0x137100n; // nn::os::SleepThread(nanoseconds)
 const F_Tick = sdk_base + 0x137240n; // nn::os::GetSystemTick -> returns u64 counter
 const SYSTEM_TICK_FREQUENCY_HZ = 31250000; // native counter; legacy SDK frequency reports 19.2 MHz
@@ -41,6 +40,9 @@ const SVC_StartThread = sdk_base + 0x168b44n; // svc #0x09; w0=handle
 const SVC_ExitThread = sdk_base + 0x168b4cn; // svc #0x0A; never returns. NOT svc #0x07 (ExitProcess!)
 const SVC_GetThreadPriority = sdk_base + 0x168b5cn; // x0=&out_prio, w1=handle
 const SVC_GetThreadCoreMask = sdk_base + 0x168b7cn; // x0=&out_core, x1=&out_mask, w2=handle
+// svcSetThreadCoreMask (svc #0x0F): w0=handle, w1=ideal_core, x2=affinity_mask.
+// Offset discovered at runtime by scanning near SVC_GetThreadCoreMask.
+var SVC_SetThreadCoreMask = 0n;
 const SVC_WaitSync = sdk_base + 0x168bf4n; // x0=&out_idx, x1=handles, w2=count, x3=timeout_ns
 
 // -- nn::os thread manager list (for borrowing priority from live threads) --

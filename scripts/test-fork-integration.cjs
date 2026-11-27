@@ -114,7 +114,7 @@ test('CLI host settings override inherited modes while preserving explicit --rpc
     {arity: '5', rpc: '0', args: ['--rpc', '127.0.0.1']});
 });
 
-for(const id of ['pepsipu','kurumuz','cellenseres']) test(`GUI pairs with the actual pinned ${id} host and its unchanged bootstrap protocol`,
+for(const id of ['pepsipu','kurumuz','BermTheSequel']) test(`GUI pairs with the actual pinned ${id} host and its unchanged bootstrap protocol`,
   {timeout:10000},async t=>{
     const {profileById,validStartCommand}=require('./host-profiles.cjs');
     const profile=profileById(id),source=fixture(t,false);

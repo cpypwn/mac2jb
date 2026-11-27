@@ -10,7 +10,7 @@ const {verifiedSession} = require('./gui-dump.cjs');
 const FORMAT = 'mac2jb-local-rpc-attachment-v1';
 const OWNER = '.mac2jb-attachment-owner.json';
 const ATTEMPT = '.mac2jb-hblauncher-attempt.json';
-const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'native-hblauncher', 'custom-homebrew', 'stremio', 'ouncecake', 'modloader', 'system-code-dump', 'savekit']);
+const applications = new Set(['hblauncher', 'gpubrewlauncher', 'mintbrew', 'native-hblauncher', 'custom-homebrew', 'ouncecake', 'modloader', 'system-code-dump', 'savekit']);
 const check = (value, message) => {if (!value) throw Error(message);};
 const hash = value => crypto.createHash('sha256').update(value).digest('hex');
 

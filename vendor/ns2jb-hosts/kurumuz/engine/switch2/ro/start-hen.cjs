@@ -24,7 +24,7 @@ function makeBootstrapImage(text) {
   return image;
 }
 
-async function main(imagePath, bootstrapPath, gameMainPath, programs = []) {
+async function main(bootstrapPath, sdcardFiles = []) {
   const text = fs.readFileSync(bootstrapPath);
   const memory = await connect();
   const read = suffix => JSON.parse(fs.readFileSync(runPath('switch2', 'ro', live.session + suffix)));
@@ -86,24 +86,15 @@ async function main(imagePath, bootstrapPath, gameMainPath, programs = []) {
   args.writeUInt32LE(root.copy.handle, 404);
   let joined = false;
   try {
-    let stagedMenu = null;
-    if (process.env.HBMENU_NRO) {
-      console.log('Staging hbmenu.nro');
-      stagedMenu = await memory.request({command: 'root-native-file-stage',
-        root: fsRoot, target: '/hbmenu.nro', source: process.env.HBMENU_NRO});
+    // Every SD-card file of the release, each to its own path on the card.
+    // HEN's bootstrap reads /kaihen/bin/hen/main here; the rest, including
+    // the menu and the shared libraries, are in place before any launch.
+    const stagedFiles = [];
+    for (const file of sdcardFiles) {
+      console.log(`Staging ${file.target}`);
+      stagedFiles.push(await memory.request({command: 'root-native-file-stage',
+        root: fsRoot, target: file.target, source: file.source}));
     }
-    console.log('Staging game loader');
-    const stagedGame = await memory.request({command: 'root-native-file-stage',
-      root: fsRoot, target: '/kaihen/bin/game/main', source: gameMainPath});
-    const stagedPrograms = [];
-    for (const program of programs) {
-      console.log(`Staging ${program.target}`);
-      stagedPrograms.push(await memory.request({command: 'root-native-file-stage',
-        root: fsRoot, target: program.target, source: program.source}));
-    }
-    console.log('Staging HEN');
-    const staged = await memory.request({command: 'root-native-file-stage',
-      root: fsRoot, target: '/kaihen/bin/hen/main', source: imagePath});
     console.log('Starting native bootstrap');
     const image = makeBootstrapImage(text);
     const launched = await frontend.main({
@@ -112,10 +103,7 @@ async function main(imagePath, bootstrapPath, gameMainPath, programs = []) {
       image,
       async execute(session, entry, record, save) {
         args.writeUInt32LE(record.handle, 292);
-        record.staged = staged;
-        record.stagedGame = stagedGame;
-        record.stagedPrograms = stagedPrograms;
-        record.stagedMenu = stagedMenu;
+        record.stagedFiles = stagedFiles;
         record.package = '@Sdcard:/kaihen/bin/hen/exefs.nsp';
         const result = await thread.execute(session, entry, record, save, {
           waitMs: 60000,

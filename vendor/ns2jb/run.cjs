@@ -166,13 +166,20 @@ function waitForRpcStop(connection, signals = process, engineFinished = null) {
 
 async function main(args = process.argv.slice(2)) {
   if (args.length === 1 && args[0] === '--help') {
-    console.log('Usage: node run.cjs [--rpc] [--dump-firmware] [computer-IP]\n' +
+    console.log('Usage: node run.cjs [--rpc] [--dump-firmware] [--test-qualify-only] [computer-IP]\n' +
       'Switch 2 only. No npm install required. See README.md for the BASIC setup.');
     return;
   }
+  const testQualifyOnly = args.includes('--test-qualify-only');
+  if (testQualifyOnly && process.env.NS2_ENABLE_PROTOCOL_TEST !== '1')
+    throw Error('--test-qualify-only is reserved for the offline protocol test harness.');
+  const roFrontend = Boolean(process.env.NS2_RO_IMAGE);
   const rpcMode = args.includes('--rpc') || process.env.NS2_RPC_MODE === '1';
   const dumpFirmware = args.includes('--dump-firmware');
-  const host = await chooseHost(args.filter(arg => arg !== '--rpc' && arg !== '--dump-firmware'));
+  if (testQualifyOnly && (rpcMode || dumpFirmware || roFrontend))
+    throw Error('--test-qualify-only cannot be combined with RPC, firmware-dump, or RO-image mode.');
+  if (roFrontend && dumpFirmware) throw Error('RO frontend mode cannot be combined with the firmware-dump workflow.');
+  const host = await chooseHost(args.filter(arg => !['--rpc', '--dump-firmware', '--test-qualify-only'].includes(arg)));
   const basicArgs = Number(process.env.NS2_BASIC_ARITY || 5);
   const command = connectCommand(host, basicArgs);
   const workspace = path.join(__dirname, 'runs');
@@ -207,20 +214,42 @@ async function main(args = process.argv.slice(2)) {
     native = new NativeClient(connected.connection, connected.addresses);
     console.log('Connected. Checking the application...');
     result.bootstrap = await qualify(native);
+    if (testQualifyOnly) {
+      result.simulator = {mode: 'wire-protocol-peer', qualificationOnly: true, pipelineStarted: false};
+      await save(path.join(directory, 'result.json'), result);
+      console.log('PROTOCOL PEER QUALIFICATION PASSED.');
+      console.log('The real run.cjs listener, greeting parser, NativeClient, and qualify() completed.');
+      console.log('The hardware-dependent pipeline was intentionally not started.');
+      console.log('Run folder: ' + directory);
+      return result;
+    }
     bridge = await serve(native);
     bridge.keepAwake(result.bootstrap.activity);
     await save(path.join(directory, 'connection.json'), {port: bridge.port,
       addresses: {...connected.addresses, session: path.basename(directory), target: 'switch2'}});
     for (const name of ['shared', 'switch2'])
       await fs.cp(path.join(__dirname, 'engine', name), path.join(directory, name), {recursive: true});
+    if (roFrontend) {
+      const payloadDirectory = path.join(directory, 'switch2/ro/payload');
+      const image = await fs.readFile(process.env.NS2_RO_IMAGE);
+      const manifestPath = path.join(payloadDirectory, 'manifest.json');
+      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+      manifest.payloadBytes = image.length;
+      manifest.payloadSha256 = crypto.createHash('sha256').update(image).digest('hex');
+      await fs.writeFile(path.join(payloadDirectory, 'main'), image);
+      await save(manifestPath, manifest);
+      result.roImage = {source: process.env.NS2_RO_IMAGE, sha256: manifest.payloadSha256};
+    }
     engine = await startEngine(directory, dumpDirectory, rpcMode);
     if (rpcMode) await engine.ready;
     else checkEngine(await engine.finished);
-    result.fs = JSON.parse(await fs.readFile(path.join(directory, 'switch2/fs-execution-current.json')));
-    if (!result.fs.verified || !result.fs.restored ||
-        (rpcMode ? !result.fs.retainedEndpoint?.ready || !result.fs.cleanup?.deferred :
-          !result.fs.cleanup?.cleanedUp))
-      throw Error('FS execution, restoration, or endpoint state did not verify.');
+    const executionFile = path.join(directory, roFrontend ? 'switch2/ro-frontend-current.json' : 'switch2/fs-execution-current.json');
+    const executionKey = roFrontend ? 'ro' : 'fs';
+    result[executionKey] = JSON.parse(await fs.readFile(executionFile));
+    if (!result[executionKey].verified || !result[executionKey].restored ||
+        (rpcMode ? !result[executionKey].retainedEndpoint?.ready || !result[executionKey].cleanup?.deferred :
+          !result[executionKey].cleanup?.cleanedUp))
+      throw Error('The selected execution path, restoration, or endpoint state did not verify.');
     if (dumpFirmware) {
       result.firmwareDump = JSON.parse(await fs.readFile(path.join(dumpDirectory, 'firmware-dump.json')));
       if (!result.firmwareDump.complete || result.firmwareDump.entries.length !== result.firmwareDump.inventory.total)
@@ -230,7 +259,7 @@ async function main(args = process.argv.slice(2)) {
     if (rpcMode) {
       result.rpc = {mode: 'held', state: 'listening', opened: new Date().toISOString()};
       await save(path.join(directory, 'result.json'), result);
-      console.log('4/4 verified. SmileBASIC RPC and FS memory endpoint remain live while this process and the app stay open.');
+      console.log((roFrontend ? 'RO frontend verified. ' : '4/4 verified. ') + 'SmileBASIC RPC and FS memory endpoint remain live while this process and the app stay open.');
       console.log('Run folder: ' + directory);
       console.log('Check it locally: node rpc.cjs ' + directory + ' status');
       console.log('Stop with Ctrl-C; do not close SmileBASIC until finished.');
@@ -238,8 +267,8 @@ async function main(args = process.argv.slice(2)) {
       result.rpc = {...result.rpc, state: 'closed', reason, closed: new Date().toISOString()};
       if (reason === 'engine-exited') throw Error('The held FS endpoint exited unexpectedly.');
       checkEngine(await engine.release());
-      result.fs = JSON.parse(await fs.readFile(path.join(directory, 'switch2/fs-execution-current.json')));
-      if (!result.fs.cleanup?.cleanedUp) throw Error('Held FS resources did not clean up.');
+      result[executionKey] = JSON.parse(await fs.readFile(executionFile));
+      if (!result[executionKey].cleanup?.cleanedUp) throw Error('Held resources did not clean up.');
       if (reason === 'disconnected') throw Error('Held RPC disconnected; do not replay an uncertain native request.');
     }
   } catch (error) {
@@ -264,7 +293,7 @@ async function main(args = process.argv.slice(2)) {
     await save(path.join(directory, 'result.json'), result);
   }
   if (failure) throw Error(failure.message + '\nDetails: ' + directory);
-  console.log('FS execution verified. Original instructions restored and scratch cleaned up.');
+  console.log(roFrontend ? 'RO frontend experiment finished.' : 'FS execution verified. Original instructions restored and scratch cleaned up.');
   if (dumpFirmware) console.log('System-program CodeFS dump: ' +
     path.join(dumpDirectory, 'firmware-dump.json'));
   console.log('Restart the console when finished.');

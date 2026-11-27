@@ -125,7 +125,7 @@ def prepare(source, output):
     if app_source:
         with tempfile.TemporaryDirectory(prefix="mac2jb-release-", dir=output) as temporary:
             staged = Path(temporary) / archive.name
-            subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", str(source), str(staged)], check=True)
+            subprocess.run(["ditto", "-c", "-k", "--norsrc", "--keepParent", str(source), str(staged)], check=True)
             if validate_archive(staged) != version:
                 fail("the packaged app version changed")
             if archive.exists():

@@ -11,8 +11,8 @@ const {verifyProfile,selectHost} = require('./prepare-host-profiles.cjs');
 const root = path.resolve(__dirname,'..');
 
 test('pinned host sources preserve their bootstraps and capabilities', async () => {
-  assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','Cellenseres','BermTheSequel','Astral (custom)']);
-  assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,5);
+  assert.deepEqual(profiles.map(row=>row.label),['pepsipu','kurumuz','BermTheSequel']);
+  assert.equal(new Set(profiles.map(row=>row.sourceSha256)).size,3);
   assert.equal(selectedProfile(root).id,'kurumuz');
   for (const profile of profiles) {
     const folder=verifyProfile(root,profile);
@@ -23,14 +23,10 @@ test('pinned host sources preserve their bootstraps and capabilities', async () 
   }
   assert.equal(profileById('pepsipu').supportsHeldRPC,false);
   assert.equal(profileById('pepsipu').supportsDemo,false);
-  assert.equal(profileById('kurumuz').supportsDemo,true);
-  assert.equal(profileById('cellenseres').supportsDemo,true);
-  assert.equal(profileById('cellenseres').supportsHeldRPC,true);
+  assert.equal(Boolean(profileById('pepsipu').supportsModloader),false);
   assert.equal(profileById('kurumuz').supportsModloader,true);
-  assert.equal(profileById('cellenseres').supportsModloader,true);
-  assert.equal(profileById('astral').supportsModloader,undefined);
-  assert.equal(profileById('astral').supportsHeldRPC,true);
-  assert.equal(profileById('astral').supportsSaveKit,true);
+  assert.equal(Boolean(profileById('BermTheSequel').supportsModloader),false);
+  assert.equal(profileById('kurumuz').supportsDemo,true);
   assert.equal(profileById('BermTheSequel').supportsDemo,true);
   assert.throws(()=>trustedProfileForDigest(root,profileById('pepsipu').sourceSha256));
 });

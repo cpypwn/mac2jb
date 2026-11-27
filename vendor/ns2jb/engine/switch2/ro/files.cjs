@@ -48,6 +48,14 @@ async function dispatch(context, request, state, domain) {
     const donor = state.donor;
     check(donor?.ready && !donor.pendingRemoval && !s.threads.size && !s.pendingIpc && state.worker?.joined,
       'Donor cleanup requires the completed launch and an idle worker');
+    if (donor.mount === 'package') {
+      check(s.handles.has(donor.handle), 'RO package session is unavailable');
+      await s.close(donor.handle);
+      donor.cleanedUp = true;
+      donor.closedAt = new Date().toISOString();
+      await save();
+      return {cleanedUp: true, files: []};
+    }
     const filesystem = require('../app/filesystem.cjs');
     const donorMount = donor.mount || 'save';
     const handle = await require('../app/mounted-save.cjs').cloneMountedFilesystem(s, donorMount);

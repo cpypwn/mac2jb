@@ -21,10 +21,9 @@ async function create({rpc,menu,directory,root=path.resolve(__dirname,'../../..'
  const save=()=>atomic(path.join(directory,'app-runtime.json'),runtime.report);
  async function audio(app,gpu){
   let effects={};
-  if(!app||app.id==='stremio-experimental'){
-   const style=app?'stremio':'mintbrew';
-   const tick=path.join(directory,style+'-navigation-tick.pcm');
-   await fs.writeFile(tick,synth(8,style));effects[8]=tick;
+  if(!app){
+   const tick=path.join(directory,'mintbrew-navigation-tick.pcm');
+   await fs.writeFile(tick,synth(8));effects[8]=tick;
   }
   if(app){
    const folder=path.join(directory,'loaded-apps',app.id+'-'+app.fingerprint.slice(0,16));await fs.mkdir(folder,{recursive:true});
@@ -93,10 +92,6 @@ async function create({rpc,menu,directory,root=path.resolve(__dirname,'../../..'
    try{
     check(selected,'The selected app is no longer in the catalog');
     const app=await catalogTools.readApp(selected.root);check(app.fingerprint===selected.fingerprint,'App changed; tap Refresh before opening it');
-    if(app.id==='stremio-experimental'){
-      await require(path.join(root,'scripts/gui-stremio.cjs')).checkRuntime(root);
-      await require(path.join(root,'stremio/decoder.cjs')).tools();
-    }
     let gpu=cache.get(app.fingerprint);
     if(!gpu){check(cache.size<64,'This session has retained 64 app versions; start a fresh session to load another');gpu=await prepareApp(rpc,menu,app,directory);check(gpu.ready&&gpu.scratchRestored,'App preparation incomplete');cache.set(app.fingerprint,gpu);}
     const bytes=Buffer.alloc(menu.controls.bytes);app.files.state.bytes.copy(bytes);app.files.data.bytes.copy(bytes,1024);
@@ -105,9 +100,6 @@ async function create({rpc,menu,directory,root=path.resolve(__dirname,'../../..'
     if(app.files.memory){check(gpu.privateStorage?.bytes===app.files.memory.allocationBytes,'App private storage differs');const initial=Buffer.alloc(gpu.privateStorage.bytes);app.files.memory.bytes.copy(initial);await rpc.write(gpu.privateStorage.mapped,initial);}
     await rpc.write(mapped,bytes);await audio(app,gpu);
     runtime.active={app,gpu};
-    if(app.id==='stremio-experimental')runtime.active.service=
-      require(path.join(root,'integrations/mintbrew-stremio/adapter.cjs')).create({
-        rpc,menu,gpu,directory,root,config,onProgress,onAccountProgress,onFatal});
     if(app.id==='ouncecake'&&app.manifest.service==='ouncecake-v1'){
       const host=JSON.parse(await fs.readFile(path.join(directory,'mintbrew-host.json'),'utf8'));
       const factory=createOunceCake||require(path.join(root,'integrations/mintbrew-ouncecake/service.cjs')).create;

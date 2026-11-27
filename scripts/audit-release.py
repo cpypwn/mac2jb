@@ -21,7 +21,6 @@ required = {
     'mac2jb/vendor/ns2jb/run.cjs',
     'mac2jb/vendor/ns2jb-hosts/pepsipu/run.cjs',
     'mac2jb/vendor/ns2jb-hosts/kurumuz/run.cjs',
-    'mac2jb/vendor/ns2jb-hosts/cellenseres/run.cjs',
     'mac2jb/gui/HostProfile.swift',
     'mac2jb/scripts/host-profiles.cjs',
     'mac2jb/scripts/prepare-host-profiles.cjs',
@@ -45,7 +44,6 @@ required = {
     'mac2jb/scripts/gui-mintbrew.cjs',
     'mac2jb/scripts/prepare-mintbrew.cjs',
     'mac2jb/integrations/mintbrew-native/host.cjs',
-    'mac2jb/integrations/mintbrew-stremio/adapter.cjs',
     'mac2jb/scripts/gui-custom-homebrew.cjs',
     'mac2jb/scripts/custom-rpc-package.cjs',
     'mac2jb/packaging/GPUBrewLauncher-provenance.json',
@@ -53,58 +51,17 @@ required = {
     'mac2jb/scripts/gui-homebrew.cjs',
     'mac2jb/scripts/gui-native-hblauncher.cjs',
     'mac2jb/scripts/gui-savekit-tools.cjs',
-    'mac2jb/scripts/gui-dnswitch.cjs',
-    'mac2jb/scripts/gui-webkit-research.cjs',
-    'mac2jb/scripts/gui-bundled-browser-probes.cjs',
-    'mac2jb/scripts/gui-nup.cjs',
-    'mac2jb/packaging/NUP-source.json',
-    'mac2jb/gui/NUPToolsView.swift',
-    'mac2jb/scripts/gui-nxformat.cjs',
-    'mac2jb/packaging/NXFormat-source.json',
-    'mac2jb/gui/NXFormatToolsView.swift',
-    'mac2jb/scripts/gui-civhomebrew.cjs',
-    'mac2jb/scripts/civhomebrew-catalog-overlay.cjs',
-    'mac2jb/integrations/civhomebrew-catalog/catalog.js',
-    'mac2jb/integrations/civhomebrew-catalog/catalog-ui.js',
-    'mac2jb/packaging/CivHomebrew-source.json',
-    'mac2jb/scripts/gui-civswitch-moonlight.cjs',
-    'mac2jb/packaging/Moonlight-CivSwitch-source.json',
-    'mac2jb/scripts/gui-civswitch-sw2nes.cjs',
-    'mac2jb/packaging/SW2NES-source.json',
-    'mac2jb/integrations/sw2nes/v1.0.1/sw2nes.civapp',
-    'mac2jb/integrations/sw2nes/v1.0.1/LICENSE',
-    'mac2jb/integrations/sw2nes/v1.0.1/source/tools/build.sh',
-    'mac2jb/integrations/sw2nes/v1.0.1/source/third_party/QuickNES_Core/LICENSE',
-    'mac2jb/scripts/gui-civswitch-jellyfin.cjs',
-    'mac2jb/scripts/gui-civswitch-package.cjs',
-    'mac2jb/packaging/Jellyfin-CivSwitch-source.json',
-    'mac2jb/integrations/jellyfin/0.0.1/jellyfin-civswitch.civapp',
-    'mac2jb/integrations/jellyfin/0.0.1/THIRD_PARTY.md',
-    'mac2jb/integrations/jellyfin/0.0.1/BRANDING.md',
-    'mac2jb/gui/CivSwitchAppsModel.swift',
-    'mac2jb/integrations/nup-support/site-packages/zstandard/backend_c.cpython-313-darwin.so',
-    'mac2jb/integrations/nup-support/site-packages/zstandard-0.25.0.dist-info/licenses/LICENSE',
-    'mac2jb/integrations/nsp-box/cli.py',
-    'mac2jb/integrations/nsp-box/LICENSE.txt',
-    'mac2jb/gui/NSPBoxToolsView.swift',
     'mac2jb/gui/ArtemisHTTPView.swift',
     'mac2jb/integrations/kaihen/provenance.json',
-    'mac2jb/scripts/check-webkit-research.cjs',
-    'mac2jb/packaging/switch2-browser-research-provenance.json',
-    'mac2jb/vendor/switch2-captive-portal-research/LICENSE-NOTICE.md',
-    'mac2jb/vendor/switch2-captive-portal-research/serve-switch2-browser-probe.py',
-    'mac2jb/vendor/switch2-captive-portal-research/switch2-browser-probe.html',
-    'mac2jb/integrations/browser-probes/manifest.json',
-    'mac2jb/integrations/browser-probes/index.html',
-    'mac2jb/integrations/browser-probes/probes.js',
-    'mac2jb/integrations/browser-probes/style.css',
-    'mac2jb/scripts/dnswitch-launch.applescript',
-    'mac2jb/gui/DNSwitchModel.swift',
-    'mac2jb/gui/WebKitResearchModel.swift',
     'mac2jb/gui/SaveKitToolsView.swift',
-    'mac2jb/scripts/gui-stremio.cjs',
-    'mac2jb/stremio/source-preferences.cjs',
     'mac2jb/scripts/gui-ouncecake.cjs',
+    'mac2jb/scripts/gui-modloader.cjs',
+    'mac2jb/scripts/gui-modloader-sd.cjs',
+    'mac2jb/integrations/ns2jb-modloader/install.cjs',
+    'mac2jb/integrations/ns2jb-modloader/lib/mods.cjs',
+    'mac2jb/integrations/ns2jb-modloader/native/prebuilt/manifest.json',
+    'mac2jb/integrations/ns2jb-modloader/LICENSE',
+    'mac2jb/integrations/ns2jb-modloader/provenance.json',
     'mac2jb/scripts/gui-ouncecake-civ7.cjs',
     'mac2jb/keyboard.c',
     'mac2jb/civswitch-hid.c',
@@ -139,17 +96,6 @@ required = {
     'mac2jb/vendor/OunceCake-Civ7/engine/oz-code/native-civ7.bin',
     'mac2jb/packaging/OunceCake-Civ7-provenance.json',
     'mac2jb/packaging/OunceCake-Civ7-SHA256SUMS',
-    'mac2jb/stremio/pipeline.cjs',
-    'mac2jb/stremio/receiver.cjs',
-    'mac2jb/stremio/receiver-program.cjs',
-    'mac2jb/stremio/test-receiver.cjs',
-    'mac2jb/stremio/test-receiver-program.cjs',
-    'mac2jb/stremio/test-receiver-lifecycle.cjs',
-    'mac2jb/stremio/benchmark-transport.cjs',
-    'mac2jb/stremio/app/app.frag.spv',
-    'mac2jb/assets/stremio/bbb-sample.mp4',
-    'mac2jb/assets/stremio/ATTRIBUTION.md',
-    'mac2jb/packaging/stremio-sample-provenance.json',
     'mac2jb/packaging/homebrew-runtime.lock.json',
     'mac2jb/packaging/HBLauncher-v0.2.0-SHA256SUMS',
     'mac2jb/packaging/ftpd-sb-v0.1.0-SHA256SUMS',
@@ -175,23 +121,12 @@ violations = []
 with zipfile.ZipFile(archive) as z:
     names = set(z.namelist())
     removed_components = (
-        'integrations/artemis',
-        'integrations/seedsow-editor-pro',
-        'integrations/seedsow-lua',
-        'integrations/balatro-rce/balatro-switch-rce-1.1.0.zip',
-        'integrations/balatro-rce/balatro-cpypwn-showcase.zip',
-        'integrations/gravcirc-rce/GC-v1.1.zip',
-        'integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
-        'packaging/ArtemisLauncher-v1.json',
-        'packaging/ArtemisLauncher-v2.json',
-        'packaging/ArtemisLauncher-seedsow-full.json',
-        'packaging/ArtemisLauncher-upstream-saves.json',
-        'packaging/ArtemisLauncher-nora1.json',
-        'packaging/ArtemisLauncher-bundles.json',
-        'packaging/SeedsowEditorPro-v0.4.0.json',
-        'packaging/GravCirc-v1.1.json',
-        'packaging/GravCirc-v1.1-SHA256SUMS',
-        'vendor/ns2-savekit/Seedsow-Lua-Editor-Save.zip',
+        'stremio', 'assets/stremio', 'integrations/civ-stremio',
+        'integrations/kaihen-stremio', 'integrations/mintbrew-stremio',
+        'integrations/civhomebrew-catalog', 'integrations/sw2nes', 'integrations/jellyfin',
+        'vendor/ns2jb-hosts/cellenseres', 'vendor/ns2jb-hosts/astral',
+        'integrations/browser-probes', 'integrations/nsp-box', 'integrations/nup-support',
+        'tools/nxformat',
         'gui/CivSwitchControlCenterModel.swift',
         'vendor/CivSwitch-ControlCenter',
         'integrations/civswitch-control-center',
@@ -227,8 +162,12 @@ with zipfile.ZipFile(archive) as z:
     }
     if not test_build:
         required.difference_update(personal_required)
+        allowed_save_packages = {
+            'mac2jb/integrations/balatro-rce/balatro-cpypwn-showcase.zip',
+            'mac2jb/integrations/gravcirc-rce/GC-v1.1-cpypwn-showcase.zip',
+        }
         for name in names:
-            if ('cpypwn' in name.lower() or 'showcase' in name.lower()) and name.startswith('mac2jb/integrations/'):
+            if name not in allowed_save_packages and ('cpypwn' in name.lower() or 'showcase' in name.lower()) and name.startswith('mac2jb/integrations/'):
                 violations.append('personal showcase in public source: ' + name)
             if name in personal_required:
                 violations.append('personal demo in public source: ' + name)
@@ -282,27 +221,6 @@ with zipfile.ZipFile(archive) as z:
             'xcuserdata' in p.parts or 'project.xcworkspace' in p.parts or p.name.startswith('._') or
             p.name in block_names or p.suffix in block_suffixes or any(part.endswith('.dSYM') for part in p.parts)):
             violations.append('excluded binary/local/unused file: ' + path)
-    try:
-        provenance = json.loads(z.read('mac2jb/packaging/switch2-browser-research-provenance.json'))
-        files = provenance['files']
-        if (provenance['revision'] != '07cd867af2f1dc8f7b6ce59d964c3827cc3997b3'
-                or not isinstance(files, dict) or len(files) != 28):
-            raise ValueError('changed browser research provenance')
-        research_prefix = 'mac2jb/vendor/switch2-captive-portal-research/'
-        actual = {name[len(research_prefix):] for name in names
-                  if name.startswith(research_prefix) and not name.endswith('/')}
-        if actual != set(files):
-            violations.append('incomplete or unexpected browser research distribution')
-        for relative, digest in files.items():
-            parts = relative.split('/')
-            if (not parts or any(part in ('', '.', '..') for part in parts)
-                    or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)):
-                raise ValueError('invalid browser research provenance entry')
-            name = research_prefix + relative
-            if name not in names or hashlib.sha256(z.read(name)).hexdigest() != digest:
-                violations.append('missing or changed browser research file: ' + name)
-    except (KeyError, ValueError, TypeError, UnicodeError):
-        violations.append('missing or malformed browser research provenance')
     driver_files = {
         'Contents/Info.plist': 'c38786b3eb1b51055505bca54c88df77b797e1785c146ec1d54ee3273a934faf',
         'Contents/MacOS/usbgadget': 'a32119c7908098c49c2540a17aad4d172378de969885ad4f4a752bdb8ef91308',
@@ -321,23 +239,21 @@ with zipfile.ZipFile(archive) as z:
             registry = json.loads(z.read(host_profiles))
             pins = {
                 'pepsipu': '95f5525089273c5fce0b95047f3600f8442e96ae',
-                'kurumuz': '28f03b5895e5569d8fbc35cbed84906b8f0a65b2',
-                'cellenseres': '2f686045ff88e5a97f959d19752e00ef3b62011f',
-                'BermTheSequel': '9accf75508f4e7033ffc6912b2ebb7e0b6704e84',
-                'astral': '81d5bb114c856109dadaf1077d927a9f297fe58d',
+                'kurumuz': 'ae33da13542c616874ec23c56b7b6a660745c5e3',
+                'BermTheSequel': '54b5952a761df24e39ec8552ac7a8b71eb979967',
             }
             profiles = registry['profiles']
             if (registry.get('format') != 'mac2jb-host-profiles-v1' or registry.get('default') != 'kurumuz'
-                    or len(profiles) != 5 or {row['id'] for row in profiles} != set(pins)):
+                    or len(profiles) != 3 or {row['id'] for row in profiles} != set(pins)):
                 raise ValueError('invalid host profile registry')
             for row in profiles:
                 host = row['id']
                 folder = 'vendor/ns2jb' if host == 'BermTheSequel' else 'vendor/ns2jb-hosts/' + host
-                label = 'Cellenseres' if host == 'cellenseres' else 'Astral (custom)' if host == 'astral' else host
+                label = host
                 held = host != 'pepsipu'
-                demo = host in ('kurumuz', 'cellenseres', 'BermTheSequel', 'astral')
-                savekit = host in ('kurumuz', 'cellenseres', 'astral')
-                modloader = host in ('kurumuz', 'cellenseres')
+                demo = host in ('kurumuz', 'BermTheSequel')
+                savekit = host == 'kurumuz'
+                modloader = host == 'kurumuz'
                 arity = 9 if host == 'pepsipu' else 5
                 port = 39380
                 save_name = 'NS2'
@@ -346,7 +262,8 @@ with zipfile.ZipFile(archive) as z:
                         or row.get('saveName', 'NS2') != save_name or row['supportsHeldRPC'] != held
                         or row['supportsDemo'] != demo or bool(row.get('supportsSaveKit')) != savekit
                         or bool(row.get('supportsNativeHBLauncher')) != savekit
-                        or bool(row.get('supportsModloader')) != modloader or not row.get('licenseStatus')):
+                        or bool(row.get('supportsModloader')) != modloader
+                        or not row.get('licenseStatus')):
                     raise ValueError('changed host provenance or capabilities')
                 prefix = 'mac2jb/' + folder + '/'
                 expected = {}
@@ -498,7 +415,7 @@ with zipfile.ZipFile(archive) as z:
         civ = json.loads(z.read('mac2jb/integrations/civswitch/provenance.json'))
         payload = z.read('mac2jb/integrations/civswitch/payload.txt')
         if (civ.get('upstream') != 'https://github.com/Gezine/CivSwitch' or
-                civ.get('commit') != '10b38e9f5abfd13a4b0bec8af24b026e44567da3' or
+                civ.get('commit') != 'f6b0f2bd285e7b32c0a1968181046f18edd79708' or
                 civ.get('installerUpstreamCommit') != 'b1aa49dfbad6858c83da7b471baa49603f686258' or
                 civ.get('installerSha256') != 'e04dcc41c1ad85d5a9c138edd93bd2f7eb752fda872a258c1e1906eb1136c349' or
                 civ.get('license') != 'MIT' or civ.get('payloadLines') != 87 or

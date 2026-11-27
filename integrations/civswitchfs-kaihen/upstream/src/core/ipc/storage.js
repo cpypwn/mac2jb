@@ -1,4 +1,4 @@
-// IStorage helpers - open content storage, read, get size, invalidate cache.
+// IStorage helpers - open content storage, read, and get its size.
 
 // Open a content storage via cmd 200 on a root fsp-srv session.
 // Returns the IStorage handle (u32), or 0 on failure.
@@ -13,6 +13,34 @@ function openContentStorage(rootSession) {
         return 0;
     }
     return reply.moves[0];
+}
+
+// IStorage::OperateRange (cmd 5) with operation=2 (invalidate cache).
+// Tells fsp-srv to discard all cache entries for [offset, offset+size) on
+// this storage. For a CLEAN entry (no IStorage::Write done through it),
+// fsp-srv drops the entry without flushing — no NAND write occurs.
+//
+// SAFETY: only call this when no IStorage::Write has been issued on the
+// handle since the cache was modified. After an IStorage::Write, the
+// cache manager tracks the entry as dirty internally; an invalidation
+// could trigger a flush of corrupted data to NAND. Dirty entries must use
+// the separate retained-endpoint retirement path instead.
+function ipcStorageInvalidate(storageHandle, offset, size) {
+    var pkt = allocPage(0x2000);
+    // OperateRange input is {u32 operation, u32 padding, s64 offset, s64 size}.
+    // Its 24-byte CMIF input requires 14 HIPC raw words, matching packet() in
+    // the reference ports.
+    prepPacket(pkt, 4, 0x0E, []);
+    write32(pkt + 0x10n, 0x49434653n);
+    write32(pkt + 0x18n, 5n);                    // cmd 5 = OperateRange
+    write32(pkt + 0x20n, 2n);                    // operation = 2 (invalidate)
+    write64(pkt + 0x28n, BigInt(offset));         // offset
+    write64(pkt + 0x30n, BigInt(size));           // size
+    var transport = Number(sendIPC(storageHandle, pkt)) >>> 0;
+    if (transport !== 0)
+        return { error: transport, transport: transport };
+    var reply = cmifReply(pkt);
+    return { error: reply.result, transport: 0 };
 }
 
 // IStorage::GetSize (cmd 4). Returns { error, size } where size is a Number.
@@ -91,21 +119,6 @@ function ipcStorageWrite(storageHandle, offset, inputBuf, size) {
     return { error: reply.result,
         canonicalError: reply.result & 0x3FFFFF,
         transport: transport };
-}
-
-// IStorage::OperateRange (cmd 5) with operation=2 (invalidate cache).
-// Invalidates the cache for the given [offset, offset+size) range.
-// Returns the SFCO result code.
-function ipcStorageInvalidate(storageHandle, offset, size) {
-    var pkt = allocPage(0x2000);
-    prepPacket(pkt, 4, 0x0C, []);
-    write32(pkt + 0x10n, 0x49434653n);
-    write32(pkt + 0x18n, 5n);                    // cmd 5 = OperateRange
-    write32(pkt + 0x20n, 2n);                    // operation = 2 (invalidate)
-    write64(pkt + 0x28n, BigInt(offset));         // offset
-    write64(pkt + 0x30n, BigInt(size));           // size
-    sendIPC(storageHandle, pkt);
-    return cmifReply(pkt).result;
 }
 
 // Clone a domain session (Control cmd 2 = CloneCurrentObject).

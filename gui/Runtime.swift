@@ -86,10 +86,7 @@ struct BundledRuntime {
             _ = try tar(["-xzf", archive.path, "-C", root.path,
                          "--no-same-owner", "--no-same-permissions"])
             try manager.removeItem(at: archive)
-            let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid",
-                                       "tools/nxformat/1.0.4/bin/nxconvert",
-                                       "homebrew/bin/spirv-val", "homebrew/bin/glslangValidator", "homebrew/python/bin/python3",
-                                       "homebrew/python/bin/python3.13"])
+            let executablePaths = Set(["node", "mac2jb-send", "mac2jb-commands", "mac2jb-keyboard", "mac2jb-civswitch-hid"])
             if let walker = manager.enumerator(at: root, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) {
                 for case let url as URL in walker {
                     let properties = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])

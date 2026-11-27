@@ -33,18 +33,6 @@ function launchConfiguration(command) {
     return {application, script, config: {consoleAddress: command.consoleAddress, port: 2121,
       ...(command.mode === 'ftp' ? {mode:'ftp'} : {})}};
   }
-  if (application === 'mintbrew') {
-    if (command.addonUrls !== undefined && (!Array.isArray(command.addonUrls) || command.addonUrls.length > 32 ||
-        command.addonUrls.some(url => typeof url !== 'string' || url.length > 4096)) ||
-        command.libraryItems !== undefined && (!Array.isArray(command.libraryItems) || command.libraryItems.length > 500 ||
-        command.libraryItems.some(item => !item || typeof item !== 'object' || Array.isArray(item))))
-      throw Error('The add-on configuration is invalid.');
-    if (command.quality !== undefined && !['720p', '540p', '360p', '180p'].includes(command.quality))
-      throw Error('Choose a supported Stremio quality.');
-    return {application, script, quality: command.quality ?? '720p',
-      config: {addonUrls: command.addonUrls || [], libraryItems: command.libraryItems || [],
-        ...(application === 'mintbrew' ? {quality:command.quality ?? '720p'} : {})}};
-  }
   if (application === 'native-hblauncher') {
     const sdRomFolder = require('../integrations/mintbrew-native/sd-roms.cjs')
       .validSDRomFolder(command.sdRomFolder);

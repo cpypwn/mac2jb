@@ -21,13 +21,10 @@ async function main(directory,attempt='',instance=''){
  const sdkImage=require('../smilebasic/reference/sdk-checks.cjs');
  let runtime;
  let sdkRuntime;
- const config=await fs.readFile(path.join(directory,'stremio-config.json'),'utf8')
-  .then(JSON.parse,error=>{if(error.code==='ENOENT')return {};throw error;});
  let serviceFatal;
  const onFatal=error=>{console.error('MintBrew: '+error.message);if(error.cleanupBlocked)serviceFatal=error;};
- runtime=await require('./app-runtime.cjs').create({rpc,menu:prepared,directory,config,
-  onProgress:message=>console.log('MintBrew: '+message),
-  onAccountProgress:watchProgress=>console.log('MAC2JB_STREMIO_ACCOUNT '+JSON.stringify(watchProgress)),onFatal});
+ runtime=await require('./app-runtime.cjs').create({rpc,menu:prepared,directory,
+  onProgress:message=>console.log('MintBrew: '+message),onFatal});
  for(const c of [...Object.values(code),timing.tick]){
   const expected=Buffer.from(c.bytes,'hex').subarray(0,256);await rpc.request({command:'verify-function',address:sdk+c.offset,hex:expected.toString('hex')});
  }
@@ -139,7 +136,7 @@ async function main(directory,attempt='',instance=''){
    }
    const refresh=state.readFloatLE(104),connected=!!(state.readUInt32LE(32)&1);
    let returnRequested=false;
-   if(runtime.active&&runtime.active.app.id!=='stremio-experimental'&&state.readUInt32LE(1016)===0){
+   if(runtime.active&&state.readUInt32LE(1016)===0){
     const extension=await rpc.read(prepared.controls.mapped+0x7f0000,960);
     returnRequested=hold.update(holdReturn.buttons(state,extension),performance.now());
    }else hold.reset();

@@ -219,7 +219,8 @@ import Combine
             installed = true
             progressStep = 4
             phase = .installed
-        case "failed": phase = .failed
+        case "failed":
+            phase = .failed
         default: break
         }
     }

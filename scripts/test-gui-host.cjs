@@ -155,7 +155,7 @@ test('pepsipu selection accepts only its real token-bearing pairing and refuses 
 });
 test('SaveKit-capable hosts dispatch Seedsow and SaveKit post-run modes', async t => {
   const {profileById} = require('./host-profiles.cjs');
-  for (const hostId of ['kurumuz', 'cellenseres', 'astral']) {
+  for (const hostId of ['kurumuz']) {
     const root = fixture(t);
     fs.writeFileSync(path.join(root, 'selected-host.json'), JSON.stringify(profileById(hostId)));
     fs.writeFileSync(path.join(root, 'scripts/gui-session.cjs'),

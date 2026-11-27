@@ -7,152 +7,33 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
-
+    runs-on: macos-26
     steps:
-      - name: Checkout repository
+      - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Verify Apple Silicon
-        run: |
-          uname -m
-          test "$(uname -m)" = "arm64"
-
-      - name: Build mac2jb
-        run: |
-          make clean
-          make
-
-      - name: Verify executables
-        run: |
-          ./mac2jb-send --help
-          ./mac2jb-commands --dry-run
-
-      - name: Verify library linking
-        run: |
-          otool -L mac2jb-send
-          otool -L mac2jb-commands
-          otool -L vendor/libusbd/libusbd.dylib
-
-      - name: Verify IOKit controller ownership without USB configuration
-        run: bash scripts/test-usb-controller-ownership.sh
-
-      - name: Verify bootstrap integrity
-        run: |
-          shasum -a 256 -c assets/bootstrap.bas.sha256
-
-      - name: Set up Node.js for ns2jb tests
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Prepare pinned runtime and real media test tools
-        run: |
-          if ! command -v cmake >/dev/null 2>&1; then
-            brew install cmake
-          fi
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            brew install ffmpeg
-          fi
-          CMAKE_BINARY="$(command -v cmake)"
-          FFMPEG_BINARY="$(command -v ffmpeg)"
-          FFPROBE_BINARY="$(command -v ffprobe)"
-          test -x "$CMAKE_BINARY"
-          test -x "$FFMPEG_BINARY"
-          test -x "$FFPROBE_BINARY"
-          "$CMAKE_BINARY" --version
-          "$FFMPEG_BINARY" -version
-          "$FFPROBE_BINARY" -version
-          python3 scripts/prepare-homebrew-runtime.py
-          python3 scripts/prepare-homebrew-runtime.py --check
-          {
-            echo "MAC2JB_FFMPEG=$FFMPEG_BINARY"
-            echo "MAC2JB_FFPROBE=$FFPROBE_BINARY"
-            echo "STREMIO_TEST_PYTHON=$PWD/.build-gui/homebrew/python/bin/python3"
-            echo "STREMIO_TEST_FONT=$PWD/.build-gui/homebrew/fonts/DejaVuSans.ttf"
-          } >> "$GITHUB_ENV"
-
-      - name: Verify ns2jb snapshot and tests
-        run: |
-          (cd vendor/ns2jb && shasum -a 256 -c SHA256SUMS)
-          (cd vendor/HBLauncher && shasum -a 256 -c ../../packaging/HBLauncher-v0.2.0-SHA256SUMS)
-          node scripts/prepare-bootstrap.cjs --check
-          node scripts/prepare-host-profiles.cjs --check
-          node scripts/prepare-mintbrew.cjs --check-source
-          node scripts/prepare-homebrew-apps.cjs --check
-          node --test vendor/ns2jb/test.cjs vendor/ns2jb/engine/switch2/retained/*.test.cjs vendor/ns2jb/engine/switch2/ro/layout.test.cjs scripts/test-gui-host.cjs scripts/test-gui-session.cjs scripts/test-gui-homebrew.cjs scripts/test-gui-stremio.cjs scripts/test-gui-dump.cjs scripts/test-fork-integration.cjs scripts/test-start-command.cjs scripts/test-bootstrap-progress.cjs scripts/test-driver-package.cjs scripts/test-homebrew-apps.cjs
-          node --test scripts/test-host-profiles.cjs scripts/test-rpc-attachment.cjs scripts/test-gui-attach.cjs
-
-      - name: Verify experimental media protocol and Stremio addon client
-        run: node --test stremio/*.test.cjs stremio/test-*.cjs
-
-      - name: Verify OunceCake snapshot and lifecycle without a console
-        run: |
-          node scripts/gui-ouncecake.cjs --self-test
-          node --test scripts/test-gui-ouncecake.cjs
-          bash scripts/test-ouncecake-session.sh
-
-      - name: Check shell script syntax
-        run: |
-          bash -n make-release-zip.command
-          bash -n mac2jb.command
-          for script in scripts/*.sh; do
-            bash -n "$script"
-          done
-
-      - name: Verify GUI workflow transitions
-        run: bash scripts/test-workflow-progress.sh
-
-      - name: Verify stage-specific failure and cancellation guidance
-        run: bash scripts/test-session-recovery.sh
-
-      - name: Verify current bootstrap line progress
-        run: bash scripts/test-bootstrap-progress.sh
-
-      - name: Verify post-run RPC and dump choices
-        run: bash scripts/test-post-run-state.sh
-
-      - name: Verify Homebrew ownership and state transitions
-        run: bash scripts/test-homebrew-state.sh
-
-      - name: Verify start-screen session modes
-        run: |
-          bash scripts/test-session-run-mode.sh
-          bash scripts/test-existing-rpc.sh
-
-      - name: Verify current Mac network selection and safe startup recovery
-        run: bash scripts/test-network-selection.sh
-
-      - name: Verify guided first-time save and keyboard ownership without hardware
-        run: |
-          bash scripts/test-first-time-setup.sh
-          bash scripts/test-keyboard-state.sh
-          node --test scripts/test-keyboard.cjs
-
-      - name: Verify full-version save prompts and native load commands
-        run: bash scripts/test-smilebasic-edition.sh
-
-      - name: Verify Stremio account and Library fixtures without a real account
-        run: bash scripts/test-stremio-account.sh
-
-      - name: Verify updater validation and rollback without hardware
-        run: bash scripts/test-updater.sh
-
-      - name: Build release archive
-        run: |
-          bash make-release-zip.command
-          unzip -t mac2jb-complete.zip
-          python3 scripts/audit-release.py mac2jb-complete.zip
-
-      - name: Set up bundled GUI runtime version
+      - name: Set up bundled Node version
         uses: actions/setup-node@v4
         with:
           node-version: '24.22.1'
 
-      - name: Build and verify GUI without hardware
+      - name: Install build tools
+        run: brew install cmake
+
+      - name: Check source and scripts
         run: |
-          NODE_BINARY="$(command -v node)" bash scripts/build-gui.sh
-          "build/mac2jb.app/Contents/MacOS/mac2jb" --self-test
+          bash scripts/check.sh
+          for script in scripts/*.sh; do bash -n "$script"; done
+          node scripts/prepare-host-profiles.cjs --check
+          node integrations/civswitch/verify.cjs --source
+          node --test vendor/ns2jb/test.cjs
+
+      - name: Build and verify the Mac app
+        run: |
+          NODE_BINARY="$(command -v node)" bash scripts/build-gui.sh build/mac2jb.app
+          build/mac2jb.app/Contents/MacOS/mac2jb --self-test
+          SDK_VERSION="$(xcrun vtool -show-build build/mac2jb.app/Contents/MacOS/mac2jb | awk '$1 == "sdk" { print $2; exit }')"
+          [[ "$SDK_VERSION" == 26.* ]] || { echo "Expected macOS SDK 26.x, got ${SDK_VERSION:-unknown}" >&2; exit 1; }
           VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' gui/Info.plist)"
           python3 scripts/audit-release.py ".build-gui/mac2jb-${VERSION}-source.zip"
           if [ "$(/usr/libexec/PlistBuddy -c 'Print :MAC2JBTestBuild' gui/Info.plist)" = false ]; then

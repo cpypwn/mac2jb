@@ -107,23 +107,31 @@ struct SaveKitToolsView: View {
                 TextField("32-digit account UID", text: $accountID)
                     .textFieldStyle(.roundedBorder)
                 if !model.savekitAccounts.isEmpty {
-                    Menu("Console accounts") {
+                    Menu {
                         ForEach(model.savekitAccounts, id: \.self) { uid in
                             Button(uid) { accountID = uid }
                         }
+                    } label: {
+                        MintDropdownLabel(title: "Console accounts")
                     }
+                    .menuStyle(.button).menuIndicator(.hidden)
+                    .buttonStyle(.plain)
                 }
             }
             if !model.savekitTitles.isEmpty {
-                Picker("Detected games (\(model.savekitTitles.count))", selection: $titleID) {
+                Menu {
                     if validTitle && !model.savekitTitles.contains(titleID.lowercased()) {
-                        Text("Manual ID · \(titleID.lowercased())").tag(titleID)
+                        Button("Manual ID · \(titleID.lowercased())") {}
                     }
                     ForEach(model.savekitTitles, id: \.self) { id in
-                        Text(titleLabel(id)).tag(id)
+                        Button(titleLabel(id)) { titleID = id }
                     }
+                } label: {
+                    MintDropdownLabel(title: model.savekitTitles.contains(titleID.lowercased())
+                        ? titleLabel(titleID) : "Detected games (\(model.savekitTitles.count))")
                 }
-                .pickerStyle(.menu)
+                .menuStyle(.button).menuIndicator(.hidden)
+                .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             TextField("16-digit title ID", text: $titleID)

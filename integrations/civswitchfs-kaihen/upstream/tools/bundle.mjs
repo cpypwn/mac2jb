@@ -65,6 +65,10 @@ export async function buildPayload({
         format: "iife",
         globalName: "__CIVSWITCHFS_PAYLOAD__",
         target: ["es2020"],
+        // ASCII-only output: non-ASCII string characters escape as
+        // \uXXXX, so payloads survive byte-exact round trips through the
+        // SD card (the split chain reads part 2 back byte-per-character).
+        charset: "ascii",
         minifyWhitespace: !debug && minifyBundle,
         minifyIdentifiers: !debug && minifyIdentifiers,
         minifySyntax: !debug && minifyBundle,

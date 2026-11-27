@@ -1,21 +1,17 @@
 import Foundation
 
 enum HostProfile: String, CaseIterable, Identifiable, Codable {
-    case pepsipu, kurumuz, cellenseres, astral
+    case pepsipu, kurumuz
     case bermTheSequel = "BermTheSequel"
 
+    static let availableHosts: [Self] = [.kurumuz, .pepsipu, .bermTheSequel]
+
     var id: String { rawValue }
-    var label: String {
-        switch self {
-        case .astral: return "Astral (custom)"
-        case .cellenseres: return "Cellenseres"
-        default: return rawValue
-        }
-    }
+    var label: String { rawValue }
     var supportsHeldRPC: Bool { self != .pepsipu }
-    var supportsSaveKit: Bool { self == .kurumuz || self == .cellenseres || self == .astral }
-    var supportsNativeHBLauncher: Bool { self == .kurumuz || self == .cellenseres || self == .astral }
-    var supportsModloader: Bool { self == .kurumuz || self == .cellenseres }
+    var supportsSaveKit: Bool { self == .kurumuz }
+    var supportsNativeHBLauncher: Bool { self == .kurumuz }
+    var supportsModloader: Bool { self == .kurumuz }
     var supportsDemo: Bool { self != .pepsipu }
     var startArgumentCount: Int { self == .pepsipu ? 9 : 5 }
     var startPort: Int { 39380 }

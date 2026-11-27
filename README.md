@@ -4,26 +4,37 @@ an all-in-one ns2 jailbreaking tool for Mac.
 
 ## what you need
 
-- an apple silicon Mac with macOS 14 or newer and a usb-c data cable.
-- for ns2jb: a Switch 2 on firmware 23.0.1 (earlier versions should also work),
-  with SmileBASIC full version 4.4.9 or demo 4.4.6. keep the game on internal
-  storage with more than 20 mib free in its save. the Switch must use ethernet;
-  the Mac may use wi-fi or ethernet. set the Switch's usb keyboard to us english.
-- for CivSwitch: a physical Switch 1 edition Civilization VII cartridge at
-  version 1.0.0. set the Switch system language to English (US). the Switch and
-  Mac must be on the same network so mac2jb can reach the console's IPv4 address.
+- an apple silicon Mac with macOS 14 or newer. a usb-c data cable is needed for
+  first-time bootstrap writing or automatic SmileBASIC command typing.
+- for Civilization VII (CivSwitch): a Switch 2 on firmware 23.0.1 with a
+  physical Switch 1 edition cartridge at version 1.0.0. set the system language
+  to English (US), and set
+  Controllers & Accessories → USB Keyboard to English (US). the Switch and Mac
+  must be on the same network so mac2jb can reach the console's IPv4 address.
 - for Seedsow Lullaby: a compatible Artemis launcher save with HTTP mode
   available. keep the Switch and Mac on the same network.
+- for SmileBASIC 4 (ns2jb): a Switch 2 on firmware 23.0.1
+  with SmileBASIC full version 4.4.9 or demo 4.4.6. keep the game on internal
+  storage with more than 20 mib free in its save. the Switch must use ethernet;
+  the Mac may use wi-fi or ethernet. set the Switch's usb keyboard to English (US).
 - for kaiHEN: a Switch SD card formatted FAT32 or exFAT.
 
 [block console updates before testing](https://gitlab.com/a/90dns).
 
-### direct offline ethernet
+## get the app
+
+download the macOS arm64 ZIP from the [latest release](https://github.com/cpypwn/mac2jb/releases/latest),
+extract it, and open `mac2jb.app`. if macOS blocks it, open system settings →
+privacy & security and choose **Open Anyway** if offered, then reopen the app.
+
+## direct offline ethernet
 
 mac2jb can connect to the Switch directly by ethernet without a router. any
 compatible Mac ethernet adapter works. connect it to the Switch dock or
-ethernet adapter, then open **Offline Ethernet** on mac2jb's main screen and start the
-responder. macOS asks for administrator access to add a temporary
+ethernet adapter, then choose **Offline Ethernet** from the Mac connection menu
+and select **Start offline Ethernet**. if the adapter or wired link is missing,
+the setup window identifies the problem; connect it and refresh the adapter list.
+macOS asks for administrator access to add a temporary
 `192.168.2.2/24` address and listen on local DNS and HTTP ports. mac2jb uses
 `192.168.2.2` as the host address for this connection.
 
@@ -32,11 +43,72 @@ set the Switch's wired connection manually: IPv4 `192.168.2.1`, subnet mask
 IPv6 off. disable automatic connection to saved Switch wi-fi networks. the
 app shows when a request from the Switch reaches the Mac; a local ready check
 alone does not establish that the Switch connected. this service answers the
-connection check; it does not provide internet access. it cannot run alongside
-DNSwitch because both use ports 53 and 80. stop the responder and choose
-**Restore Mac Ethernet** when finished to remove the temporary address.
+connection check; it does not provide internet access. mac2jb restores a
+recorded previous session before starting Offline Ethernet again. use the
+Offline Ethernet settings to stop and restore it manually when finished.
 
-## set up the usb driver
+## install kaiHEN
+
+mac2jb places kaiHEN first, with three entry points: **Civilization VII**,
+**Seedsow Lullaby**, and **SmileBASIC 4**. choose the matching button on the
+main screen under **kaiHEN installer**. **Upstream updates** checks the [kaiHEN releases](https://github.com/ouncebrew/kaihen/releases)
+and other bundled components.
+
+### Civilization VII
+
+the [Civ7 kaiHEN host](https://github.com/s8n/civ7-fs-kaihen) uses the
+saved CivSwitch Remote JS Loader. select **Jailbreak with CivSwitch** under Civilization VII,
+enter the Switch IPv4 address, and open the saved loader with **Load Game**.
+if this is the first run, use **Open first-time setup**. before sending the loader
+through the game's chat screen, switch the on-screen keyboard to english (qwerty),
+without a pinyin/ime candidate bar. then install its boot trigger. leave an SD card
+in the Switch; the host transfers kaiHEN files after FS succeeds. confirm that
+the loader is open, and choose **Jailbreak with CivSwitch**. wait
+for the HEN PID and completion message before leaving the game.
+
+the **Semi-untethered · experimental** option in the Civilization VII setup
+window installs a persistent kaiHEN trigger. later **Load Game** launches can
+run without the Mac host. its kaiHEN files must already be on the SD card;
+the standard Civilization VII jailbreak can place them there first.
+
+### Seedsow Lullaby
+
+select **Jailbreak with Seedsow FS** under Seedsow Lullaby. open your existing Artemis launcher save
+in Seedsow Lullaby and press **Y** to enter HTTP mode. enter the Switch IPv4
+address in mac2jb, confirm that HTTP mode is open, then select **Jailbreak with Seedsow FS**.
+the host transfers kaiHEN files to the inserted SD card after FS succeeds.
+keep Seedsow and mac2jb open while the host runs.
+
+the **Semi-untethered · experimental** option in the Seedsow setup window uses
+the [Seedsow uploader](https://gitlab.com/rushinz/seedsow-semi-untethered).
+it requires an existing Artemis save in HTTP mode and kaiHEN files on the SD card.
+back up the save before uploading.
+uploading its scripts does not verify FS escalation.
+
+### SmileBASIC 4
+
+the [kurumuz ns2jb host](https://gitlab.com/kurumuz/ns2jb) starts kaiHEN
+from SmileBASIC. select **Jailbreak with ns2jb** under SmileBASIC 4 and leave an SD card in
+the Switch; the host transfers kaiHEN files after FS succeeds. use **Open first-time setup** if the matching
+Kurumuz bootstrap is not already saved. open SmileBASIC in Direct mode and
+confirm the USB power direction. with the USB driver loaded, mac2jb types
+`LOAD`, `RUN`, `REMOVE`, and the five-argument `V=START(...)` command. without
+the driver, enter these commands manually. wait for the HEN PID and completion
+message before leaving SmileBASIC.
+
+### after kaiHEN starts
+
+close the entry-point game normally. hold **R** while
+opening a native Switch 2 game to open hbmenu. on a fresh setup, the first
+launch may save the game's policy and open the game normally; close it and
+hold **R** on the next launch. kaiHEN lasts until the Switch restarts.
+
+## first-time bootstrap writing (optional)
+
+only install the USB driver when mac2jb must type a Civilization VII or
+SmileBASIC bootstrap over USB. running an existing CivSwitch loader or the
+Seedsow HTTP path does not require it. SmileBASIC Direct mode commands can also
+be entered manually without the driver.
 
 the bundled driver is unsigned. Mac startup security and sip must permit unsigned
 kernel extensions. if the driver already works with your partial/custom sip
@@ -69,12 +141,10 @@ configuration, keep that setup.
 
 ### 2. install and load the usb driver
 
-1. download the current macOS arm64 release ZIP, extract it and open `mac2jb.app`.
-2. if macOS blocks the app, open system settings → privacy & security and choose open anyway if offered, then reopen the app.
-3. click install & load driver… and approve the administrator prompt.
-4. if prompted, open system settings → privacy & security and allow the driver.
-5. accept the restart prompt or choose apple menu → restart.
-6. reopen mac2jb and wait for the driver check. continue when the driver is loaded and no driver-install restart is pending.
+1. open the first-time bootstrap setup and click **Install & load driver…**. approve the administrator prompt.
+2. if prompted, open system settings → privacy & security and allow the driver.
+3. accept the restart prompt or choose apple menu → restart.
+4. reopen mac2jb and wait for the driver check. continue when the driver is loaded and no driver-install restart is pending.
 
 refresh driver status to check it; each reinstall creates a new restart requirement.
 disabling sip reduces macOS protection. mac2jb does not change these settings.
@@ -94,14 +164,12 @@ is now supplying power to the Mac.
 ## type and save the ns2jb bootstrap
 
 a matching saved bootstrap can be reused. pepsipu uses a nine-argument
-program. kurumuz and Cellenseres share the same five-argument program.
-BermTheSequel uses a different five-argument copy with an extra check, so keep its own saved
-copy. if the matching program is already saved under the selected host's name,
+program. kurumuz and BermTheSequel use their own five-argument programs, so keep each host's saved copy separate. if the matching program is already saved under the selected host's name,
 use the normal jailbreak setup. otherwise, choose the host in developer options
 and follow these steps.
 
 1. open SmileBASIC → make a program with an empty editor in slot 0.
-2. click **Jailbreak with SmileBASIC 4**, then **Open first-time setup** in the compact
+2. click **Jailbreak with ns2jb** under SmileBASIC 4, then **Open first-time setup** in the compact
    card at the top of the popup. tick the demo checkbox on the first-time page
    only when using the SmileBASIC demo with a host that supports it.
 3. start typing and wait until it finishes. the app defaults to 10 ms per key. after it sends the second enter to confirm load, it waits 1 second for the bootstrap to load before sending run. the other command waits are 0; timing remains adjustable.
@@ -144,127 +212,6 @@ PRGEDIT 0:LOADV "TXT:NS2" OUT C$:PRGSET C$
 mac2jb types this command and presses enter twice to accept ok, then waits
 1 second for the bootstrap to load before sending run.
 
-## install kaiHEN
-
-mac2jb places kaiHEN first, with three entry points: **Civilization VII**,
-**SmileBASIC 4**, and **Seedsow Lullaby**. choose the matching button on the
-main screen. **Upstream updates** checks the [kaiHEN releases](https://github.com/ouncebrew/kaihen/releases)
-and other bundled components; a newer release is reported without changing the
-bundled copy during an active session.
-
-### Civilization VII
-
-the [Civ7 kaiHEN host](https://github.com/s8n/CivSwitchFS-kaiHEN) uses the
-saved CivSwitch Remote JS Loader. select **Jailbreak with Civilization VII**,
-enter the Switch IPv4 address, and open the saved loader with **Load Game**.
-if this is the first run, use **Open first-time setup** to send the loader
-through the game's chat screen, then install its boot trigger. prepare the
-kaiHEN SD files with **Write files to SD card…** or **Prepare copy folder**,
-confirm that the loader is open, and choose **Jailbreak with kaiHEN**. wait
-for the HEN PID and completion message before leaving the game.
-
-the **Semi-untethered · experimental** option in the Civilization VII setup
-window installs a persistent kaiHEN trigger. later **Load Game** launches can
-run without the Mac host.
-
-### SmileBASIC 4
-
-the [kurumuz ns2jb host](https://gitlab.com/kurumuz/ns2jb) starts kaiHEN
-from SmileBASIC. select **Jailbreak with SmileBASIC 4** and prepare the kaiHEN
-SD files in its setup window. use **Open first-time setup** if the matching
-Kurumuz bootstrap is not already saved. open SmileBASIC in Direct mode and
-confirm the USB power direction. mac2jb types `LOAD`, `RUN`, `REMOVE`, and the
-five-argument `V=START(...)` command. wait for the HEN PID and completion
-message before leaving SmileBASIC.
-
-### Seedsow Lullaby
-
-select **Jailbreak with Seedsow Lullaby**. open your existing Artemis launcher save
-in Seedsow Lullaby and press **Y** to enter HTTP mode. enter the Switch IPv4
-address in mac2jb, confirm that HTTP mode is open, then start the jailbreak.
-keep Seedsow and mac2jb open while the host runs.
-
-the **Semi-untethered · experimental** option in the Seedsow setup window uses
-the [Seedsow uploader](https://gitlab.com/rushinz/seedsow-semi-untethered).
-it requires an existing Artemis save in HTTP mode. back up the save before uploading.
-uploading its scripts does not verify FS escalation.
-
-after kaiHEN starts, close the entry-point game normally. hold **R** while
-opening a native Switch 2 game to open hbmenu. on a fresh setup, the first
-launch may save the game's policy and open the game normally; close it and
-hold **R** on the next launch. kaiHEN lasts until the Switch restarts.
-
-## advanced tools
-
-**Console & Developer Options** contains host-only sessions, held-RPC tools,
-SaveKit, CivSwitch loader controls, and research utilities. **CivHomebrew** runs
-`.civapp` packages through the CivSwitch loader; its **Browse apps** catalog
-defaults to [civapp-db](https://github.com/cpypwn/civapp-db) and accepts custom
-sources.
-
-## finish or retry
-
-close any FTP or WebDAV connection, choose finish session and wait for cleanup.
-restart the Switch before another attempt. never send remove twice in the same SmileBASIC session.
-if typing stops partway through, inspect and clear the partial input before retrying.
-saving the bootstrap does not preserve a live jailbreak connection.
-
-## developer options
-
-**Upstream updates** is above the jailbreak choices. in **Console & Developer
-Options**, **ns2jb host** is followed by **Additional tools**. **Host timeouts**
-and **Live keyboard** appear below **Console**.
-
-- choose pepsipu, kurumuz, Cellenseres, Astral or BermTheSequel as the host. use
-  its matching saved bootstrap, or type and save one if needed. pepsipu uses the original
-  nine-argument pairing command and does not support held rpc; kurumuz,
-  Cellenseres, Astral and BermTheSequel support held rpc and the demo.
-  kurumuz is the default and supports SaveKit and native HBLauncher alongside Cellenseres and Astral. kurumuz supports the microSD Express
-  update identified by `(B)` beside item 3 under system settings →
-  support/health & safety.
-- in additional tools, run host only starts the selected host and waits for
-  SmileBASIC commands. enter them manually, use the send commands over USB
-  button, or connect live keyboard while the host waits. the USB button uses
-  the current host's pairing command and requires the driver. checking hold rpc
-  after success shows homebrew directly below it; launch buttons become
-  available after 4/4 verification and a held connection.
-- rpc already held is also in additional tools. click **Find open RPC** to search
-  for verified local sessions and connect when one is found. if several are
-  open, choose one; you can also select a `switch2-*` run folder manually.
-  mac2jb verifies the live connection before enabling homebrew. disconnecting
-  leaves the original host running. remote hosts and ssh are not supported.
-- live keyboard forwards keys while its capture area is focused. connect it,
-  paste text into the text field and click send text to send a string at the
-  configured key delay. send up to 16 kib of printable us keyboard characters,
-  tabs and line breaks; each line break sends enter. no extra enter is added at the end.
-  stop keyboard cancels a transfer and releases keys.
-- usb & timing lets you select a controller and adjust typing delays. defaults
-  are 10 ms per key, 1 second after the second load enter, and no other command waits.
-- switch browser research offers mac2jb's seven local diagnostics for runtime,
-  media, network, boundaries, fonts and WebKit behavior, plus the included
-  [Jmesmykil research scripts](https://github.com/Jmesmykil/switch2-captive-portal-research).
-  choose either included source or a local folder in developer options, then
-  start its page. mac2jb copies included scripts to Application Support and
-  stores reports there. use the page URL with DNSwitch and run the Switch
-  connection test. if the portal stays open, tap cpypwn to load the probe.
-  portal entry is experimental and may loop or fail to open.
-  stop DNSwitch and restore the Switch's DNS settings when finished. this panel
-  is separate from jailbreak and rpc; desktop checks do not
-  establish that a probe works on Switch hardware.
-- NSP-Box packages an already-extracted ExeFS/RomFS game or DLC snapshot into
-  an NSP on this Mac. its Windows emulator patch is not included. the tool is
-  under developer options and never reads a retail encrypted game or console
-  key.
-- NXFormat converts an already-decrypted game folder or `.nup` into a verified
-  `.nx` archive on this Mac. its developer panel can also inspect, list and
-  verify `.nx` archives. NXConvert 1.0.4 is bundled and verified before use;
-  it works offline and does not need rpc.
-- NUP can pack an extracted game dump into a compressed `.nup` file, inspect
-  and verify a NUP, list its files, or extract it. click **Get pinned NUP source**
-  in developer options first; mac2jb fetches that revision from upstream and
-  checks its hash before running it locally. the bundled zstandard dependency
-  provides compression. neither tool needs an rpc session.
-
 ## build from source
 
 on an apple silicon Mac, install xcode command line tools, cmake and the official
@@ -282,7 +229,7 @@ its offline runtime and source archive. if node is elsewhere, set `NODE_BINARY`
 to its absolute executable path. the build prepares pinned homebrew dependencies
 when needed. the self-test checks the packaged runtime without sending console
 commands. the full macOS fixture and node check list is in
-[the build workflow](.github/workflows/build.yml).
+[the build workflow](https://github.com/cpypwn/mac2jb/blob/main/.github/workflows/build.yml).
 
 ## help and source
 
@@ -292,8 +239,8 @@ for support, join the [StonedCold Discord server](https://discord.gg/Sy6QUkR5t).
 ## credits
 
 - [ouncebrew](https://github.com/ouncebrew/kaihen) — kaiHEN.
-- [Gezine](https://github.com/Gezine/CivSwitch) and [s8n](https://github.com/s8n/CivSwitchFS-kaiHEN) — the Civilization VII entry point and kaiHEN path.
-- [pepsipu](https://gitlab.com/pepsipu/ns2jb) and [kurumuz](https://gitlab.com/kurumuz/ns2jb) — the SmileBASIC entry point and host.
+- [Gezine](https://github.com/Gezine/CivSwitch) and s8n's [Civ7 host](https://github.com/s8n/civ7-fs-kaihen) and [CivSwitchFS-kaiHEN](https://github.com/s8n/CivSwitchFS-kaiHEN) — the Civilization VII entry point and kaiHEN paths.
+- [pepsipu](https://gitlab.com/pepsipu/ns2jb), [kurumuz](https://gitlab.com/kurumuz/ns2jb), and [BermTheSequel](https://gitlab.com/BermTheSequel/ns2jb2) — the SmileBASIC hosts.
 - [Malev0](https://github.com/Malev0/seedsow-fs-kaihen) — the Seedsow kaiHEN path.
 - [shinyquagsire](https://github.com/shinyquagsire23/libusbd) — macOS USB gadget support.
 - [dougchansan](https://github.com/dougchansan/ns2-savekit) — SaveKit.

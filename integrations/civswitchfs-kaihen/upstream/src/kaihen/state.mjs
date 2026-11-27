@@ -8,7 +8,7 @@ import runtime from "../core/runtime.mjs";
 
 const {log, allocPage, malloc, free, call_rop, read8, read32, read64,
     write8, write32, write64, read_bytes, write_bytes, closeHandle,
-    GADGET_MEMSET} = runtime;
+    GADGET_MEMSET, waitMs} = runtime;
 
 export const RO_TITLE = 0x0400000000000037n;   // system RO title (launch + donor policy)
 export const HEN_TITLE = 0x040000000000003an;  // HEN title (bootstrap's own launch)
@@ -25,8 +25,16 @@ export const SD_MANIFEST = {
         optional: true}
 };
 
-export function khLog(message) {
-    return log("KH: " + message);
+// 30 ms per line, the emitStage cadence: the visual logger paints one
+// frame per yielded line, so the whole chain stays visible on the
+// untethered screen (raw unpaced log bursts append DOM rows that never
+// present — the whole kaiHEN chain used to run invisible after the
+// paced stage lines ended; vsdump 2026-11-16).
+const KH_LOG_PAUSE_MS = 30;
+
+export async function khLog(message) {
+    await log("KH: " + message);
+    await waitMs(KH_LOG_PAUSE_MS);
 }
 
 export function hex(value, width = 0) {

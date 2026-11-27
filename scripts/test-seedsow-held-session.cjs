@@ -42,7 +42,7 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
   fs.writeFileSync(path.join(scripts, 'prepare-seedsow-host.cjs'), `
     const path = require('node:path');
     exports.prepare = root => path.join(root, 'vendor/ns2-savekit-host-fixture');
-    exports.supported = new Set(['kurumuz', 'cellenseres', 'astral']);
+    exports.supported = new Set(['kurumuz']);
   `);
   fs.writeFileSync(path.join(host, 'run.cjs'), `
     const fs = require('node:fs');
@@ -271,7 +271,7 @@ function fixture(t, mode = '--seedsow-save', options = {}) {
     send: value => child.stdin.write(JSON.stringify(value) + '\n')};
 }
 
-for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
+for (const hostId of ['kurumuz']) test(
   hostId + ' Seedsow install keeps rpc held for further verified save actions',
   {timeout: 15000}, async t => {
   const session = fixture(t, '--seedsow-save', {hostId});
@@ -721,7 +721,7 @@ test('unconfirmed title-name cleanup blocks another save action until explicit F
   assert.equal(JSON.parse(invocations[0]).action, 'titles');
 });
 
-for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
+for (const hostId of ['kurumuz']) test(
   hostId + ' host-only held rpc accepts savekit without installing seedsow',
   {timeout: 15000}, async t => {
   const session = fixture(t, '--savekit-tools', {hostId});
@@ -742,7 +742,7 @@ for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
   assert.equal(session.events().some(event => event.type === 'verified'), true);
 });
 
-for (const hostId of ['kurumuz', 'cellenseres', 'astral']) test(
+for (const hostId of ['kurumuz']) test(
   hostId + ' host-only held rpc installs Seedsow then returns to homebrew',
   {timeout: 15000}, async t => {
   const session = fixture(t, '--savekit-tools', {hostId});
@@ -795,7 +795,7 @@ test('host-only held rpc can select SaveKit instead of installing Seedsow',
 
 test('host-only held rpc passes a custom Seedsow save to the worker',
   {timeout: 15000}, async t => {
-  const session = fixture(t, '--savekit-tools', {hostId: 'cellenseres'});
+  const session = fixture(t, '--savekit-tools', {hostId: 'kurumuz'});
   await session.wait('post-run-ready');
   session.send({action: 'post-run', keepRPC: true, dumpFirmware: false});
   await session.wait('rpc-held');

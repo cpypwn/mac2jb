@@ -24,10 +24,10 @@
     {
       "id": "kurumuz",
       "label": "kurumuz",
-      "revision": "28f03b5895e5569d8fbc35cbed84906b8f0a65b2",
+      "revision": "ae33da13542c616874ec23c56b7b6a660745c5e3",
       "upstream": "https://gitlab.com/kurumuz/ns2jb",
       "sourceDirectory": "vendor/ns2jb-hosts/kurumuz",
-      "sourceSha256": "72a6f3ce0925d8a6d4533d5a226001a1835af7c9cb3220a90008e48134b9d997",
+      "sourceSha256": "2b7d67bb4c6903d7b919f50ac1dccb33b9f2d8c8b0b87420f779967bb6abb1a2",
       "bootstrap": "assets/hosts/kurumuz/bootstrap.bas",
       "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
       "startArgumentCount": 5,
@@ -35,47 +35,23 @@
       "supportsDemo": true,
       "supportsSaveKit": true,
       "supportsNativeHBLauncher": true,
-      "supportsModloader": true,
       "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
       "distributionManifest": "vendor/ns2jb-hosts/kurumuz/SHA256SUMS",
-      "upstreamManifest": "packaging/ns2jb-kurumuz-28f03b5-SHA256SUMS.upstream",
-      "localPatch": "packaging/ns2jb-kurumuz-28f03b5-abi3-range-patch.json",
+      "upstreamManifest": "packaging/ns2jb-kurumuz-ae33da1-SHA256SUMS.upstream",
+      "localPatch": "packaging/ns2jb-kurumuz-ae33da1-abi3-range-patch.json",
       "supportedSmileBASIC": [
         "4.4.9 full",
         "4.4.6 demo"
-      ]
-    },
-    {
-      "id": "cellenseres",
-      "label": "Cellenseres",
-      "revision": "2f686045ff88e5a97f959d19752e00ef3b62011f",
-      "upstream": "https://github.com/Cellenseres/ns2jb",
-      "sourceDirectory": "vendor/ns2jb-hosts/cellenseres",
-      "sourceSha256": "1a0fdad9dfdf80399c8a34265eee9ce7b4543ef20c0d1c3a57088e3644ac35ca",
-      "bootstrap": "assets/hosts/cellenseres/bootstrap.bas",
-      "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
-      "startArgumentCount": 5,
-      "supportsHeldRPC": true,
-      "supportsDemo": true,
-      "supportsSaveKit": true,
-      "supportsNativeHBLauncher": true,
-      "supportsModloader": true,
-      "licenseStatus": "No license file supplied by this pinned upstream; README and provenance are retained.",
-      "distributionManifest": "vendor/ns2jb-hosts/cellenseres/SHA256SUMS",
-      "upstreamManifest": "packaging/ns2jb-cellenseres-2f68604-SHA256SUMS.upstream",
-      "localPatch": "packaging/ns2jb-cellenseres-abi3-range-patch.json",
-      "supportedSmileBASIC": [
-        "4.4.9 full",
-        "4.4.6 demo"
-      ]
+      ],
+      "supportsModloader": true
     },
     {
       "id": "BermTheSequel",
       "label": "BermTheSequel",
-      "revision": "9accf75508f4e7033ffc6912b2ebb7e0b6704e84",
+      "revision": "54b5952a761df24e39ec8552ac7a8b71eb979967",
       "upstream": "https://gitlab.com/BermTheSequel/ns2jb2",
       "sourceDirectory": "vendor/ns2jb",
-      "sourceSha256": "e11f20f8ee1676990445e90bcd4397852f04f6689f9b8ffee7191de995f0a39f",
+      "sourceSha256": "a7235970d930e09e175421ee4214095b435ea19fdce50e9e0f3ebbe8ff4f4499",
       "bootstrap": "assets/hosts/BermTheSequel/bootstrap.bas",
       "bootstrapSha256": "5a2b86da8787318652365b2e4cf710f67ce618d6c21087dfc78716533a510d32",
       "startArgumentCount": 5,
@@ -83,35 +59,11 @@
       "supportsDemo": true,
       "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
       "distributionManifest": "vendor/ns2jb/SHA256SUMS",
-      "upstreamManifest": "packaging/ns2jb-9accf75-SHA256SUMS.upstream",
+      "upstreamManifest": "packaging/ns2jb-54b5952-SHA256SUMS.upstream",
       "supportedSmileBASIC": [
         "4.4.9 full",
         "4.4.6 demo"
       ]
-    },
-    {
-      "id": "astral",
-      "label": "Astral (custom)",
-      "revision": "81d5bb114c856109dadaf1077d927a9f297fe58d",
-      "upstream": "https://gitlab.com/kurumuz/ns2jb",
-      "sourceDirectory": "vendor/ns2jb-hosts/astral",
-      "sourceSha256": "af59fed700cf88b9e38dba3ac641a9eefad3a41869d26bfbcb6be74bcffdf57b",
-      "bootstrap": "assets/hosts/astral/bootstrap.bas",
-      "bootstrapSha256": "dca34ac7977cfd3f7cb657a79da925450472b6527ea83d022a9aa25510b168d5",
-      "startArgumentCount": 5,
-      "supportsHeldRPC": true,
-      "supportsDemo": true,
-      "licenseStatus": "No license file supplied by this pinned upstream; README and original source notices are retained.",
-      "distributionManifest": "vendor/ns2jb-hosts/astral/SHA256SUMS",
-      "upstreamManifest": "packaging/ns2jb-kurumuz-81d5bb1-SHA256SUMS.upstream",
-      "localPatch": "packaging/ns2jb-kurumuz-abi3-range-patch.json",
-      "supportedSmileBASIC": [
-        "4.4.9 full",
-        "4.4.6 demo"
-      ],
-      "supportsSaveKit": true,
-      "supportsNativeHBLauncher": true,
-      "customVersion": "0.2.0-experimental"
     }
   ]
 }

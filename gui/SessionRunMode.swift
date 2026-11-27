@@ -79,7 +79,7 @@ enum SessionRunMode: String, CaseIterable, Identifiable {
         guard requiresHost, self != .existingRPC else { return nil }
         if let stageTimeoutMinutes, !(1...60).contains(stageTimeoutMinutes) { return nil }
         let useSaveKitHost = self == .savekitTools ||
-            (self == .hostOnlyHeld && ["kurumuz", "cellenseres", "astral"].contains(host))
+            (self == .hostOnlyHeld && host == "kurumuz")
         return ["host", address] + (postRunAction == nil ? [] : ["--post-run-options"]) +
             (self == .seedsowSave ? ["--seedsow-save"] : useSaveKitHost ? ["--savekit-tools"] : []) +
             (stageTimeoutMinutes.map { ["--host-stage-timeout-minutes", String($0)] } ?? [])

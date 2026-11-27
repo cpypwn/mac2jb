@@ -4,7 +4,7 @@ Load **RomFS and ExeFS mods by Title ID** on Switch 2, directly from microSD. Su
 
 Requires a microSD or microSD Express card and an existing **RPC session with the required FS access**, provided by [ns2jb](https://gitlab.com/kurumuz/ns2jb) or another compatible exploit.
 
-In mac2jb, choose a mod folder in the app. mac2jb copies it to a unique folder on the Switch SD card for this installation, then starts the loader with that folder. The standalone instructions below use the SD card root instead.
+In mac2jb, **Install modloader** uses compatible mods already under `SD:/ns2jb-modloader/`. To add or update mods first, choose **Write mods to SD card, then install…** and select a folder containing `contents` and/or `exefs_patches`. Matching SD files are updated; unrelated mods remain.
 
 [Download](https://github.com/SebaaMG/ns2jb-modloader/releases/latest/download/ns2jb-modloader.zip) and extract the latest ZIP on your PC.
 

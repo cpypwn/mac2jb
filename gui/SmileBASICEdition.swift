@@ -28,15 +28,3 @@ enum SmileBASICEdition: String, CaseIterable {
         savedConfirmation.replacingOccurrences(of: "NS2", with: name)
     }
 }
-
-// Only these known profiles can reach the Stremio helper. Invalid saved values
-// fall back to 720p instead of becoming command-line arguments.
-enum StremioQuality: String, CaseIterable, Identifiable {
-    case p720 = "720p", p540 = "540p", p360 = "360p", p180 = "180p"
-    static let preferenceKey = "stremioQuality"
-    var id: String { rawValue }
-    var label: String { rawValue }
-    static func saved(defaults: UserDefaults = .standard) -> Self {
-        defaults.string(forKey: preferenceKey).flatMap(Self.init(rawValue:)) ?? .p720
-    }
-}

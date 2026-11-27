@@ -399,11 +399,7 @@ async function main(args = process.argv.slice(2), options = {}) {
   const directory=await fs.mkdtemp(path.join(await fs.realpath(parent),selected.id+'-'));
   let custom,launcher,attempt;
   try {
-    if(selected.id==='mintbrew'){
-      const input=options.config||{};
-      const config={...require('./gui-stremio.cjs').playerConfiguration(input),
-        quality:require('../stremio/quality.cjs').qualityProfile(input.quality).id};
-      await writeJSON(path.join(directory,'stremio-config.json'),config,true);
+    if(selected.id==='mintbrew') {
       await writeJSON(path.join(directory,'mintbrew-host.json'),
         {runDirectory:run.directory,sourceSession:run.proof.session},true);
     }
@@ -466,15 +462,6 @@ async function main(args = process.argv.slice(2), options = {}) {
     state.readiness=new Promise((resolve,reject)=>{readyResolve=resolve;readyReject=reject;});
     state.readiness.catch(()=>{});
     const observe=line=>{
-      if(selected.id==='mintbrew'&&role==='graphics'&&line.startsWith('MAC2JB_STREMIO_ACCOUNT ')){
-        try{
-          const watchProgress=JSON.parse(line.slice('MAC2JB_STREMIO_ACCOUNT '.length));
-          check(watchProgress&&typeof watchProgress==='object'&&!Array.isArray(watchProgress),
-            'Invalid Stremio account progress.');
-          safeEmit('account-progress',{watchProgress});
-        }catch(error){fail(error);}
-        return;
-      }
       state.output=(state.output+line+'\n').slice(-32768);
       if(readyText && line.trim()===readyText){state.ready=true;readyResolve();}
       if(line.trim()===selected.frameReady)state.frameReady=true;

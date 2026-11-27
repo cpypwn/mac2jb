@@ -12,12 +12,12 @@ const {
 } = require('../kaihen/launch.cjs');
 
 const PREFIX = 'MAC2JB_SEEDSOW_KAIHEN ';
-const SOURCE_COMMIT = 'c0e904a9576cb2db8c13f3ab6afdb3a87ccb31b8';
+const SOURCE_COMMIT = '007a4544465f5df75ee31f60b84538b3ced7c5fc';
 const SOURCE = Object.freeze({
   label: 'Seedsow FS kaiHEN source',
   filename: `seedsow-fs-kaihen-${SOURCE_COMMIT}.zip`,
   url: `https://codeload.github.com/Malev0/seedsow-fs-kaihen/zip/${SOURCE_COMMIT}`,
-  sha256: '7dffe6aa6a16844860f06f073d9f8699fed838e46294d17423d898e1c66e92e4',
+  sha256: 'c0f5df13136df04ef8e15472f48a969748a7f3c8f28efd86f71a858b6dc8bee0',
   archiveRoot: `seedsow-fs-kaihen-${SOURCE_COMMIT}`,
   maxBytes: 16 * 1024 * 1024,
 });

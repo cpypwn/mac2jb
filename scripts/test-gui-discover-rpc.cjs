@@ -55,13 +55,13 @@ test('discovery reports only live, verified local runs and does not claim them',
   const result = await discover(f.root, f.sessions, {inspect:async (_, directory, options) => {
     seen.push(directory);
     assert.equal(options.allowRetainedBusy, true);
-    return {directory, session:path.basename(directory), profileId:'cellenseres', description:'Cellenseres · '+path.basename(directory)};
+    return {directory, session:path.basename(directory), profileId:'kurumuz', description:'Kurumuz · '+path.basename(directory)};
   }});
   assert.deepEqual(seen, [active]);
   assert.deepEqual(result.candidates.map(item => item.path), [active]);
   assert.equal(typeof result.candidates[0].modified, 'string');
   assert.match(result.candidates[0].modified, /^\d{4}-\d{2}-\d{2}T/);
-  assert.equal(result.candidates[0].profileId, 'cellenseres');
+  assert.equal(result.candidates[0].profileId, 'kurumuz');
   assert.equal((await findPossibleRuns(f.sessions)).length, 1);
 });
 

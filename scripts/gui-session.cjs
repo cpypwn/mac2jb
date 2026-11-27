@@ -880,7 +880,7 @@ async function main({root, address, emit, lines, verifiedResult, input = process
             savekitSaveTouched && !savekitFinishedForHomebrew  || helper ||
             statusBusy || preflightBusy || dumpBusy || cleanupBlocked || failure) {
           safeEmit('action-rejected', {action: command.action,
-            message: 'Modloader needs a free Kurumuz or Cellenseres held RPC session owned by this app.'});
+            message: 'Modloader needs a free Kurumuz held RPC session owned by this app.'});
           return;
         }
         try {if (modsFolder) require('./gui-modloader.cjs').validateModsFolder(modsFolder);}
@@ -947,10 +947,6 @@ async function main({root, address, emit, lines, verifiedResult, input = process
             command.libraryItems !== undefined && (!Array.isArray(command.libraryItems) || command.libraryItems.length > 500 ||
              command.libraryItems.some(item => !item || typeof item !== 'object' || Array.isArray(item))))) {
           safeEmit('action-rejected', {message:'The add-on configuration is invalid.'}); return;
-        }
-        if (command.action === 'launch-mintbrew' && command.quality !== undefined &&
-            !['720p','540p','360p','180p'].includes(command.quality)) {
-          safeEmit('action-rejected', {message:'Choose a supported Stremio quality.'}); return;
         }
         let sdRomFolder;
         if (command.action === 'launch-native-hblauncher') {

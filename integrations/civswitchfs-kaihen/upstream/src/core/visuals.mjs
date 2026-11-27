@@ -1,172 +1,100 @@
-// Keep payload logs inside better-console when its public logger is available.
-// The fallback uses the same row layout and colors for standalone loaders.
-const LOGGER_KEY = "__CIVSWITCHFS_VISUAL_LOGGER_V2__";
-const LOGGER_STATE_KEY = "__CIVSWITCHFS_VISUAL_LOG_STATE_V2__";
-const LEGACY_LOGGER_KEY = "__CIVSWITCHFS_VISUAL_LOGGER__";
-const LEGACY_STATE_KEY = "__CIVSWITCHFS_VISUAL_LOG_STATE__";
-const BETTER_CONSOLE_FORWARDER = "__civSwitchBetterConsoleForwarder";
-const LOG_LABEL = "CivSwitchFS logs";
+// Render logs in one styled pre and forward them to persistence when available.
+const MAX_VISIBLE_LOG_LINES = 100;
+let clearCurrentVisualLog = function () {};
 
-export function installVisualLogPatch() {
-    const api = globalThis.__CIVSWITCH_CORE_API__;
-    installVisualLogPatchFor(api);
+export function clearVisualLog() {
+    const hostWindow = globalThis.window || globalThis;
+    let logger = hostWindow.log;
+    if (typeof logger?.clear !== "function") {
+        logger = globalThis.log;
+    }
+    if (typeof logger?.clear === "function")
+        return Reflect.apply(logger.clear, logger, []);
+
+    clearCurrentVisualLog();
 }
 
-// The persisted bootstrap uses the same logger before the payload is injected,
-// so the first exploit and payload messages share one visual surface.
-export function installEarlyVisualLogPatch() {
-    const api = {log: globalThis.log};
-    installVisualLogPatchFor(api);
-}
+export function installLoaderLogPatch() {
+    const hostWindow = globalThis.window || globalThis;
+    if (typeof hostWindow.log?.clear === "function") return;
 
-function installVisualLogPatchFor(api) {
     const document = globalThis.document;
-    if (!api || typeof api.log !== "function" || !document?.body) return;
+    let output = null;
+    let compact = false;
+    const visibleLines = [];
 
-    const betterConsole = globalThis.civConsole;
-    if (betterConsole && typeof betterConsole.log === "function") {
-        removeLegacyOutput(document);
-        const existingLogger = globalThis[LOGGER_KEY];
-        if (typeof existingLogger === "function" &&
-            existingLogger[BETTER_CONSOLE_FORWARDER]) {
-            api.log = existingLogger;
-            globalThis.log = existingLogger;
-            return;
-        }
-
-        const consoleLog = betterConsole.log;
-        const forwardLog = function (...args) {
-            forwardPersistedLog(args);
-            return Reflect.apply(consoleLog, betterConsole, args);
-        };
-        forwardLog[BETTER_CONSOLE_FORWARDER] = true;
-        globalThis[LOGGER_KEY] = forwardLog;
-        globalThis.log = forwardLog;
-        api.log = forwardLog;
-        return;
-    }
-
-    const existingLogger = globalThis[LOGGER_KEY];
-    if (typeof existingLogger === "function") {
-        api.log = existingLogger;
-        globalThis.log = existingLogger;
-        return;
-    }
-
-    // If a payload using the former <pre> overlay already ran in this session,
-    // restyle it in place so its persistent logger does not restore the black
-    // panel on the next message.
-    const legacyLogger = globalThis[LEGACY_LOGGER_KEY];
-    if (typeof legacyLogger === "function") {
-        const legacyState = globalThis[LEGACY_STATE_KEY];
-        const legacyOutput = legacyState?.output ||
-            document.querySelector('[aria-label="' + LOG_LABEL + '"]');
-        if (legacyOutput) applyLegacyConsoleStyle(legacyOutput, document);
-        const migratedLogger = function (...args) {
-            forwardPersistedLog(args);
-            const pending = Reflect.apply(legacyLogger, this, args);
-            return Promise.resolve(pending).then(result => {
-                const output = legacyState?.output ||
-                    document.querySelector('[aria-label="' + LOG_LABEL + '"]');
-                if (output) applyLegacyConsoleStyle(output, document);
-                return result;
-            });
-        };
-        globalThis[LOGGER_KEY] = migratedLogger;
-        globalThis.log = migratedLogger;
-        api.log = migratedLogger;
-        return;
-    }
-
-    const state = globalThis[LOGGER_STATE_KEY] || {
-        output: null,
-        logQueue: Promise.resolve(),
-        compact: false
+    clearCurrentVisualLog = function () {
+        visibleLines.length = 0;
+        if (output?.isConnected) output.textContent = "";
     };
-    globalThis[LOGGER_STATE_KEY] = state;
-    let originalLog = api.log;
+
+    // The applet presents frames between macrotasks: raw log() bursts
+    // (no per-line pause like emitStage's 30 ms) append DOM rows that
+    // never paint — a whole payload stage can run invisible (vsdump
+    // 2026-11-16). waitForDisplayFrame below paces every patched log
+    // call so unpaced callers stay visible too.
 
     function ensureOutput() {
-        const nativeOutput = document.querySelector("pre");
-        if (nativeOutput && nativeOutput !== state.output)
-            nativeOutput.style.display = "none";
+        if (!document?.body) return null;
 
-        if (!state.output || !state.output.isConnected) {
-            state.output = document.createElement("div");
-            state.output.setAttribute("aria-label", LOG_LABEL);
-            state.output.setAttribute("tabindex", "0");
-            state.output.setAttribute("role", "log");
-            state.compact = applyConsoleStyle(state.output, document);
-            document.body.appendChild(state.output);
+        if (!output?.isConnected) {
+            visibleLines.length = 0;
+            output = document.createElement("pre");
+            document.body.appendChild(output);
         }
-        return state.output;
+
+        // This patch owns the only visible log buffer.
+        for (const nativeOutput of document.querySelectorAll("pre")) {
+            if (nativeOutput !== output && nativeOutput.parentNode)
+                nativeOutput.parentNode.removeChild(nativeOutput);
+        }
+
+        compact = applyConsoleStyle(output, document);
+        return output;
     }
 
-    const visualLog = function (...args) {
-        const callThis = this;
-        const callArgs = args.slice();
-        const message = String(callArgs[0]);
+    const patchedLog = function (...args) {
         const timestamp = formatTimestamp(new Date());
-        forwardPersistedLog(callArgs);
+        const message = String(args[0]);
+        const messageLines = message.replace(/\r\n?/g, "\n")
+            .split("\n");
 
-        const task = state.logQueue.then(async () => {
-            const followTail = isNearBottom(state.output);
-            const pendingLog = Reflect.apply(originalLog, callThis, callArgs);
-            // The persisted bootstrap's first logger is lazy: its first call
-            // replaces window.log with the underlying <pre> implementation.
-            // Retain the visual wrapper after capturing that implementation.
-            if (globalThis.log !== visualLog) {
-                originalLog = globalThis.log;
-                api.log = visualLog;
-                globalThis.log = visualLog;
-            }
-            const logOutput = ensureOutput();
-            const result = await pendingLog;
+        const logOutput = ensureOutput();
+        if (logOutput) {
+            appendLogRows(logOutput, document, messageLines, timestamp,
+                compact, visibleLines);
+            logOutput.scrollTop = logOutput.scrollHeight;
+        }
 
-            addLogRows(logOutput, document, message, timestamp, state.compact);
-            if (followTail) logOutput.scrollTop = logOutput.scrollHeight;
-            return result;
-        });
-
-        state.logQueue = task.catch(() => {});
-        return task;
+        forwardPersistedLog(message);
+        return waitForDisplayFrame(hostWindow);
     };
 
-    globalThis[LOGGER_KEY] = visualLog;
-    globalThis.log = visualLog;
-    api.log = visualLog;
+    patchedLog.clear = clearCurrentVisualLog;
+    hostWindow.log = patchedLog;
+    globalThis.log = patchedLog;
+    ensureOutput();
 }
 
-function forwardPersistedLog(args) {
+function forwardPersistedLog(message) {
     const forwarder = globalThis.__CIVSWITCHFS_PERSIST_LOG_FORWARDER__;
     if (typeof forwarder !== "function") return;
+
     try {
-        Reflect.apply(forwarder, globalThis, args);
+        Reflect.apply(forwarder, globalThis, [message]);
     } catch (error) {}
 }
 
-export async function clearVisualLog() {
-    const betterConsole = globalThis.civConsole;
-    if (betterConsole && typeof betterConsole.clear === "function") {
-        betterConsole.clear();
-        return;
+function waitForDisplayFrame(hostWindow) {
+    let requestFrame = hostWindow.requestAnimationFrame;
+    let frameWindow = hostWindow;
+    if (typeof requestFrame !== "function") {
+        requestFrame = globalThis.requestAnimationFrame;
+        frameWindow = globalThis;
     }
+    if (typeof requestFrame !== "function") return Promise.resolve();
 
-    const state = globalThis[LOGGER_STATE_KEY] ||
-        globalThis[LEGACY_STATE_KEY];
-    if (!state) return;
-
-    await state.logQueue.catch(() => {});
-    const output = state.output ||
-        globalThis.document?.querySelector('[aria-label="' + LOG_LABEL + '"]');
-    if (output) output.textContent = "";
-}
-
-function removeLegacyOutput(document) {
-    const state = globalThis[LEGACY_STATE_KEY];
-    const output = state?.output ||
-        document.querySelector('[aria-label="' + LOG_LABEL + '"]');
-    if (output?.parentNode) output.parentNode.removeChild(output);
+    return new Promise(resolve => requestFrame.call(frameWindow, resolve));
 }
 
 function formatTimestamp(date) {
@@ -179,10 +107,19 @@ function formatTimestamp(date) {
 }
 
 function applyConsoleStyle(output, document) {
-    const viewportWidth = Number(document.documentElement?.clientWidth) ||
+    const viewportWidth = Number(document?.documentElement?.clientWidth) ||
         Number(globalThis.innerWidth) || 0;
     const compact = viewportWidth > 0 && viewportWidth <= 700;
+    let fontSize;
 
+    if (compact) {
+        fontSize = "15px";
+    } else {
+        fontSize = "18px";
+    }
+
+    output.setAttribute("aria-label", "CivSwitchFS logs");
+    output.setAttribute("role", "log");
     Object.assign(output.style, {
         position: "fixed",
         top: "0",
@@ -196,7 +133,7 @@ function applyConsoleStyle(output, document) {
         overflowY: "auto",
         overflowX: "hidden",
         fontFamily: "Consolas, 'Liberation Mono', monospace",
-        fontSize: compact ? "15px" : "18px",
+        fontSize,
         lineHeight: "1.5",
         background: "#282c34",
         color: "#f2f3f5",
@@ -206,58 +143,9 @@ function applyConsoleStyle(output, document) {
     return compact;
 }
 
-function applyLegacyConsoleStyle(output, document) {
-    const viewportWidth = Number(document.documentElement?.clientWidth) ||
-        Number(globalThis.innerWidth) || 0;
-    const compact = viewportWidth > 0 && viewportWidth <= 700;
-    const fontSize = compact ? "15px" : "18px";
-    const timeFontSize = compact ? "12px" : "14px";
-    const timeMargin = compact ? "12px" : "18px";
-
-    Object.assign(output.style, {
-        position: "fixed",
-        top: "0",
-        left: "0",
-        right: "0",
-        bottom: "0",
-        zIndex: "2147483647",
-        boxSizing: "border-box",
-        margin: "0",
-        padding: "10px 14px 22px",
-        overflowY: "auto",
-        overflowX: "hidden",
-        fontFamily: "Consolas, 'Liberation Mono', monospace",
-        fontSize,
-        lineHeight: "1.5",
-        background: "#282c34",
-        color: "#e8ece8",
-        whiteSpace: "pre-wrap",
-        overflowWrap: "break-word",
-        wordBreak: "break-word",
-        overscrollBehavior: "contain"
-    });
-
-    const children = output.children || [];
-    for (let index = 0; index < children.length; index++) {
-        const child = children[index];
-        if (child.tagName !== "SPAN") continue;
-        Object.assign(child.style, {
-            display: "inline-block",
-            width: "13ch",
-            marginRight: timeMargin,
-            verticalAlign: "top",
-            color: "#9bcaff",
-            whiteSpace: "nowrap",
-            fontSize: timeFontSize,
-            lineHeight: "1.5",
-            userSelect: "none"
-        });
-    }
-}
-
-function addLogRows(output, document, message, timestamp, compact) {
-    const lines = message.replace(/\r\n?/g, "\n").split("\n");
-    for (const line of lines) {
+function appendLogRows(output, document, lines, timestamp, compact,
+    visibleLines) {
+    for (const line of lines.slice(-MAX_VISIBLE_LOG_LINES)) {
         const row = document.createElement("div");
         Object.assign(row.style, {
             display: "flex",
@@ -293,12 +181,174 @@ function addLogRows(output, document, message, timestamp, compact) {
         row.appendChild(stamp);
         row.appendChild(content);
         output.appendChild(row);
+        visibleLines.push(row);
+
+        while (visibleLines.length > MAX_VISIBLE_LOG_LINES) {
+            const oldestLine = visibleLines.shift();
+            if (oldestLine?.parentNode === output)
+                output.removeChild(oldestLine);
+        }
     }
 }
 
-function isNearBottom(output) {
-    if (!output) return true;
-    const remaining = output.scrollHeight - output.clientHeight - output.scrollTop;
-    const fontSize = Number.parseFloat(output.style.fontSize) || 16;
-    return remaining <= Math.max(2, fontSize * 0.5);
+export function installRunInputControls({
+    onStop, onToggleVerbose
+} = {}) {
+    const window = globalThis.window;
+    if (!window?.addEventListener) return {dispose() {}};
+
+    const statuses = window.InputActionStatuses || {
+        START: 0,
+        FINISH: 1,
+        UPDATE: 2
+    };
+    let disposed = false;
+    let inputTimer = null;
+    let runCallbacks = {onStop, onToggleVerbose};
+    let controllerPrevious = Object.create(null);
+    let lastVerboseToggleAt = 0;
+    const engineActionActive = {stop: false};
+
+    function consume(event) {
+        event?.preventDefault?.();
+        event?.stopImmediatePropagation?.();
+    }
+
+    function requestStop(event) {
+        if (typeof runCallbacks.onStop !== "function") return false;
+        consume(event);
+        runCallbacks.onStop();
+        return true;
+    }
+
+    function requestToggleVerbose() {
+        if (typeof runCallbacks.onToggleVerbose !== "function") return false;
+        const now = Date.now();
+        if (now - lastVerboseToggleAt < 180) return true;
+        lastVerboseToggleAt = now;
+        runCallbacks.onToggleVerbose();
+        return true;
+    }
+
+    function handleEngineAction(event, action) {
+        const callback = runCallbacks.onStop;
+        if (typeof callback !== "function") return;
+
+        const isFinished = event.detail?.status === statuses.FINISH;
+        const isActive = engineActionActive[action];
+        consume(event);
+        if (!isActive) {
+            requestStop(event);
+        }
+        engineActionActive[action] = !isFinished;
+    }
+
+    function handleEngineToggle(event) {
+        if (typeof runCallbacks.onToggleVerbose !== "function") return;
+        const status = event.detail?.status;
+        const isStart = status === statuses.START ||
+            String(status).toLowerCase() === "start";
+        const isFinished = status === statuses.FINISH ||
+            String(status).toLowerCase() === "finish";
+        if (!isStart && !isFinished && status != null) return;
+        consume(event);
+        if (!isFinished) requestToggleVerbose();
+    }
+
+    function onEngineInput(event) {
+        if (disposed) return;
+        const detail = event.detail || {};
+        let name = "";
+        if (typeof detail.name === "string") {
+            name = detail.name.toLowerCase();
+        }
+        let isCancel = false;
+        // Use the game's cancel helper when available; raw action names vary.
+        try {
+            isCancel = typeof event.isCancelInput === "function" &&
+                event.isCancelInput() === true;
+        } catch (ignored) {}
+
+        if (isCancel || name === "back" ||
+            name === "cancel" || name === "ui-back") {
+            handleEngineAction(event, "stop");
+            return;
+        }
+
+        if (name === "shell-action-1") {
+            // Keep X from reaching the game now that it has no payload action.
+            consume(event);
+            return;
+        }
+
+        if (name === "shell-action-2" || name === "shell-action-y" ||
+            name === "button-y" || name === "gamepad-y" || name === "y") {
+            handleEngineToggle(event);
+            return;
+        }
+    }
+
+    function pollGamepad() {
+        let navigator = globalThis.navigator;
+        if (typeof window.navigator?.getGamepads === "function") {
+            navigator = window.navigator;
+        }
+        if (!navigator || typeof navigator.getGamepads !== "function") return;
+
+        let pads;
+        try {
+            pads = navigator.getGamepads();
+        } catch (ignored) {
+            return;
+        }
+
+        let pad = null;
+        let fallbackPad = null;
+        for (let index = 0; index < pads.length; index++) {
+            const candidate = pads[index];
+            if (!candidate || candidate.connected === false) continue;
+            if (!fallbackPad && candidate.buttons?.length >= 4)
+                fallbackPad = candidate;
+            if (candidate.mapping === "standard") {
+                pad = candidate;
+                break;
+            }
+        }
+        if (!pad) pad = fallbackPad;
+        if (!pad) {
+            controllerPrevious = Object.create(null);
+            return;
+        }
+
+        function pressed(index) {
+            return Boolean(pad.buttons[index] && pad.buttons[index].pressed);
+        }
+
+        // Standard Gamepad layout: Nintendo B is south (0), Y is west (2), X is north (3).
+        for (const button of [0, 2]) {
+            const current = pressed(button);
+            if (current && controllerPrevious[button] !== true) {
+                if (button === 2) requestToggleVerbose();
+                else requestStop();
+            }
+            controllerPrevious[button] = current;
+        }
+    }
+
+    window.addEventListener("engine-input", onEngineInput, true);
+
+    inputTimer = setInterval(pollGamepad, 40);
+
+    const controls = {
+        clearRunActions() {
+            runCallbacks = {onStop: null, onToggleVerbose: null};
+        },
+        dispose() {
+            if (disposed) return;
+            disposed = true;
+            if (inputTimer !== null) clearInterval(inputTimer);
+            window.removeEventListener("engine-input", onEngineInput, true);
+        }
+    };
+    return controls;
 }

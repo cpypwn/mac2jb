@@ -39,8 +39,6 @@ if CommandLine.arguments.contains("--self-test") {
             ("node", ["scripts/prepare-host-profiles.cjs", "--check"]),
             ("node", ["scripts/prepare-seedsow-host.cjs", "--check"]),
             ("node", ["integrations/civswitch/verify.cjs", "--runtime"]),
-            ("node", ["scripts/gui-civhomebrew.cjs", "--self-test", runtime.root.path]),
-            ("node", ["scripts/gui-civswitch-moonlight.cjs", "--self-test", runtime.root.path]),
             ("node", ["--check", "integrations/civswitch/probe.cjs"]),
             ("node", ["--check", "integrations/civswitch/send-payload.cjs"]),
             ("node", ["--check", "integrations/civswitch/install-persistent.cjs"]),
@@ -53,25 +51,11 @@ if CommandLine.arguments.contains("--self-test") {
             ("node", ["scripts/gui-savekit-tools.cjs", "--self-test"]),
             ("node", ["scripts/check-savekit-research.cjs"]),
             ("node", ["--check", "scripts/usb-controllers.cjs"]),
-            ("node", ["scripts/gui-dnswitch.cjs", "--self-test"]),
             ("node", ["scripts/gui-offline-ethernet.cjs", "--self-test"]),
-            ("node", ["scripts/gui-webkit-research.cjs", "--self-test"]),
-            ("node", ["scripts/gui-bundled-browser-probes.cjs", "--self-test"]),
-            ("node", ["scripts/check-webkit-research.cjs"]),
-            ("homebrew/python/bin/python3", ["integrations/nsp-box/cli.py", "--self-test"]),
-            ("node", ["scripts/gui-nxformat.cjs", "--self-test", runtime.root.path]),
-            ("node", ["scripts/gui-nup.cjs", "--self-test", runtime.root.path]),
             ("node", ["--check", "scripts/gui-keyboard.cjs"]),
             ("node", ["scripts/gui-keyboard.cjs", "--self-test"]),
             ("node", ["--check", "scripts/gui-dump.cjs"]),
             ("node", ["--check", "scripts/gui-homebrew.cjs"]),
-            ("node", ["--check", "scripts/gui-hblauncher.cjs"]),
-            ("node", ["--check", "scripts/gui-gpubrewlauncher.cjs"]),
-            ("node", ["--check", "scripts/gui-mintbrew.cjs"]),
-            ("node", ["scripts/prepare-mintbrew.cjs", "--check-runtime"]),
-            ("node", ["scripts/check-homebrew-runtime.cjs"]),
-            ("node", ["--check", "scripts/gui-stremio.cjs"]),
-            ("node", ["scripts/check-stremio-runtime.cjs"]),
             ("node", ["scripts/gui-ouncecake.cjs", "--self-test"]),
             ("node", ["scripts/gui-host.cjs", "--self-test"])
         ]
@@ -126,6 +110,16 @@ if CommandLine.arguments.contains("--self-test") {
 }
 
 private final class Mac2jbAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        for window in NSApp.windows { window.preventsApplicationTerminationWhenModal = false }
+        NotificationCenter.default.addObserver(self, selector: #selector(windowDidBecomeKey(_:)),
+                                               name: NSWindow.didBecomeKeyNotification, object: nil)
+    }
+
+    @objc private func windowDidBecomeKey(_ notification: Notification) {
+        (notification.object as? NSWindow)?.preventsApplicationTerminationWhenModal = false
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }
 

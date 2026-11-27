@@ -32,9 +32,9 @@ import {
 } from "./discovery.mjs";
 
 import {
+  inspectCandidateCacheAlias,
   installAddressHeader,
-  qualifyCacheBucketPeriod,
-  retireCandidateCache
+  qualifyCacheBucketPeriod
 } from "./cache.mjs";
 
 import {
@@ -43,6 +43,7 @@ import {
   configurePayload,
   writeIntoPayload,
   checkPathPairQuiet,
+  captureRenameInputState,
   queryCanaryHealth,
   nulWrites,
   analyzeWave
@@ -81,14 +82,15 @@ export function createFspIdentityHelpers(options = {}) {
     hasByteDifferentFast,
     scanPointerWords,
     cleanup,
+    inspectCandidateCacheAlias,
     installAddressHeader,
     qualifyCacheBucketPeriod,
-    retireCandidateCache,
     buildPlans,
     configureProfile,
     configurePayload,
     writeIntoPayload,
     checkPathPairQuiet,
+    captureRenameInputState,
     queryCanaryHealth,
     nulWrites,
     analyzeWave

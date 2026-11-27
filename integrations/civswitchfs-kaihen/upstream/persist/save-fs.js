@@ -209,6 +209,39 @@ window.__cfsCreateSaveFS = function (c) {
                 call('close', [handle]);
             }
         },
+        writeAt: async function (name, offset, bytes) {
+            if (!(bytes instanceof Uint8Array) || bytes.length < 1)
+                throw new Error('Invalid write data');
+            if (
+                !Number.isSafeInteger(offset) ||
+                offset < 0 ||
+                !Number.isSafeInteger(offset + bytes.length)
+            )
+                throw new Error('Invalid file offset');
+            var handle = open(name, 3);
+            try {
+                for (var at = 0; at < bytes.length; at += 65536) {
+                    var part = bytes.subarray(at, at + 65536);
+                    c.write_buffer(buffer, part);
+                    var code = call('write', [
+                        handle,
+                        BigInt(offset + at),
+                        buffer,
+                        BigInt(part.length),
+                        option
+                    ]) & 0xffffffffn;
+                    if (code !== 0n)
+                        return {
+                            ok: false,
+                            error: 'WriteFile : 0x' + code.toString(16)
+                        };
+                    await pause();
+                }
+                return { ok: true };
+            } finally {
+                call('close', [handle]);
+            }
+        },
         mkdir: function (name) {
             if (!exists(name)) check('mkdir', [path(path1, name)]);
             else if (Number(c.read32(result)) !== 0)
@@ -221,7 +254,9 @@ window.__cfsCreateSaveFS = function (c) {
             check('delete', [path(path1, name)]);
         },
         commit: function () {
-            check('commit', [path(path1, 'save')]);
+            var code = call('commit', [path(path1, 'save')]) & 0xffffffffn;
+            if (code === 0n) return { ok: true };
+            return { ok: false, error: 'Commit : 0x' + code.toString(16) };
         },
         freeSpace: function () {
             check('space', [result, path(path1, 'save:/')]);

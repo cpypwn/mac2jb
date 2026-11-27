@@ -11,7 +11,6 @@ const {
   closeHandle,
   hex32,
   ipcStorageRead,
-  log,
   openDomainSession,
   read32,
   read64,
@@ -190,10 +189,8 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             chunksRead: rootTiming.chunksRead
         } : null});
     rootCandidateRetryable = false;
-    await log("ROOT: begin separate-domain table inspection");
     var opened = openDomainSession();
     if (!opened) {
-        await log("ROOT: separate domain session open failed");
         return lookupResult(false);
     }
     domainSession = opened;
@@ -203,13 +200,8 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
     try {
         var domainId = Number(opened.rootObj) >>> 0;
         if (domainId === 0 || domainId > 0x4000) {
-            await log("ROOT: invalid root domain ID=" + domainId);
             return lookupResult(false);
         }
-        await log("ROOT: domain session handle=" + opened.handle +
-            " rootId=" + domainId + "; current fsp-srv handle=" + rootSession +
-            " retained; rootId derived from opened.rootObj on the same " +
-            "openDomainSession() result as this handle");
 
         var anchor = Number(addressPlan.target);
         var captureStart = anchor - config.ROOT_CAPTURE_BACK;
@@ -227,20 +219,12 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                 config.ROOT_CAPTURE_CHUNK !== 0 ||
             startOffset + config.ROOT_CAPTURE_SIZE > addressPlan.storageSize ||
             config.ROOT_CAPTURE_CHUNKS !== 31) {
-            await log("ROOT: bounded capture arithmetic rejected");
             return lookupResult(false);
         }
 
-        await log("ROOT: bounded capture [0x" +
-            captureStart.toString(16) + ",0x" + captureEnd.toString(16) +
-            ") bytes=0x" + config.ROOT_CAPTURE_SIZE.toString(16) +
-            " chunks=" + config.ROOT_CAPTURE_CHUNKS + " period=0x" +
-            config.ROOT_CAPTURE_CHUNK.toString(16) + " anchor=0x" +
-            anchor.toString(16));
 
         var captureBuf = allocPage(config.ROOT_CAPTURE_CHUNK + 0x2000);
         if (!captureBuf) {
-            await log("ROOT: capture buffer allocation failed");
             return lookupResult(false);
         }
         var domainCandidates = [];
@@ -259,8 +243,6 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             if (bucketStart % config.ROOT_CAPTURE_CHUNK !== 0 ||
                 chunkOffset % config.ROOT_CAPTURE_CHUNK !== periodRemainder ||
                 chunkOffset + config.ROOT_CAPTURE_CHUNK > addressPlan.storageSize) {
-                await log("ROOT: capture chunk bounds rejected index=" +
-                    chunkIndex);
                 return lookupResult(false);
             }
 
@@ -275,8 +257,6 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             if (collectRootScanTiming)
                 rootTiming.readMs += Date.now() - readStartedAt;
             if (captureReply.error !== 0) {
-                await log("ROOT: capture read failed chunk=" +
-                    chunkIndex + " rc=" + hex32(captureReply.error));
                 return lookupResult(false);
             }
             if (collectRootScanTiming) rootTiming.chunksRead++;
@@ -285,8 +265,6 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                     config.ROOT_CAPTURE_CHUNK, 0xA5)) {
                 if (collectRootScanTiming)
                     rootTiming.scanMs += Date.now() - scanStartedAt;
-                await log("ROOT: capture chunk remained poison index=" +
-                    chunkIndex);
                 return lookupResult(false);
             }
 
@@ -357,51 +335,21 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
         if (retainedPairKeys.length === 1)
             retainedCacheLayout = {...retainedPairMap[retainedPairKeys[0]],
                 captureStart, captureEnd};
-        await log("ROOT: retained cache scan arrays=" +
-            retainedArrays.length + " owners=" + retainedOwners.length +
-            " exactPairs=" + retainedPairKeys.length +
-            (retainedCacheLayout ? " array=0x" +
-                retainedCacheLayout.array.toString(16) + " owner=0x" +
-                retainedCacheLayout.owner.toString(16) : ""));
 
         var groups = RootLayout.groupDomainCandidates(domainCandidates);
-        await log("ROOT: capture complete bytes=0x" +
-            config.ROOT_CAPTURE_SIZE.toString(16) + " wrappers=" +
-            domainCandidates.length + " vtable-manager groups=" + groups.length);
 
         var tableMatches = [];
         for (var gi = 0; gi < groups.length; gi++) {
             var group = groups[gi];
-            var groupDomainSample = group.domains.slice(0, 8).map(
-                function(item) { return "0x" + item.address.toString(16); }
-            ).join(",");
-            await log("ROOT TABLE: group=" + gi +
-                " domains=" + group.domains.length +
-                " domainSamples=" + (groupDomainSample || "none") +
-                " rootVptr=0x" + group.rootVptr.toString(16) +
-                " manager=0x" + group.manager.toString(16));
             if (!RootLayout.rangeContains(captureStart, config.ROOT_CAPTURE_SIZE,
                     group.manager, 0x20)) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=manager-bounds manager=0x" +
-                    group.manager.toString(16) + " size=0x20 capture=[0x" +
-                    captureStart.toString(16) + ",0x" +
-                    captureEnd.toString(16) + ")");
                 continue;
             }
 
-            await log("ROOT TABLE: group=" + gi +
-                " manager-read address=0x" + group.manager.toString(16) +
-                " size=0x20");
             var managerRead = await readFsAddressBytes({...addressReadInput,
                 address: group.manager, length: 0x20, outputBuf: captureBuf});
             if (!managerRead.ok) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=manager-read fatal=" + !!managerRead.fatal +
-                    " error=" + managerRead.error);
                 if (managerRead.fatal) {
-                    await log("ROOT: manager read failed: " +
-                        managerRead.error);
                     return lookupResult(false);
                 }
                 continue;
@@ -410,29 +358,13 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             var tablePointer = AnalysisBytes.readU64LE(managerRead.bytes, 0x18);
             var managerCapacityOk = managerCount === 0x4000;
             var tablePointerCanonical = RootLayout.isCanonicalPointer(tablePointer);
-            await log("ROOT TABLE: group=" + gi +
-                " manager-count=0x" + managerCount.toString(16) +
-                " expected=0x4000 ok=" + managerCapacityOk +
-                " table-pointer=0x" + tablePointer.toString(16) +
-                " canonical=" + tablePointerCanonical);
             if (!managerCapacityOk || !tablePointerCanonical) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=manager-capacity-or-table-pointer capacityOk=" +
-                    managerCapacityOk + " pointerCanonical=" +
-                    tablePointerCanonical);
                 continue;
             }
             var table = Number(tablePointer);
             var tableInCapture = RootLayout.rangeContains(captureStart,
                 config.ROOT_CAPTURE_SIZE, table, 0x4000);
-            await log("ROOT TABLE: group=" + gi +
-                " table-bounds pointer=0x" + table.toString(16) +
-                " size=0x4000 inCapture=" + tableInCapture +
-                " capture=[0x" + captureStart.toString(16) + ",0x" +
-                captureEnd.toString(16) + ")");
             if (!tableInCapture) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=table-bounds");
                 continue;
             }
 
@@ -442,46 +374,20 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                 config.ROOT_CAPTURE_SIZE, entryAddress, 0x30);
             var entryInTable = entryAddress >= table &&
                 entryAddress + 0x30 <= table + managerCount * 0x30;
-            await log("ROOT TABLE: group=" + gi +
-                " rootId=" + domainId + " index=" + entryIndex +
-                " entry=0x" + entryAddress.toString(16) +
-                " size=0x30 inCapture=" + entryInCapture +
-                " inTable=" + entryInTable + " tableEnd=0x" +
-                (table + managerCount * 0x30).toString(16));
             if (!entryInCapture || !entryInTable) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=index-entry-bounds");
                 continue;
             }
 
-            await log("ROOT TABLE: group=" + gi +
-                " entry-read address=0x" + entryAddress.toString(16) +
-                " size=0x30");
             var entryRead = await readFsAddressBytes({...addressReadInput,
                 address: entryAddress, length: 0x30, outputBuf: captureBuf});
             if (!entryRead.ok) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=entry-read fatal=" + !!entryRead.fatal +
-                    " error=" + entryRead.error);
                 if (entryRead.fatal) {
-                    await log("ROOT: domain-entry read failed: " +
-                        entryRead.error);
                     return lookupResult(false);
                 }
                 continue;
             }
             var entryDomain = AnalysisBytes.readU64LE(entryRead.bytes, 0x18);
             var objectAddress = AnalysisBytes.readU64LE(entryRead.bytes, 0x20);
-            var entryVptr = AnalysisBytes.readU64LE(entryRead.bytes, 0x28);
-            var entryVptrDelta = entryVptr - BigInt(group.rootVptr);
-            var entryVptrDeltaText = entryVptrDelta < 0n
-                ? "-0x" + (-entryVptrDelta).toString(16)
-                : "+0x" + entryVptrDelta.toString(16);
-            await log("ROOT TABLE: group=" + gi +
-                " entry-values domain=0x" + entryDomain.toString(16) +
-                " object=0x" + objectAddress.toString(16) +
-                " classVptr=0x" + entryVptr.toString(16) +
-                " classVptrOffset=" + entryVptrDeltaText);
             var domainCandidate = null;
             for (var di = 0; di < group.domains.length; di++) {
                 if (BigInt(group.domains[di].address) === entryDomain) {
@@ -491,40 +397,15 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             }
             var domainAddressMatched = !!domainCandidate;
             var objectPointerCanonical = RootLayout.isCanonicalPointer(objectAddress);
-            if (domainCandidate) {
-                await log("ROOT TABLE: matched-wrapper address=0x" +
-                    domainCandidate.address.toString(16) +
-                    " entryDomain=0x" + entryDomain.toString(16) +
-                    " word+0x00=0x" + domainCandidate.first.toString(16) +
-                    " word+0x08=0x" + domainCandidate.second.toString(16) +
-                    " word+0x18=0x" + domainCandidate.manager.toString(16));
-            }
-            await log("ROOT TABLE: group=" + gi +
-                " entry-match domainInGroup=" + domainAddressMatched +
-                (domainCandidate ? " domainAddress=0x" +
-                    domainCandidate.address.toString(16) : "") +
-                " objectCanonical=" + objectPointerCanonical +
-                " classVptrOffset=" + entryVptrDeltaText +
-                " classVptrIsDiagnosticOnly=true");
             if (!domainAddressMatched || !objectPointerCanonical) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=owned-root-entry-owner-or-object-pointer");
                 continue;
             }
 
-            await log("ROOT TABLE: group=" + gi +
-                " domain-wrapper-read address=0x" +
-                domainCandidate.address.toString(16) + " size=0x20");
             var wrapperRead = await readFsAddressBytes({...addressReadInput,
                 address: domainCandidate.address, length: 0x20,
                 outputBuf: captureBuf});
             if (!wrapperRead.ok) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=domain-wrapper-read fatal=" + !!wrapperRead.fatal +
-                    " error=" + wrapperRead.error);
                 if (wrapperRead.fatal) {
-                    await log("ROOT: domain-wrapper read failed: " +
-                        wrapperRead.error);
                     return lookupResult(false);
                 }
                 continue;
@@ -537,20 +418,8 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             var wrapperVptr0Matched = wrapperVptr0 === expectedWrapperVptr0;
             var wrapperVptr1Matched = wrapperVptr1 === expectedWrapperVptr1;
             var wrapperManagerMatched = wrapperManager === BigInt(group.manager);
-            await log("ROOT TABLE: group=" + gi +
-                " wrapper-layout vptr0=0x" + wrapperVptr0.toString(16) +
-                " expected0=0x" + expectedWrapperVptr0.toString(16) +
-                " match0=" + wrapperVptr0Matched +
-                " vptr1=0x" + wrapperVptr1.toString(16) +
-                " expected1=0x" + expectedWrapperVptr1.toString(16) +
-                " match1=" + wrapperVptr1Matched +
-                " manager=0x" + wrapperManager.toString(16) +
-                " expectedManager=0x" + group.manager.toString(16) +
-                " managerMatch=" + wrapperManagerMatched);
             if (!wrapperVptr0Matched || !wrapperVptr1Matched ||
                 !wrapperManagerMatched) {
-                await log("ROOT TABLE: reject group=" + gi +
-                    " stage=wrapper-vtables-manager");
                 continue;
             }
 
@@ -558,17 +427,9 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                 domain: domainCandidate.address, object: Number(objectAddress),
                 manager: group.manager, table: table,
                 rootVptr: group.rootVptr, entryBytes: entryRead.bytes});
-            await log("ROOT TABLE: group=" + gi +
-                " produced coherent entry=0x" + entryAddress.toString(16));
         }
 
-        await log("ROOT TABLE: lookup summary rootId=" +
-            domainId + " groups=" + groups.length + " matches=" +
-            tableMatches.length);
         if (tableMatches.length !== 1) {
-            await log("ROOT: domain table lookup=" +
-                (tableMatches.length === 0 ? "no match" : "ambiguous") +
-                " matches=" + tableMatches.length);
             // The address read itself was valid, but this capture did not
             // identify one table entry for the session's domain ID. A later
             // bounded candidate capture may cover the correct heap region.
@@ -577,19 +438,10 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
         }
 
         var located = tableMatches[0];
-        await log("ROOT: entry id=" + located.domainId +
-            " at=0x" + located.entry.toString(16) +
-            " domain=0x" + located.domain.toString(16) +
-            " object=0x" + located.object.toString(16) +
-            " manager=0x" + located.manager.toString(16) +
-            " table=0x" + located.table.toString(16) +
-            " classVptr=0x" +
-            AnalysisBytes.readU64LE(located.entryBytes, 0x28).toString(16));
 
         var rootRead = await readFsAddressBytes({...addressReadInput,
             address: located.object, length: 0x40, outputBuf: captureBuf});
         if (!rootRead.ok) {
-            await log("ROOT: object read failed: " + rootRead.error);
             if (!rootRead.fatal) rootCandidateRetryable = true;
             return lookupResult(false);
         }
@@ -598,15 +450,9 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
         var rootRefCount = AnalysisBytes.readU32LE(rootBytes, 0x38);
         if (rootObjectVptr !== BigInt(located.rootVptr) ||
             rootRefCount === 0 || rootRefCount >= 0x1000000) {
-            await log("ROOT: object layout rejected vptr=0x" +
-                rootObjectVptr.toString(16) + " ref=0x" +
-                rootRefCount.toString(16));
             rootCandidateRetryable = true;
             return lookupResult(false);
         }
-        await log("ROOT: object vptr=0x" +
-            rootObjectVptr.toString(16) + " ref=0x" +
-            rootRefCount.toString(16));
 
         var liveBaseline = rootBytes.slice();
         var expectedCount = rootRefCount + 3;
@@ -622,8 +468,6 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                     var cloneHandle = cloneObject(opened.handle, domainId);
                     if (!cloneHandle) {
                         cloneOpened = false;
-                        await log("ROOT: clone open failed index=" +
-                            cloneIndex);
                         break;
                     }
                     cloneHandles.push(cloneHandle);
@@ -639,18 +483,9 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                     AnalysisBytes.writeU32LE(expectedDuring, 0x38, expectedCount);
                     challengeOnlyCounter = AnalysisBytes.equal(duringRead.bytes,
                         expectedDuring);
-                    await log("ROOT: clone challenge before=0x" +
-                        rootRefCount.toString(16) + " during=0x" +
-                        AnalysisBytes.readU32LE(duringRead.bytes, 0x38).toString(16) +
-                        " expected=0x" + expectedCount.toString(16) +
-                        " onlyRefcount=" + challengeOnlyCounter);
-                } else {
-                    await log("ROOT: clone challenge read failed: " +
-                        duringRead.error);
                 }
             }
         } finally {
-            var challengedClones = cloneHandles.length;
             var failedCloneCloses = [];
             var stillOpenClones = [];
             for (var closeIndex = cloneHandles.length - 1;
@@ -665,9 +500,6 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                 }
             }
             cloneHandles = stillOpenClones;
-            await log("ROOT: challenge clones closed=" +
-                challengedClones + " errors=" +
-                (failedCloneCloses.join(",") || "none"));
         }
 
         var restoredRead = await readFsAddressBytes({...addressReadInput,
@@ -675,18 +507,11 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
         if (restoredRead.ok)
             challengeRestored = AnalysisBytes.equal(restoredRead.bytes,
                 liveBaseline);
-        await log("ROOT: clone restore=" + challengeRestored +
-            " closeOk=" + cloneCloseOk + " exactBytes=" +
-            (restoredRead.ok && challengeRestored));
 
         if (!challengeRestored || !cloneCloseOk) {
-            await log("ROOT: clone proof did not restore cleanly; " +
-                "PID and backend reads skipped");
             return lookupResult(false);
         }
         if (!challengeOnlyCounter) {
-            await log("ROOT: clone proof changed unexpected bytes; " +
-                "PID and backend reads skipped");
             rootCandidateRetryable = true;
             return lookupResult(false);
         }
@@ -694,11 +519,7 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
         var rootPid = AnalysisBytes.readU64LE(liveBaseline, 0x30);
         rootPidRead = true;
         var rootPidPlausible = rootPid > 1n && rootPid < 0x1000000n;
-        await log("ROOT: clone proof passed; PID=0x" +
-            rootPid.toString(16) + " plausible=" + rootPidPlausible);
         if (!rootPidPlausible) {
-            await log("ROOT: implausible PID; backend links and " +
-                "PID fields skipped");
             return lookupResult(false);
         }
 
@@ -724,10 +545,6 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
             address: located.object, length: 0x40, outputBuf: captureBuf});
         var rootStable = rootFinalRead.ok &&
             AnalysisBytes.equal(rootFinalRead.bytes, liveBaseline);
-        await log("ROOT: final identity reread ok=" +
-            rootFinalRead.ok + " byteStable=" + rootStable +
-            " pidUnchanged=" + (rootStable &&
-                AnalysisBytes.readU64LE(rootFinalRead.bytes, 0x30) === rootPid));
 
         verified = rootPidPlausible && challengeOnlyCounter &&
             challengeRestored && cloneCloseOk && rootStable &&
@@ -763,39 +580,17 @@ export async function inspectFspIdentityTargetsReadOnly(input) {
                 ]
             };
         }
-        await log("ROOT: result=" + (verified ? "VERIFIED" :
-            "NOT VERIFIED") + " pid=0x" + rootPid.toString(16) +
-            " domainId=" + domainId + " backends=" +
-            backendResults.map(function(item) {
-                return item.name + ":" +
-                    (item.pid !== undefined ? "pid=0x" +
-                        item.pid.toString(16) : "pid=unread") +
-                    "/objectRead=" + !!item.read + "/links=" +
-                    !!item.linksOk +
-                    "/vptrShape=" + !!item.vptrShapeOk + "/stable=" +
-                    !!item.stable;
-            }).join(","));
         return lookupResult(verified);
     } finally {
         if (cloneHandles.length) {
             for (var leftIndex = cloneHandles.length - 1;
                 leftIndex >= 0; leftIndex--) {
-                var retryClose = Number(closeHandle(
-                    cloneHandles[leftIndex])) >>> 0;
-                if (retryClose !== 0) {
-                    await log("ROOT: retry clone close failed=" +
-                        hex32(retryClose));
-                }
+                closeHandle(cloneHandles[leftIndex]);
             }
             cloneHandles = [];
         }
-        if (domainSession && verified) {
-            await log("ROOT: retaining the verified domain session " +
-                "through PID restoration and the final User-storage read");
-        } else if (domainSession) {
-            var domainClose = Number(closeHandle(domainSession.handle)) >>> 0;
-            await log("ROOT: close inspected domain session rc=" +
-                hex32(domainClose));
+        if (domainSession && !verified) {
+            closeHandle(domainSession.handle);
             domainSession = null;
         }
     }
@@ -1025,10 +820,6 @@ export async function inspectRootBackend(name, raw, control, pidOffset, rootPid,
     var linksOk = expectedPidOffset === pidOffset &&
         RootLayout.isCanonicalPointer(raw) && RootLayout.isCanonicalPointer(control) &&
         raw === control + 0x18n;
-    await log("ROOT BACKEND " + name + " link raw=0x" +
-        raw.toString(16) + " control=0x" + control.toString(16) +
-        " expectedRaw=control+0x18 linksOk=" + linksOk +
-        " pidOffset=0x" + pidOffset.toString(16));
     if (!linksOk)
         return {name: name, read: false, linksOk: false,
             vptrShapeOk: false, pidOk: false, stable: false};
@@ -1037,8 +828,6 @@ export async function inspectRootBackend(name, raw, control, pidOffset, rootPid,
     var backendRead = await readFsAddressBytes({...input,
         address: backendAddress, length: 0x60, outputBuf});
     if (!backendRead.ok) {
-        await log("ROOT BACKEND " + name +
-            ": skipped; " + backendRead.error);
         return {name: name, read: false, linksOk: true,
             vptrShapeOk: false, pidOk: false, stable: false};
     }
@@ -1046,8 +835,6 @@ export async function inspectRootBackend(name, raw, control, pidOffset, rootPid,
     var vptr = AnalysisBytes.readU64LE(backendRead.bytes, 0);
     var vptrShapeOk = RootLayout.isCanonicalPointer(vptr);
     if (!vptrShapeOk) {
-        await log("ROOT BACKEND " + name +
-            " type-shape rejected vptr=0x" + vptr.toString(16));
         return {name: name, read: true, linksOk: true,
             vptrShapeOk: false, pidOk: false, stable: false};
     }
@@ -1060,12 +847,6 @@ export async function inspectRootBackend(name, raw, control, pidOffset, rootPid,
         address: backendAddress, length: 0x60, outputBuf});
     var stable = reread.ok && AnalysisBytes.equal(reread.bytes,
         backendRead.bytes);
-    await log("ROOT BACKEND " + name + " address=0x" +
-        backendAddress.toString(16) + " vptr=0x" + vptr.toString(16) +
-        " canonicalTypeShape=" + vptrShapeOk + " pid=0x" + pid.toString(16) +
-        " pidPlausible=" + pidPlausible + " pidMatchesRootOrOne=" +
-        pidMatchesRootOrOne + " stable=" + stable +
-        (reread.ok ? "" : " rereadError=" + reread.error));
     return {name: name, address: backendAddress, read: true,
         linksOk: linksOk, vptrShapeOk: vptrShapeOk, pidOk: pidOk,
         stable: stable, vptr: vptr, pid: pid,

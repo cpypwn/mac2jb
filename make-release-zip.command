@@ -63,7 +63,6 @@ for item in \
     upstream.lock \
     make-release-zip.command \
     scripts \
-    stremio \
     integrations \
     gui \
     packaging \

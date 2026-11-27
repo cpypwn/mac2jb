@@ -22,13 +22,57 @@ args.splice(dirOption, 2);
 if (args.length > 1 || args.some(arg => arg.startsWith('-'))) usage(1);
 const host = args[0];
 
-for (const file of ['ro/main', 'hen/main', 'game/main', 'bootstrap.bin', 'hbmenu.nro']) {
+// The host reads these itself during acquisition: the RO payload and the
+// native bootstrap. They are not SD-card files.
+for (const file of ['ro/main', 'bootstrap.bin']) {
   if (!fs.statSync(path.join(ship, file), {throwIfNoEntry: false})?.isFile()) {
     throw Error(`Missing package file: ${path.join(ship, file)}`);
   }
 }
 if (!fs.statSync(runScript, {throwIfNoEntry: false})?.isFile()) {
   throw Error(`Missing ns2jb run.cjs: ${runScript}`);
+}
+
+// Every file under the release's sdcard/ goes to the SD card at the same
+// path: the folder mirrors the card. A release without it is an older, flat
+// one, whose SD-card files are at known paths.
+function collectSdcardFiles(root) {
+  const files = [];
+  const walk = (dir, prefix) => {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+      if (entry.name.startsWith('.')) continue;
+      const child = path.join(dir, entry.name);
+      const target = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) walk(child, target);
+      else if (entry.isFile()) files.push({source: child, target});
+    }
+  };
+  walk(root, '');
+  return files;
+}
+
+function sdcardFiles(ship) {
+  const sdcard = path.join(ship, 'sdcard');
+  if (fs.statSync(sdcard, {throwIfNoEntry: false})?.isDirectory()) {
+    return collectSdcardFiles(sdcard);
+  }
+  // A flat release: the files that went to the SD card, by their paths.
+  const files = [
+    {source: path.join(ship, 'hbmenu.nro'), target: '/hbmenu.nro'},
+    {source: path.join(ship, 'hen/main'), target: '/kaihen/bin/hen/main'},
+    {source: path.join(ship, 'game/main'), target: '/kaihen/bin/game/main'},
+  ];
+  for (const entry of fs.readdirSync(path.join(ship, 'programs'), {withFileTypes: true})) {
+    if (entry.isFile() && !entry.name.startsWith('.')) {
+      files.push({source: path.join(ship, 'programs', entry.name), target: `/switch/${entry.name}`});
+    }
+  }
+  for (const file of files) {
+    if (!fs.statSync(file.source, {throwIfNoEntry: false})?.isFile()) {
+      throw Error(`Missing package file: ${file.source} (the release has no sdcard/ folder)`);
+    }
+  }
+  return files;
 }
 
 let acquisition;
@@ -95,15 +139,10 @@ async function main() {
   }
 
   process.env.NS2_RUN_DIR = run;
-  process.env.HBMENU_NRO = path.join(ship, 'hbmenu.nro');
-  const programs = fs.readdirSync(path.join(ship, 'programs'), {withFileTypes: true})
-    .filter(entry => entry.isFile() && !entry.name.startsWith('.'))
-    .map(entry => ({source: path.join(ship, 'programs', entry.name),
-      target: `/switch/${entry.name}`}));
+  const files = sdcardFiles(ship);
   const {main: startHen} = require(path.join(run, 'switch2/ro/start-hen.cjs'));
   try {
-    const started = await startHen(path.join(ship, 'hen/main'),
-      path.join(ship, 'bootstrap.bin'), path.join(ship, 'game/main'), programs);
+    const started = await startHen(path.join(ship, 'bootstrap.bin'), files);
     console.log(`HEN PID ${started.pid}; startup record: ${started.file}`);
   } catch (error) {
     console.error(`HEN startup failed; SmileBASIC RPC remains live in ${run}`);

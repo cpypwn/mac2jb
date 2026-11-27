@@ -10,15 +10,39 @@ the fs exploit won't work as it's very timing sensitive.
 
 
 
+## Loading kaiHEN改変
+Make sure to use an SD card, formatted in either FAT32 or EXFAT.
+
+1. Download [kaiHEN](https://github.com/ouncebrew/kaihen) and
+   unzip it on your computer. Pass `--dir` the extracted directory that
+   directly contains `ro/main`, `hen/main`, `game/main`, `bootstrap.bin`,
+   `hbmenu.nro`, and `programs/`.
+2. Complete the [SmileBASIC setup](#one-time-setup), then open
+   SmileBASIC and enter Direct mode. Leave it open.
+3. From this `ns2jb2` directory, run:
+
+   ```sh
+   node hen.cjs --dir /path/to/extracted/kaihen
+   ```
+
+   If the computer has multiple network addresses, add the IP address the
+   Switch can reach after the directory path. Follow the printed SmileBASIC
+   instructions, including `LOAD`, `RUN`, `REMOVE`, and `V=START(...)`.
+4. Wait for `HEN launch completed!` and the HEN PID before leaving SmileBASIC.
+   Press HOME and close SmileBASIC normally.
+5. Hold **R** while opening a native Switch 2 game. On a fresh setup, the
+   first launch captures the game's policy and opens the game normally.
+   Close the game from HOME, then hold **R** and launch it a second time to
+   open hbmenu. If a game policy was already saved, hbmenu may open on the
+   first R-held launch.
 ## What this fork improves
 
-This fork adds support for smileBASIC 4.4.6 DEMO version in addition to the base version.
+This fork adds support for smileBASIC 4.4.6 DEMO version in addition to the base version. kaiHEN is now supported as well.
 
 ## One-time setup
 
 In SmileBASIC’s **Make a Program**, enter `bootstrap.bas` into slot 0 and save it
-as `NS2` (if using the full version). On the **SmileBASIC Demo**, saving to a file is
-not required: keep `bootstrap.bas` entered in slot 0 directly. A USB keyboard helps.
+as `NS2` (if using the full version).
 The ZIP is a computer package, not a SmileBASIC import file; there is no published
 download key.
 To save and retrieve your code when using the demo version, use these inputs in direct mode:
@@ -65,3 +89,5 @@ PRGEDIT 0:LOADV "TXT:NS2" OUT C$:PRGSET C$
 Keep SmileBASIC open and the computer awake until **FS execution verified**.
 Restart the console when finished; that also restores the original RO process.
 This demo does not install custom firmware or persistence.
+
+To keep the console connected to smileBASIC after passing the 4/4 verification, add `--rpc` to the `node run.cjs` command.

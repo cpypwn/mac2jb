@@ -39,26 +39,12 @@ xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
   -o "$BUILD/test-session-data-cleanup"
 "$BUILD/test-session-data-cleanup"
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
-  gui/CivSwitchAppsModel.swift scripts/test-civswitch-apps-model.swift \
-  -o "$BUILD/test-civswitch-apps-model"
-"$BUILD/test-civswitch-apps-model"
-xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 \
   gui/CivSwitchModel.swift scripts/test-civswitch-model.swift \
   -o "$BUILD/test-civswitch-model"
 "$BUILD/test-civswitch-model"
 if ! python3 scripts/prepare-homebrew-runtime.py --check; then
   python3 scripts/prepare-homebrew-runtime.py
 fi
-"$BUILD/homebrew/python/bin/python3" integrations/nsp-box/cli.py --self-test
-"$BUILD/homebrew/python/bin/python3" scripts/test-nsp-box.py
-"$NODE_BINARY" --test scripts/test-gui-nup.cjs
-"$NODE_BINARY" --test scripts/test-gui-nxformat.cjs
-"$NODE_BINARY" --test scripts/test-gui-civhomebrew.cjs
-"$NODE_BINARY" --test scripts/test-civhomebrew-catalog.cjs
-"$NODE_BINARY" --test scripts/test-gui-civswitch-moonlight.cjs
-"$NODE_BINARY" --test scripts/test-gui-civswitch-sw2nes.cjs
-"$NODE_BINARY" --test scripts/test-gui-civswitch-jellyfin.cjs
-"$NODE_BINARY" --test scripts/test-gui-civswitch-package.cjs
 if ! NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh --check >/dev/null; then
   NODE_BINARY="$NODE_BINARY" sh integrations/mintbrew-native/build-native.sh
 fi
@@ -75,23 +61,13 @@ done
 "$NODE_BINARY" scripts/prepare-bootstrap.cjs --check
 "$NODE_BINARY" scripts/prepare-host-profiles.cjs --check
 "$NODE_BINARY" scripts/prepare-seedsow-host.cjs --check
-"$NODE_BINARY" scripts/gui-dnswitch.cjs --self-test
-"$NODE_BINARY" --test scripts/test-gui-dnswitch.cjs
 "$NODE_BINARY" scripts/gui-offline-ethernet.cjs --self-test
 "$NODE_BINARY" --test scripts/test-gui-offline-ethernet.cjs
 bash -n integrations/offline-ethernet/helper.sh
 perl -c integrations/offline-ethernet/Responder.pl
-"$NODE_BINARY" scripts/gui-webkit-research.cjs --self-test
-"$NODE_BINARY" --test scripts/test-gui-webkit-research.cjs
-"$NODE_BINARY" scripts/gui-bundled-browser-probes.cjs --self-test
-"$NODE_BINARY" --test scripts/test-gui-bundled-browser-probes.cjs
-"$NODE_BINARY" scripts/check-webkit-research.cjs
-"$NODE_BINARY" --test scripts/test-check-webkit-research.cjs
-bash scripts/test-webkit-staging.sh
 bash scripts/test-usb-typing-timing.sh
 bash scripts/test-typing-preferences.sh
 bash scripts/test-network-selection.sh
-osacompile -o "$BUILD/dnswitch.scpt" scripts/dnswitch-launch.applescript
 osacompile -o "$BUILD/offline-ethernet.scpt" scripts/offline-ethernet-launch.applescript
 "$NODE_BINARY" integrations/civswitch/verify.cjs --source
 civswitch_tests=(integrations/civswitch/probe.test.cjs integrations/civswitch/send-payload.test.cjs integrations/civswitch/install-persistent.test.cjs integrations/civswitch/fs-host.test.cjs scripts/test-civswitch-hid.cjs)
@@ -122,11 +98,8 @@ bash scripts/test-artemis-http.sh
 "$NODE_BINARY" --test vendor/ns2-savekit/tests/test_diagnose_ns2jb.cjs
 "$NODE_BINARY" --test scripts/test-savekit-title-names.cjs
 "$NODE_BINARY" --test scripts/test-seedsow-held-session.cjs
-"$NODE_BINARY" --test scripts/test-custom-rpc-package.cjs scripts/test-gui-homebrew.cjs
-"$NODE_BINARY" --test scripts/test-gui-modloader.cjs \
-  integrations/ns2jb-modloader/tests/native-license.test.cjs \
-  integrations/ns2jb-modloader/tests/native-capture-failure.test.cjs \
-  integrations/ns2jb-modloader/tests/verified-run.test.cjs
+"$NODE_BINARY" --test scripts/test-custom-rpc-package.cjs
+"$NODE_BINARY" --test scripts/test-gui-modloader.cjs
 "$NODE_BINARY" scripts/check-savekit-research.cjs
 "$NODE_BINARY" --test integrations/mintbrew-native/contract.test.cjs
 "$NODE_BINARY" --test integrations/mintbrew-native/host.test.cjs integrations/mintbrew-native/sd-roms.test.cjs scripts/test-kurumuz-native-ranges.cjs
@@ -182,20 +155,12 @@ while IFS= read -r dependency; do
   esac
 done < <(otool -L "$PAYLOAD/node" | tail -n +2 | awk '{print $1}')
 cp "$NODE_LICENSE" "$PAYLOAD/licenses/node-LICENSE.txt"
-cp -R "$BUILD/homebrew" "$PAYLOAD/homebrew"
 chmod 700 "$PAYLOAD/node" "$PAYLOAD/mac2jb-send" "$PAYLOAD/mac2jb-commands" "$PAYLOAD/mac2jb-keyboard" "$PAYLOAD/mac2jb-civswitch-hid"
 python3 scripts/package-gui-payload.py verify-minimum "$PAYLOAD"
 python3 scripts/package-gui-payload.py stage "$ROOT" "$PAYLOAD" "$NODE_BINARY"
-"$NODE_BINARY" "$PAYLOAD/scripts/gui-dnswitch.cjs" --self-test
 "$NODE_BINARY" "$PAYLOAD/scripts/gui-offline-ethernet.cjs" --self-test
 bash -n "$PAYLOAD/integrations/offline-ethernet/helper.sh"
 perl -c "$PAYLOAD/integrations/offline-ethernet/Responder.pl"
-"$NODE_BINARY" "$PAYLOAD/scripts/gui-webkit-research.cjs" --self-test
-"$NODE_BINARY" "$PAYLOAD/scripts/gui-bundled-browser-probes.cjs" --self-test
-"$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-sw2nes.cjs" --self-test "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-jellyfin.cjs" --self-test "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/scripts/gui-civswitch-package.cjs" --self-test "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/scripts/check-webkit-research.cjs"
 "$NODE_BINARY" "$PAYLOAD/integrations/civswitch/verify.cjs" --runtime
 "$NODE_BINARY" "$PAYLOAD/integrations/seedsow-semi-untethered/upload.cjs" --check
 if [ -f "$PAYLOAD/integrations/civswitch/send-hello.cjs" ]; then
@@ -205,39 +170,24 @@ fi
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/install-persistent.cjs"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/backup-single.js"
 "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitchfs-kaihen/launch.cjs"
-"$NODE_BINARY" -e 'require(process.argv[1]).verifyAssets(process.argv[2]); require(process.argv[1]).verifyAssets(process.argv[2], {sd: true})' \
+"$NODE_BINARY" -e 'require(process.argv[1]).verifyAssets(process.argv[2])' \
   "$PAYLOAD/integrations/civswitchfs-kaihen/launch.cjs" "$PAYLOAD"
 if [ -f "$PAYLOAD/integrations/civswitch/hello.js" ]; then
     "$NODE_BINARY" --check "$PAYLOAD/integrations/civswitch/hello.js"
 fi
 "$PAYLOAD/mac2jb-civswitch-hid" --payload "$PAYLOAD/integrations/civswitch/payload.txt" --dry-run
 "$NODE_BINARY" "$PAYLOAD/scripts/check-savekit-research.cjs" --root "$PAYLOAD" --compare "$ROOT"
-"$NODE_BINARY" --check "$PAYLOAD/scripts/gui-modloader.cjs"
-"$NODE_BINARY" --check "$PAYLOAD/scripts/gui-modloader-sd.cjs"
-"$NODE_BINARY" --check "$PAYLOAD/integrations/ns2jb-modloader/install.cjs"
-"$NODE_BINARY" -e 'require(process.argv[1]).artifacts()' \
-  "$PAYLOAD/integrations/ns2jb-modloader/lib/native/artifacts.cjs"
-
-"$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/HBLauncher/apps"
-"$NODE_BINARY" scripts/prepare-homebrew-apps.cjs --install "$PAYLOAD/vendor/GPUBrewLauncher/apps"
-"$NODE_BINARY" scripts/prepare-mintbrew.cjs --prepare "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/scripts/prepare-mintbrew.cjs" --check-runtime "$PAYLOAD"
-"$NODE_BINARY" "$PAYLOAD/integrations/mintbrew-native/verify-native.cjs" --all \
-  "$PAYLOAD/integrations/mintbrew-native/upstream" >/dev/null
 python3 scripts/package-gui-payload.py verify-runtime "$ROOT" "$PAYLOAD"
 
 python3 scripts/package-gui-payload.py archive "$PAYLOAD" "$BUILD" "$SOURCE_ARCHIVE"
+rm -rf "$BUILD/homebrew"
 
 xcrun clang -target arm64-apple-macos14.0 -O2 -c gui/EmbeddedPayload.c -o "$BUILD/EmbeddedPayload.o"
 mkdir -p "$STAGE/mac2jb.app/Contents/MacOS" "$STAGE/mac2jb.app/Contents/Resources"
 GUI_SOURCES=()
 GUI_SWIFT_FLAGS=(-D MAC2JB_GUI_BUILD)
 TEST_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :MAC2JBTestBuild' "$ROOT/gui/Info.plist")"
-for source in gui/*.swift; do
-  if [[ "$source" != gui/CivStremioModel.swift ]]; then
-    GUI_SOURCES+=("$source")
-  fi
-done
+for source in gui/*.swift; do GUI_SOURCES+=("$source"); done
 if [[ "$TEST_BUILD" == true ]]; then GUI_SWIFT_FLAGS+=(-D MAC2JB_TEST_BUILD); fi
 xcrun swiftc -swift-version 5 -target arm64-apple-macos14.0 -O \
   -module-cache-path "$BUILD/module-cache" \
@@ -253,6 +203,14 @@ xcrun swiftc -parse-as-library -swift-version 5 -target arm64-apple-macos14.0 -O
 xattr -cr "$STAGE/mac2jb.app"
 codesign --force --sign - "$STAGE/mac2jb.app"
 codesign --verify --strict "$STAGE/mac2jb.app"
+rm -rf "$BUILD/module-cache" "$BUILD/runtime.tar.gz"
+# Exercise the actual embedded runtime before replacing a working app.
+if ! "$STAGE/mac2jb.app/Contents/MacOS/mac2jb" --self-test > "$STAGE/runtime-self-test.log" 2>&1; then
+  tail -n 80 "$STAGE/runtime-self-test.log" >&2
+  echo 'Packaged app runtime self-test failed.' >&2
+  exit 1
+fi
+tail -n 1 "$STAGE/runtime-self-test.log"
 mkdir -p "$(dirname "$APP_OUTPUT")"
 if [[ -e "$APP_OUTPUT" ]]; then rm -rf "$APP_OUTPUT"; fi
 mv "$STAGE/mac2jb.app" "$APP_OUTPUT"

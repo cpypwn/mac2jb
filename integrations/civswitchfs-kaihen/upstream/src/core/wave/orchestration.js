@@ -27,7 +27,7 @@ function applyCmifContext(pkt, ctx) {
 }
 
 // ── Synchronization gate block ───────────────────────────────────
-// Allocate and name the gate block used by all 13 wave workers.
+// Allocate and name the gate block used by all wave workers.
 // Returns an object with named addresses for every gate and flag.
 function createGateBlock() {
     var block = allocPage(0x10000);
@@ -43,9 +43,9 @@ function createGateBlock() {
         earlyHole:          block + 0x600n,
         sampledCompleted:   block + 0x700n,
         sampledEarlyHole:   block + 0x800n,
-        zeroByte:           block + 0x900n,
-        spacingDecision:    block + 0xA00n,
-        roleDoneFlags:      block + 0xB00n
+        zeroByte:              block + 0x900n,
+        spacingDecision:       block + 0xA00n,
+        roleDoneFlags:         block + 0xB00n
     };
 }
 
@@ -78,25 +78,32 @@ function frameArgSlot(frameAddr, count, stepIndex, argIndex) {
 
 // ── Frame backup and restore ─────────────────────────────────────
 
-// Build all 13 frames from plans, apply trigger abort-guard patches,
+// Build frames from plans, apply trigger abort-guard patches,
 // and save backups. Returns { frames, backups, pktBackups }.
 //
 // plans:    array of step arrays (from buildPlans)
-// packets:  array of 13 REQ packet addresses
+// packets:  array of REQ packet addresses
 // triggerBuf: address of the trigger's first slot buffer
 // sendIndices: array of 13 last-SEND step indices
 function buildWaveFrames(plans, packets, triggerBuf, sendIndices) {
     var frames = plans.map(function(p) { return buildRawFrame(p); });
 
     // Trigger frame (role 12): wire abort-guard copy-to-length patches.
-    // Step 9 copies sampledCompleted -> step 10's arg2 (memcpy length)
-    // Step 11 copies sampledEarlyHole -> step 12's arg2
-    // Step 13 copies spacingDecision -> step 14's arg2
+    // Each abort-guard pair is MCPY(0n, flag, 4) followed by
+    // MCPY(triggerBuf, zeroByte, 0). The first MCPY's dst (0n) is
+    // patched to point at the second MCPY's length slot, so the
+    // sampled flag value becomes the copy length at runtime.
+    // Find them dynamically: any MCPY with dst === 0n is an abort-guard.
     var tf = frames[12].frame;
     var tc = frames[12].count;
-    write64(frameArgSlot(tf, tc, 9, 0), frameArgSlot(tf, tc, 10, 2));
-    write64(frameArgSlot(tf, tc, 11, 0), frameArgSlot(tf, tc, 12, 2));
-    write64(frameArgSlot(tf, tc, 13, 0), frameArgSlot(tf, tc, 14, 2));
+    var triggerPlan = plans[12];
+    for (var j = 0; j < triggerPlan.length - 1; j++) {
+        if (triggerPlan[j].fn === GADGET_MEMCPY &&
+            triggerPlan[j].args[0] === 0n) {
+            write64(frameArgSlot(tf, tc, j, 0),
+                frameArgSlot(tf, tc, j + 1, 2));
+        }
+    }
 
     var frameBackups = [];
     for (var i = 0; i < 13; i++) {
@@ -151,76 +158,133 @@ function resetWaveState(frames, backups, packets, pktBackups, gates, extra) {
 // ── Wave execution ───────────────────────────────────────────────
 
 // Run one wave: create, start, signal, poll, join all workers.
-// Returns { created, started, done, joined, workerStateSafe, workers }
-function executeWave(frames, scheduling, resources, gates, sendIndices) {
-    var workers = [];
-    for (var i = 0; i < 13; i++) {
-        workers.push(createRawWorker(frames[i].frame,
-            { priority: scheduling.priority, core: scheduling.core,
-              mask: scheduling.mask },
-            resources[i]));
-        if (workers[i].rc !== 0) break;
-    }
-    var created = workers.filter(function(w) { return w.rc === 0; }).length;
-    if (created < 13) {
-        for (var i = 0; i < workers.length; i++) {
-            if (workers[i].rc === 0 && workers[i].handle)
-                closeRawThread(workers[i].handle);
+// workerRoles lists the active slot indices (e.g. [0,1,2,3,4,5,6,9,10,11,12]).
+// Priorities are assigned contiguously in workerRoles order so the
+// kernel scheduler fires them deterministically on a single core.
+// Returns { created, pinned, started, done, joined, workerStateSafe, workers }
+function executeWave(frames, scheduling, resources, gates, sendIndices,
+    workerRoles) {
+
+    var pinCore = scheduling.core;
+    var workerCount = workerRoles.length;
+
+    var workers = new Array(13);
+    var createFailed = false;
+    for (var wi = 0; wi < workerCount; wi++) {
+        var role = workerRoles[wi];
+        workers[role] = createRawWorker(frames[role].frame,
+            { priority: scheduling.priority + wi, core: pinCore },
+            resources[role]);
+
+        if (workers[role].rc !== 0) {
+            createFailed = true;
+            break;
         }
-        return { created: created, started: 0, done: 0, joined: 0,
+    }
+
+    var created = 0;
+    for (var wi = 0; wi < workerCount; wi++) {
+        if (workers[workerRoles[wi]] &&
+            workers[workerRoles[wi]].rc === 0) created++;
+    }
+
+    if (created < workerCount) {
+        for (var wi = 0; wi < workerCount; wi++) {
+            var w = workers[workerRoles[wi]];
+            if (w && w.rc === 0 && w.handle)
+                closeRawThread(w.handle);
+        }
+
+        return {
+            created: created, pinned: 0, started: 0, done: 0, joined: 0,
             workerStateSafe: true, workers: workers };
     }
 
-    var started = 0;
-    for (var i = 0; i < 13; i++) {
-        if (startRawWorker(workers[i]) === 0) started++;
+    // Set a single-core affinity mask before any worker can run.
+    var pinned = 0;
+    for (var wi = 0; wi < workerCount; wi++) {
+        var pinRc = pinWorkerToCore(
+            workers[workerRoles[wi]].handle, pinCore);
+        if (pinRc === 0) pinned++;
     }
-    if (started < 13) {
-        write8(gates.block, 0n);  // unblock master gate with 0 (no-op)
+
+    if (pinned < workerCount) {
+        for (var wi = 0; wi < workerCount; wi++) {
+            closeRawThread(workers[workerRoles[wi]].handle);
+        }
+
+        return {
+            created: created, pinned: pinned,
+            started: 0, done: 0, joined: 0,
+            workerStateSafe: true, workers: workers
+        };
+    }
+
+    var started = 0;
+    for (var wi = 0; wi < workerCount; wi++) {
+        if (startRawWorker(workers[workerRoles[wi]]) === 0) started++;
+    }
+
+    if (started < workerCount) {
+        write8(gates.block, 0n);
         call_rop(F_SignalToAddress, gates.masterGate, 1n, 0n, 0x7FFFFFFFn);
         var safe = true;
-        for (var i = 0; i < 13; i++) {
-            if (!workers[i].handle) continue;
-            if (!workers[i].started) {
-                closeRawThread(workers[i].handle);
+        for (var wi = 0; wi < workerCount; wi++) {
+            var role = workerRoles[wi];
+            if (!workers[role].handle) continue;
+
+            if (!workers[role].started) {
+                closeRawThread(workers[role].handle);
                 continue;
             }
-            var rc = waitRawThread(workers[i].handle, 5000000000n,
-                resources[i].waitBuf);
-            if (rc === 0) closeRawThread(workers[i].handle);
+
+            var rc = waitRawThread(workers[role].handle, 5000000000n,
+                resources[role].waitBuf);
+            if (rc === 0) closeRawThread(workers[role].handle);
             else safe = false;
         }
-        return { created: created, started: started, done: 0, joined: 0,
+
+        return { created: created, pinned: pinned, started: started,
+            done: 0, joined: 0,
             workerStateSafe: safe, workers: workers };
     }
 
-    // Let workers settle at their gates
-    call_rop(F_Sleep, 20000000n);
+    // Let workers settle at their gates. Single core, priority-ordered:
+    // workers reach WAIT(masterGate) within microseconds. 2ms is plenty.
+    call_rop(F_Sleep, 2000000n);
     var signalResult = call_rop(F_SignalToAddress,
         gates.masterGate, 1n, 0n, 0x7FFFFFFFn);
     var waveT0 = call_rop(F_Tick);
 
-    // Poll for all workers to finish their last SEND
+    // Poll for all active workers to finish their last SEND.
     var done = 0;
     for (var iter = 0; iter < 30000; iter++) {
         done = 0;
-        for (var i = 0; i < 13; i++) {
-            if (readFrameResult(frames[i].frame, sendIndices[i]) !== FRAME_SENTINEL)
+        for (var wi = 0; wi < workerCount; wi++) {
+            var role = workerRoles[wi];
+
+            if (sendIndices[role] < 0 ||
+                readFrameResult(frames[role].frame,
+                    sendIndices[role]) !== FRAME_SENTINEL) {
                 done++;
+            }
         }
-        if (done === 13) break;
+
+        if (done === workerCount) break;
         if (call_rop(F_Tick) - waveT0 > 480000000n) break;
-        call_rop(F_Sleep, 1000000n);
+        call_rop(F_Sleep, 200000n);
     }
 
-    // Join all raw threads
+    // Join all active threads.
     var joined = 0;
     var safe = true;
-    for (var i = 0; i < 13; i++) {
-        var rc = waitRawThread(workers[i].handle, 5000000000n,
-            resources[i].waitBuf);
+    for (var wi = 0; wi < workerCount; wi++) {
+        var role = workerRoles[wi];
+        var rc = waitRawThread(workers[role].handle, 5000000000n,
+            resources[role].waitBuf);
+
         if (rc === 0) {
-            closeRawThread(workers[i].handle);
+            closeRawThread(workers[role].handle);
             joined++;
         } else {
             safe = false;
@@ -228,7 +292,8 @@ function executeWave(frames, scheduling, resources, gates, sendIndices) {
     }
 
     return {
-        created: created, started: started, done: done, joined: joined,
+        created: created, pinned: pinned, started: started,
+        done: done, joined: joined,
         workerStateSafe: safe, workers: workers, waveT0: waveT0,
         signalResult: signalResult
     };
@@ -240,7 +305,9 @@ function executeWave(frames, scheduling, resources, gates, sendIndices) {
 // Returns array of { name, start, end } for each role whose SEND completed.
 function collectSpans(frames, sendIndices, roleLabels) {
     var spans = [];
-    for (var i = 0; i < 13; i++) {
+    for (var i = 0; i < sendIndices.length; i++) {
+        if (sendIndices[i] < 0) continue;
+
         var pre = readFrameResult(frames[i].frame, sendIndices[i] - 1);
         var post = readFrameResult(frames[i].frame, sendIndices[i] + 1);
         if (pre === FRAME_SENTINEL || post === FRAME_SENTINEL) continue;
@@ -292,15 +359,6 @@ function qualifyOverlap(spans, trigSpan, overlapRoles, throughRoles, heldRoles) 
         pendingDuring: pendingDuring,
         receiveMarginUs: receiveMarginUs
     };
-}
-
-// Format a span's timing relative to the trigger span.
-function relativeSpan(spans, name, trigSpan, roleShort) {
-    var span = getSpan(spans, name);
-    var short = roleShort || name;
-    if (!span || !trigSpan) return short + "=NA";
-    return short + "=" + fmtUs(span.start - trigSpan.start) + ".." +
-        fmtUs(span.end - trigSpan.start) + "us";
 }
 
 // Find the index of the last SEND step in a plan.

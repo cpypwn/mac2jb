@@ -2,12 +2,17 @@
 // /main.npdm (the real RO title's policy) at the root of the game's own save
 // data, then the domain conversion that lets the launch swap redirect the
 // Loader's mounted CodeFS to it.
+//
+// The pair is LEFT at the save root after the run: the next kaiHEN stage
+// reuses it by hash (prepareDonor's reuse branch), so a subsequent boot
+// neither rewrites nor deletes the game's save. The every-boot core cleanup
+// no longer wipes it either (core/steps/cleanup.mjs). Only a changed
+// payload/policy replaces it, through the stale-removal path below.
 
 import runtime from "../core/runtime.mjs";
-import {check, khLog, hex, u64Bytes, readU64LE, readU32LE, readNative,
-    writeNative, track, arenaSlots, bytesToHex} from "./state.mjs";
+import {check, khLog, hex, u64Bytes, readU64LE, readNative,
+    writeNative, track, arenaSlots} from "./state.mjs";
 import {cmifSend, requireOk, oneMovedHandle, canonical} from "./wire.mjs";
-import {sha256} from "./sha256.mjs";
 
 const {openMount, closeHandle, writeStr} = runtime;
 
@@ -49,17 +54,14 @@ export async function prepareDonor(context, files) {
     }
 
     // Create and write both files with full readback verification. A donor
-    // file left by an earlier run is REUSED when its content still matches
-    // (the author's donor-prepare: open, size, read, hash) and removed +
-    // committed away when stale — CreateFile on an existing path is 0x402.
+    // file retained from an earlier run is REUSED when its content still
+    // matches this run's payload/policy (open, size, byte compare) and
+    // removed + committed away when stale — CreateFile on an existing path
+    // is 0x402. Reuse is the normal path now: cleanupDonor keeps the pair.
     for (const name of ["main.npdm", "main"]) {
         const bytes = files[name];
         check(bytes && bytes.length > 0 && bytes.length <= 0x100000,
             "donor file " + name + " has no content");
-        const digest = sha256(bytes);
-        const previous = donor.files.find(f => f.name === name);
-        if (previous && previous.sha256 === digest) continue;
-        check(!previous, "an incomplete donor write requires inspection");
 
         let stale = false;
         const exists = savePathPacket(context, handle, 7, name);
@@ -75,20 +77,19 @@ export async function prepareDonor(context, files) {
                 requireOk(sizeReply, "donor reuse size /" + name);
                 const size = readU64LE(
                     readNative(slots.pkt2 + BigInt(sizeReply.dataAt), 8), 0);
-                check(size === BigInt(bytes.length),
-                    "existing donor /" + name + " size changed: " + size);
-                const chunks = [];
-                for (let at = 0; at < bytes.length; at += 0x10000) {
-                    const size2 = Math.min(0x10000, bytes.length - at);
-                    chunks.push(await readSaveChunk(context, child, at, size2));
+                // A retained donor from an older payload or kaiHEN build can
+                // have a different length. The pair is ours alone, so it goes
+                // through the stale path (remove + re-create) instead of
+                // failing the whole stage, which is what a wiped root used to
+                // guarantee.
+                if (size === BigInt(bytes.length) &&
+                        await saveFileMatches(context, child, bytes)) {
+                    donor.files.push({name, size: bytes.length, bytes,
+                        verified: true, reused: true});
+                    await khLog("donor /" + name + " reused");
+                } else {
+                    stale = true;
                 }
-                let all = [];
-                for (const chunk of chunks) all = all.concat(chunk);
-                if (sha256(all) === digest) {
-                    donor.files.push({name, size: bytes.length,
-                        sha256: digest, verified: true, reused: true});
-                    await khLog("donor /" + name + " reused (hash matches)");
-                } else stale = true;
             } finally {
                 closeHandle(child);
             }
@@ -109,7 +110,7 @@ export async function prepareDonor(context, files) {
         const created = savePathPacket(context, handle, 0, name,
             [0, 0, 0, 0, 0, 0, 0, 0].concat(u64Bytes(BigInt(bytes.length))));
         requireOk(created, "donor create /" + name);
-        const entry = {name, size: bytes.length, sha256: digest, created: true};
+        const entry = {name, size: bytes.length, bytes, created: true};
         donor.files.push(entry);
 
         const opened = savePathPacket(context, handle, 8, name, [3, 0, 0, 0]);
@@ -119,14 +120,8 @@ export async function prepareDonor(context, files) {
                 const part = bytes.slice(at, at + 0x10000);
                 await writeSaveChunk(context, child, at, part);
             }
-            const chunks = [];
-            for (let at = 0; at < bytes.length; at += 0x10000) {
-                const size = Math.min(0x10000, bytes.length - at);
-                chunks.push(await readSaveChunk(context, child, at, size));
-            }
-            let all = [];
-            for (const chunk of chunks) all = all.concat(chunk);
-            check(sha256(all) === digest, "donor /" + name + " readback hash differs");
+            check(await saveFileMatches(context, child, bytes),
+                "donor /" + name + " readback differs");
             entry.verified = true;
         } finally {
             closeHandle(child);
@@ -176,21 +171,43 @@ async function readSaveChunk(context, handle, offset, size) {
     return readNative(slots.data, size);
 }
 
-// Remove the donor files and mark the donor cleaned (after the launch).
-// Cleanup goes through a FRESH clone of the mounted save (reference
-// donor-cleanup): the donor session itself stays converted to its domain.
+// Read a save file back and compare it to the expected bytes chunk by chunk.
+// No digest and no accumulated copy: a mismatch stops at the first differing
+// chunk, and the comparison reads exactly the same bytes the hash would.
+async function saveFileMatches(context, handle, expected) {
+    for (let at = 0; at < expected.length; at += 0x10000) {
+        const size = Math.min(0x10000, expected.length - at);
+        const chunk = await readSaveChunk(context, handle, at, size);
+        for (let i = 0; i < size; i++)
+            if (chunk[i] !== expected[at + i]) return false;
+    }
+    return true;
+}
+
+// The post-launch donor step: verify the pair and settle the stage. The
+// files are deliberately LEFT at the root of the game's save so the next
+// kaiHEN run reuses them by content (prepareDonor), which skips the create +
+// write + delete commits on the save while the FS endpoint is armed.
+// Set REMOVE_DONOR_FILES to true to restore the old post-launch removal.
+const REMOVE_DONOR_FILES = false;
+
+// Verify the donor files and keep them (after the launch). Verification
+// goes through a FRESH clone of the mounted save (reference donor-cleanup):
+// the donor session itself stays converted to its domain.
 export async function cleanupDonor(context) {
     const donor = context.donor;
-    check(donor && donor.ready, "donor cleanup requires a ready donor");
-    if (donor.cleanedUp) return {cleanedUp: true};
+    check(donor && donor.ready, "donor settle requires a ready donor");
+    if (donor.cleanedUp) return {cleanedUp: true, retained: true};
     check(!context.worker || context.worker.joined,
-        "donor cleanup requires the completed launch and an idle worker");
+        "donor settle requires the completed launch and an idle worker");
     const mount = runtime.openMount(donor.mount || "save");
-    check(mount && mount.handle, "could not clone the mounted save for cleanup");
+    check(mount && mount.handle,
+        "could not clone the mounted save to verify the donor");
     const handle = mount.handle;
+    const kept = [];
     try {
         for (const item of donor.files) {
-            if (item.removed || !item.created) continue;
+            if (item.removed) continue;
             check(item.verified, "donor file /" + item.name + " was never verified");
             const opened = savePathPacket(context, handle, 8, item.name, [1, 0, 0, 0]);
             const child = oneMovedHandle(opened, "donor verify /" + item.name);
@@ -203,16 +220,11 @@ export async function cleanupDonor(context) {
                     readNative(slots.pkt2 + BigInt(sizeReply.dataAt), 8), 0);
                 check(size === BigInt(item.size),
                     "donor /" + item.name + " changed");
-                const chunks = [];
-                for (let at = 0; at < item.size; at += 0x10000) {
-                    const sizeChunk = Math.min(0x10000, item.size - at);
-                    chunks.push(await readSaveChunk(context, child, at, sizeChunk));
-                }
-                let all = [];
-                for (const chunk of chunks) all = all.concat(chunk);
-                check(sha256(all) === item.sha256,
+                check(await saveFileMatches(context, child, item.bytes),
                     "donor /" + item.name + " content changed");
             } finally { closeHandle(child); }
+            kept.push(item.name);
+            if (!REMOVE_DONOR_FILES) continue;
             const removed = savePathPacket(context, handle, 1, item.name);
             requireOk(removed, "donor remove /" + item.name);
             const committed = cmifSend(handle, {pkt: arenaSlots(context).pkt,
@@ -227,6 +239,11 @@ export async function cleanupDonor(context) {
         closeHandle(handle);
     }
     donor.cleanedUp = true;
-    await khLog("donor files removed");
-    return {cleanedUp: true};
+    donor.retained = REMOVE_DONOR_FILES ? [] : kept;
+    await khLog(REMOVE_DONOR_FILES
+        ? "donor files removed"
+        : "donor files kept: " + kept.map(n => "/" + n).join(" "));
+    return REMOVE_DONOR_FILES
+        ? {cleanedUp: true, files: kept}
+        : {cleanedUp: true, retained: true, files: kept};
 }

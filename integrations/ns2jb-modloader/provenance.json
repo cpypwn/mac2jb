@@ -5,8 +5,8 @@
   "localChanges": [
     "installed ELicense game-key-card content access adapted from Cellenseres/OunceCake",
     "verified CivSwitch FS host support and retry-safe native capture handling",
-    "session-specific SD staging for mod folders chosen in mac2jb",
+    "optional SD mod upload with hash-checked updates to matching files",
     "offline tests for the installed ELicense and held-session paths"
   ],
-  "runtime": "mac2jb copies the bundled loader and OunceCake engine into a private held-session folder, uploads selected mods to a unique SD directory, then invokes install.cjs with --run-dir and --mod-source"
+  "runtime": "mac2jb stages the bundled loader and OunceCake engine in the private held session, then installs modloader to read mods under SD:/ns2jb-modloader/; the optional folder action updates matching SD files before installation"
 }

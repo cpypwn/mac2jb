@@ -12,54 +12,142 @@
 
     document.body.innerHTML='';
     
+    // CivSwitchFS customization: append immediately so unawaited logs do not
+    // queue behind display frames, while awaited logs still wait for paint.
     window.log = function lazyLog(msg) {
-        var MAX  = 37;
-        var COLS = 146;
-        var FS   = window.innerHeight / MAX * 0.95;
-    
-        var pre = document.createElement('pre');
-        Object.assign(pre.style, {
-            position:  'fixed',
-            top:       '0',
-            left:      '0',
-            right:     '0',
-            bottom:    '0',
-            margin:    '0',
-            padding:   '8px',
-            overflow:  'hidden',
-            fontFamily:'monospace',
-            fontSize:  FS + 'px',
-            lineHeight:'1.0',
-            background:'#000',
-            color:     '#fff',
-            whiteSpace:'pre',
-        });
-        document.body.appendChild(pre);
-    
-        var lines = [];
-    
-        function splitToRows(text) {
-            if (!text) return ['\u00A0'];
-            var rows = [], t = text;
-            while (t.length > COLS) { rows.push(t.slice(0, COLS)); t = t.slice(COLS); }
-            rows.push(t);
-            return rows;
+        var MAX = 100;
+        var viewportWidth = Number(document.documentElement.clientWidth) ||
+            Number(window.innerWidth) || 0;
+        var compact = viewportWidth > 0 && viewportWidth <= 700;
+        var fontSize = '18px';
+        var timestampFontSize = '14px';
+        var rowPadding = '3px 14px';
+        var timestampMargin = '18px';
+        if (compact) {
+            fontSize = '15px';
+            timestampFontSize = '12px';
+            rowPadding = '3px 10px';
+            timestampMargin = '12px';
         }
-    
+
+        var output = document.createElement('div');
+        output.setAttribute('aria-label', 'CivSwitchFS logs');
+        output.setAttribute('role', 'log');
+        Object.assign(output.style, {
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            right: '0',
+            bottom: '0',
+            zIndex: '2147483647',
+            boxSizing: 'border-box',
+            margin: '0',
+            padding: '10px 0 22px',
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            fontFamily: "Consolas, 'Liberation Mono', monospace",
+            fontSize: fontSize,
+            lineHeight: '1.5',
+            background: '#282c34',
+            color: '#f2f3f5',
+            whiteSpace: 'normal',
+            overscrollBehavior: 'contain'
+        });
+        document.body.appendChild(output);
+
+        var lines = [];
+
+        function formatTimestamp(date) {
+            function twoDigits(value) {
+                return String(value).padStart(2, '0');
+            }
+            function threeDigits(value) {
+                return String(value).padStart(3, '0');
+            }
+            return twoDigits(date.getHours()) + ':' +
+                twoDigits(date.getMinutes()) + ':' +
+                twoDigits(date.getSeconds()) + '.' +
+                threeDigits(date.getMilliseconds());
+        }
+
+        function appendLine(line, timestamp) {
+            var row = document.createElement('div');
+            Object.assign(row.style, {
+                display: 'flex',
+                alignItems: 'center',
+                boxSizing: 'border-box',
+                padding: rowPadding,
+                fontSize: fontSize,
+                lineHeight: '1.5'
+            });
+
+            var stamp = document.createElement('span');
+            stamp.textContent = timestamp;
+            Object.assign(stamp.style, {
+                color: '#9bcaff',
+                flex: '0 0 13ch',
+                whiteSpace: 'nowrap',
+                fontSize: timestampFontSize,
+                lineHeight: '1.5',
+                userSelect: 'none',
+                marginRight: timestampMargin
+            });
+
+            var content = document.createElement('span');
+            content.textContent = line || '\u00a0';
+            Object.assign(content.style, {
+                minWidth: '0',
+                color: '#e8ece8',
+                whiteSpace: 'pre-wrap',
+                overflowWrap: 'break-word',
+                wordBreak: 'break-word'
+            });
+
+            row.appendChild(stamp);
+            row.appendChild(content);
+            output.appendChild(row);
+            lines.push(row);
+
+            while (lines.length > MAX) {
+                var oldestLine = lines.shift();
+                if (oldestLine.parentNode === output)
+                    output.removeChild(oldestLine);
+            }
+            output.scrollTop = output.scrollHeight;
+        }
+
+        function waitForDisplayFrame() {
+            return new Promise(resolve => requestAnimationFrame(resolve));
+        }
+
+        // Keep Gezine's promise ordering so awaited logs include earlier paints.
         var tail = Promise.resolve();
-    
+
+        function clearLog() {
+            tail = tail.then(function() {
+                lines.length = 0;
+                output.textContent = '';
+                output.scrollTop = 0;
+                return waitForDisplayFrame();
+            });
+            return tail;
+        }
+
         window.log = function log(msg) {
             tail = tail.then(function() {
-                String(msg).split('\n').forEach(function(part) {
-                    splitToRows(part).forEach(function(row) { lines.push(row); });
+                var timestamp = formatTimestamp(new Date());
+                var messageLines = String(msg).replace(/\r\n?/g, '\n')
+                    .split('\n');
+                messageLines.forEach(function(line) {
+                    appendLine(line, timestamp);
                 });
-                while (lines.length > MAX) lines.shift();
-                pre.textContent = lines.join('\n');
-                return new Promise(resolve => requestAnimationFrame(resolve));
+                return waitForDisplayFrame();
             });
             return tail;
         };
-    
+
+        window.log.clear = clearLog;
+
         return window.log(msg);
     };
     
@@ -1188,20 +1276,45 @@
         const addrlen = malloc(8);
         const enable = malloc(4);
         const payload_buf = malloc(MAXSIZE);
-        const line_buf = malloc(2048);
+        const LOG_RELAY_CHUNK_BYTES = 2048;
+        const line_buf = malloc(LOG_RELAY_CHUNK_BYTES);
 
         let _log_socket_fd = null;
         const _loader_old_log = window.log;
-        window.log = async function (message) {
+        const _loader_old_log_clear = _loader_old_log.clear;
+        const _loader_log = async function (message) {
             if (_log_socket_fd !== null) {
                 try {
-                    const line = String(message) + "\n";
-                    write_string(line_buf, line);
-                    send(_log_socket_fd, line_buf, text_encode(line).length, 0);
+                    const bytes = text_encode(String(message) + "\n");
+                    let offset = 0;
+                    let relayFailed = false;
+                    while (offset < bytes.length && !relayFailed) {
+                        const chunkEnd = Math.min(
+                            offset + LOG_RELAY_CHUNK_BYTES, bytes.length);
+                        while (offset < chunkEnd) {
+                            const remaining = bytes.subarray(offset, chunkEnd);
+                            write_buffer(line_buf, remaining);
+                            const sent = send(_log_socket_fd, line_buf,
+                                remaining.length, 0);
+                            if (sent <= 0n) {
+                                relayFailed = true;
+                                break;
+                            }
+                            offset += Number(sent);
+                        }
+                    }
                 } catch (e) {}
             }
-            return _loader_old_log(message);
+            return _loader_old_log.apply(this, arguments);
         };
+        // Preserve optional logger APIs such as the custom clear method.
+        if (typeof _loader_old_log_clear === "function") {
+            _loader_log.clear = function () {
+                return _loader_old_log_clear.apply(
+                    _loader_old_log, arguments);
+            };
+        }
+        window.log = _loader_log;
 
         function create_socket() {
             for (let i = 0; i < 16; i++) write8(sockaddr_in + BigInt(i), 0);

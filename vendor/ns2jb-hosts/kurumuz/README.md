@@ -8,8 +8,9 @@ You are not required to move any files to your SD card.
 
 1. Download a release from [kaiHEN](https://github.com/ouncebrew/kaihen) and
    unzip it on your computer. Pass `--dir` the extracted directory that
-   directly contains `ro/main`, `hen/main`, `game/main`, `bootstrap.bin`,
-   `hbmenu.nro`, and `programs/`.
+   directly contains `ro/main`, `bootstrap.bin` and `sdcard/`. Everything
+   under `sdcard/` is copied to the SD card at the same path. Releases before
+   20261123 have no `sdcard/` folder; their files are copied as before.
 2. Complete the [one-time SmileBASIC setup](#one-time-setup), then open
    SmileBASIC and enter Direct mode. Leave it open.
 3. From this `ns2jb` directory, run:

@@ -41,8 +41,8 @@ import {openSdCard, sdGetEntryType, sdReadFile, sdWriteFile, sdOpenFile,
     from "./kaihen/sdcard.mjs";
 import {RO_TITLE, readU64LE, arenaAlloc, track, u64Bytes, bytesToHex}
     from "./kaihen/state.mjs";
+import {PAYLOAD_VERSION} from "./version.mjs";
 import {buildCmif, bareSendTransport, cmifSend} from "./kaihen/wire.mjs";
-import {sha256} from "./kaihen/sha256.mjs";
 
 const {waitMs, closeHandle, log, sendIPC} = coreRuntime;
 
@@ -125,6 +125,161 @@ async function sdFileStatus(context) {
     return out;
 }
 
+
+// -- kaiHEN release support descriptor -----------------------------------------
+//
+// /kaihen/kaihen-civswitch.json, shipped BY the kaiHEN release, declares
+// which CivSwitchFS-kaihen payload versions it supports:
+//
+//   {"latest_version": "v3",
+//    "support": {"v3": {"/kaihen/bin/hen/main": 78765, ...}},
+//    "skip_version_check": false}
+//
+// The per-version object is the SD file list for that payload: filename
+// (full SD path) to exact size. When our version has an entry, that list
+// replaces the built-in manifest (the release is authoritative for what
+// it ships). When it does not, we refuse to run — unless
+// skip_version_check is true, or the whole file is absent (old release,
+// loud warning, built-in manifest). "latest_version" is informational:
+// when it names a version newer than ours, the end of a successful run
+// prints an all-caps update-available notice.
+
+const SUPPORT_JSON_PATH = "/kaihen/kaihen-civswitch.json";
+const SUPPORT_JSON_MAX = 0x10000;
+const VERSION_KEY = "v" + PAYLOAD_VERSION;
+
+// "latest_version" from the descriptor, kept for the end-of-run update
+// notice ("a newer civswitchfs-kaihen exists — update whenever you can").
+let supportedLatestVersion = null;
+
+function bytesToText(bytes) {
+    // Chunked: String.fromCharCode.apply has an argument limit far
+    // below useful file sizes.
+    let out = "";
+    for (let at = 0; at < bytes.length; at += 8192)
+        out += String.fromCharCode.apply(null,
+            bytes.slice(at, Math.min(at + 8192, bytes.length)));
+    return out;
+}
+
+function validSupportFiles(files) {
+    if (!files || typeof files !== "object" || Array.isArray(files))
+        return false;
+    const names = Object.keys(files);
+    if (names.length < 1 || names.length > 64) return false;
+    for (const name of names) {
+        if (typeof name !== "string" || name.length < 2 ||
+            name.length > 300 || name.charCodeAt(0) !== 0x2f /* "/" */)
+            return false;
+        const size = files[name];
+        if (typeof size !== "number" || !Number.isSafeInteger(size) ||
+            size <= 0 || size > 0x8000000)
+            return false;
+    }
+    return true;
+}
+
+// Rekey {path: size} into the manifest shape: logical names for the
+// paths the built-in manifest knows (the donor and bootstrap stages
+// reference __KH_MANIFEST.ro / .bootstrap by name), the path itself for
+// anything else. Optional flags (payload files the HEN boots without)
+// carry over from the built-in entry with the same path.
+function manifestFromSupportFiles(files) {
+    const nameByPath = {};
+    for (const [name, item] of Object.entries(SD_MANIFEST))
+        nameByPath[item.path] = name;
+    const manifest = {};
+    for (const [path, size] of Object.entries(files)) {
+        const name = nameByPath[path] || path;
+        manifest[name] = {path: path, size: size};
+        if (SD_MANIFEST[name] && SD_MANIFEST[name].optional)
+            manifest[name].optional = true;
+    }
+    return manifest;
+}
+
+// The resolved manifest must still cover every file the chain itself
+// needs (built-in non-optional paths); a release entry that drops one
+// is treated as malformed rather than trusted.
+function coversRequiredFiles(manifest) {
+    const paths = new Set(Object.values(manifest).map(item => item.path));
+    for (const item of Object.values(SD_MANIFEST))
+        if (!item.optional && !paths.has(item.path)) return false;
+    return true;
+}
+
+async function resolveSupportManifest(context) {
+    const sd = openSdCard(context);
+    const probe = sdGetEntryType(context, sd, SUPPORT_JSON_PATH);
+    const present = probe.transport === 0 && probe.result === 0;
+
+    let descriptor = null;
+    if (present) {
+        try {
+            const file = sdReadFile(context, sd, SUPPORT_JSON_PATH,
+                SUPPORT_JSON_MAX);
+            descriptor = JSON.parse(bytesToText(file.bytes));
+        } catch (error) {
+            descriptor = null;
+        }
+    }
+
+    const versionKey = VERSION_KEY;
+    const support = descriptor && typeof descriptor === "object" &&
+        !Array.isArray(descriptor) && descriptor.support &&
+        typeof descriptor.support === "object" &&
+        !Array.isArray(descriptor.support) ? descriptor.support : null;
+    const skipCheck = descriptor && descriptor.skip_version_check === true;
+    const files = support ? support[versionKey] : null;
+    supportedLatestVersion =
+        descriptor && typeof descriptor.latest_version === "string" &&
+        descriptor.latest_version.length > 0 &&
+        descriptor.latest_version.length <= 16 ?
+        descriptor.latest_version : null;
+
+    if (!present || !descriptor) {
+        await khLog("WARNING: " + SUPPORT_JSON_PATH + (present ?
+            " IS UNREADABLE" : " NOT FOUND") + " ON THE SD CARD — " +
+            "THE KAIHEN COMPATIBILITY CHECK IS SKIPPED (TREATED AS " +
+            "skip_version_check=true) AND THE BUILT-IN FILE LIST FOR " +
+            "CIVSWITCHFS-KAIHEN " + versionKey.toUpperCase() + " IS USED. " +
+            "IF THE CHAIN MISBEHAVES, REINSTALL THE KAIHEN RELEASE THAT " +
+            "SHIPS SUPPORT FOR THIS PAYLOAD.");
+        return;
+    }
+
+    if (!validSupportFiles(files)) {
+        if (skipCheck) {
+            await khLog(SUPPORT_JSON_PATH + ": no usable \"" + versionKey +
+                "\" entry and skip_version_check=true — running with the " +
+                "built-in file list.");
+            return;
+        }
+        await khLog("This version of civswitchfs-kaihen (" + versionKey +
+            ") is not compatible with the installed kaiHEN release: " +
+            SUPPORT_JSON_PATH + " has no \"" + versionKey + "\" entry " +
+            "under \"support\".");
+        await khLog("Follow the kaiHEN release instructions to reinstall " +
+            "or update civswitchfs-kaihen so both come from the same " +
+            "release (or set skip_version_check=true in " +
+            SUPPORT_JSON_PATH + " to run anyway, at your own risk).");
+        check(false, "kaiHEN release does not support civswitchfs-kaihen " +
+            versionKey);
+    }
+
+    const manifest = manifestFromSupportFiles(files);
+    if (!coversRequiredFiles(manifest)) {
+        await khLog(SUPPORT_JSON_PATH + ": the \"" + versionKey + "\" " +
+            "entry omits a chain-critical file — falling back to the " +
+            "built-in file list.");
+        return;
+    }
+    globalThis.__KH_MANIFEST = manifest;
+    await khLog("kaiHEN support descriptor: " + versionKey + " -> " +
+        Object.keys(manifest).length + " files (" +
+        Object.values(manifest).map(item => item.path).join(", ") + ")");
+}
+
 export async function run() {
     await khLog("=== kaiHEN start for CivSwitchFS (ported by ave) ===");
     const mode = globalThis.__KH_MODE === "status" ? "status" : "run";
@@ -186,6 +341,10 @@ export async function run() {
     // bootstrap stage, after the swap). Entry-presence only — sizes are
     // verified by sdFileStatus in status mode.
     if (globalThis.__KH_MANIFEST) {
+        // Release support descriptor first: it may replace the manifest
+        // (authoritative file list for this payload version) or refuse
+        // to run against this kaiHEN release outright.
+        await resolveSupportManifest(context);
         const optional = name => Boolean(globalThis.__KH_MANIFEST[name] &&
             globalThis.__KH_MANIFEST[name].optional);
         // Flag file /kaihen/civswitchfs-skipcheck: skip file-identity
@@ -476,8 +635,7 @@ export async function run() {
             check(codefs.added, "donor requires a domain-added CodeFS object");
             const npdm = await captureCodeFile(context, codefs.added,
                 "main.npdm");
-            await khLog("captured main.npdm (" + npdm.size + " bytes, sha " +
-                npdm.sha256.slice(0, 12) + ")");
+            await khLog("captured main.npdm (" + npdm.size + " bytes)");
             const sd = openSdCard(context);
             const roMain = sdReadFile(context, sd,
                 globalThis.__KH_MANIFEST.ro.path, 0x100000);
@@ -540,6 +698,18 @@ export async function run() {
         await khLog("Close Civilization VII normally; hold R while opening " +
             "a Switch 2 game twice.");
         stageDone("complete", {ok: true});
+
+        // Update notice (from the release descriptor's "latest_version"):
+        // our version ran fine, but a newer one exists. Informational —
+        // the user updates whenever they can.
+        if (supportedLatestVersion &&
+            supportedLatestVersion.toLowerCase() !== VERSION_KEY) {
+            await khLog("UPDATE AVAILABLE: THE INSTALLED KAIHEN RELEASE " +
+                "LISTS " + supportedLatestVersion.toUpperCase() +
+                " AS THE LATEST CIVSWITCHFS-KAIHEN, BUT THIS CHAIN RAN " +
+                VERSION_KEY.toUpperCase() + ". REINSTALL OR UPDATE " +
+                "CIVSWITCHFS-KAIHEN WHENEVER YOU CAN.");
+        }
     } catch (error) {
         await khLog("FAILED at stage '" +
             (stages.length ? stages[stages.length - 1] : "?") + "': " +
@@ -550,6 +720,46 @@ export async function run() {
         await khLog("completed stages: " + stages.join(" > "));
         throw error;
     } finally {
+        // Retire the IStorage cache alias so stale heap pointers don't
+        // persist in the BC save.  Every writeFs call during the chain
+        // wrote heap-targeted bytes into the dirty buffer via
+        // write-through; intermediate commits (donor, cleanupDonor)
+        // flushed them to NAND.
+        //
+        // A plain ipcStorageWrite at offset 0 goes through the alias
+        // and lands in the heap, not the save. Invalidating the I/O
+        // cache first drops the dirty buffer entries so the subsequent
+        // write bypasses the alias and reaches the backing store.
+        try {
+            if (context.candidateHandle) {
+                runtime.ipcStorageInvalidate(
+                    context.candidateHandle, 0, 0x8000);
+
+                const retireBuf = runtime.allocPage(0x1000);
+                for (let i = 0; i < 16; i++)
+                    runtime.write8(retireBuf + BigInt(i), 0x42n);
+                runtime.ipcStorageWrite(
+                    context.candidateHandle, 0n, retireBuf, 16);
+
+                const saveMount = runtime.openMount("save");
+                if (saveMount && saveMount.handle) {
+                    const pkt = runtime.allocPage(0x2000);
+                    const commitReply = cmifSend(saveMount.handle,
+                        {pkt, cmd: 10, input: [], rawWords: 8});
+                    closeHandle(saveMount.handle);
+                    await khLog("RETIRE: cache invalidated + " +
+                        "alias neutralised tx=" +
+                        hex(commitReply.transport || 0) +
+                        " rc=" + hex(commitReply.result || 0));
+                }
+            }
+        } catch (retireError) {
+            try {
+                await khLog("RETIRE: best-effort failed: " +
+                    String(retireError?.message || retireError));
+            } catch (_) { /* silent */ }
+        }
+        
         if (!context.henStartup) {
             // Failed run: release every tracked handle (reverse order) so the
             // boot stays reusable — leaked sm/pm sessions otherwise exhaust

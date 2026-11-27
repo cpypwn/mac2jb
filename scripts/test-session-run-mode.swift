@@ -8,12 +8,8 @@ import Foundation
         precondition(SessionRunMode.heldRPC.caption.contains("choose what to open"))
         precondition(SessionRunMode.seedsowSave.startTitle == "Start jailbreak")
         precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options", "--seedsow-save"])
-        precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--seedsow-save"])
-        precondition(SessionRunMode.seedsowSave.hostArguments(address: address, host: "astral") == ["host", address, "--post-run-options", "--seedsow-save"])
         precondition(SessionRunMode.seedsowSave.postRunAction?.keepRPC == true)
         precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "kurumuz") == ["host", address, "--post-run-options", "--savekit-tools"])
-        precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "cellenseres") == ["host", address, "--post-run-options", "--savekit-tools"])
-        precondition(SessionRunMode.savekitTools.hostArguments(address: address, host: "astral") == ["host", address, "--post-run-options", "--savekit-tools"])
         precondition(SessionRunMode.savekitTools.postRunAction?.keepRPC == true)
         precondition(SessionRunMode.hostOnly.hostArguments(address: address, host: "kurumuz", stageTimeoutMinutes: 10) ==
             ["host", address, "--host-stage-timeout-minutes", "10"])
@@ -41,7 +37,7 @@ import Foundation
         precondition(SessionRunMode.existingRPC.hostArguments(address: address, host: "kurumuz") == nil && SessionRunMode.existingRPC.postRunAction == nil)
         for mode in [SessionRunMode.hostOnly, .hostOnlyHeld] {
             precondition(mode.isHostOnly && mode.requiresHost && mode.requiresNetworkAddress)
-            for host in ["kurumuz", "cellenseres", "astral"] {
+            for host in ["kurumuz"] {
                 precondition(mode.hostArguments(address: address, host: host) == ["host", address] +
                     (mode == .hostOnlyHeld ? ["--post-run-options", "--savekit-tools"] : []))
             }

@@ -1,9 +1,0 @@
-work/
-__pycache__/
-*.pyc
-traffic.jsonl
-profile.json
-tests/host-test-reports/
-.DS_Store
-arw-flip.html
-jsc-victim.html

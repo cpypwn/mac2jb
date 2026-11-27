@@ -338,11 +338,11 @@ test('uncertain SaveKit write retains held RPC but blocks another write', {timeo
   session.send({action:'finish'});
   await session.done;
 });
-for(const hostId of ['kurumuz','cellenseres']) {
+for(const hostId of ['kurumuz']) {
 test('Modloader waits for held '+hostId+' RPC, then leaves a verified game handoff for Finish',{timeout:10000},async t=>{
   const session=fixture(t,hostId==='kurumuz'?{}:{hostId});await session.wait('post-run-ready');
   session.send({action:'modloader-install',source:'sd'});
-  assert.match((await session.wait('action-rejected')).message,/free Kurumuz or Cellenseres held RPC/);
+  assert.match((await session.wait('action-rejected')).message,/free Kurumuz held RPC/);
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
   session.send({action:'modloader-install',modsFolder:'/tmp/bad'});
   assert.match((await session.wait('action-rejected',2)).message,/Invalid mod root/);
@@ -367,11 +367,11 @@ test('Modloader preflight failure keeps held '+hostId+' RPC available for MintBr
   session.send({action:'finish'});assert.equal((await session.done).code,0);
 });
 }
-test('Modloader does not use an Astral held session without a verified Modloader capability',{timeout:10000},async t=>{
-  const session=fixture(t,{hostId:'astral'});await session.wait('post-run-ready');
+test('Modloader does not use a BermTheSequel held session without a verified Modloader capability',{timeout:10000},async t=>{
+  const session=fixture(t,{hostId:'BermTheSequel'});await session.wait('post-run-ready');
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
   session.send({action:'modloader-install',modsFolder:'/tmp/mods'});
-  assert.match((await session.wait('action-rejected')).message,/Kurumuz or Cellenseres/);
+  assert.match((await session.wait('action-rejected')).message,/Kurumuz/);
   assert.equal(fs.existsSync(path.join(session.host,'runs/switch2-test/modloader-invoked')),false);
   session.send({action:'finish'});assert.equal((await session.done).code,0);
 });
@@ -840,57 +840,6 @@ test('EOF during MintBrew startup stops its helper before base RPC cleanup',{tim
   session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
   session.send({action:'launch-mintbrew'});await session.wait('homebrew-started');session.child.stdin.end();
   assert.equal((await session.done).code,1);
-  assert.equal(fs.readFileSync(path.join(session.host,'hbl-was-stopped.txt'),'utf8'),'true');
-});
-
-test('MintBrew rejects invalid library configuration before consuming its one-app gate',{timeout:10000},async t=>{
-  const session=fixture(t);
-  await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  session.send({action:'launch-mintbrew',addonUrls:[],libraryItems:[null]});
-  await session.wait('action-rejected');
-  assert.equal(fs.existsSync(path.join(session.root,'homebrew-invocations.txt')),false);
-  session.send({action:'finish'});assert.equal((await session.done).code,0);
-});
-test('invalid Stremio quality leaves the one-app gate available',{timeout:10000},async t=>{
-  const session=fixture(t,{expectHomebrew:true});
-  await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  let rejected=0;
-  for(const quality of ['1080p','4k','720p --unsafe',720,null,{},['720p']]) {
-    session.send({action:'launch-mintbrew',quality});await session.wait('action-rejected',++rejected);
-  }
-  assert.equal(fs.existsSync(path.join(session.root,'homebrew-invocations.txt')),false);
-  session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
-  session.send({action:'finish'});assert.equal((await session.done).code,0);
-});
-test('unsupported homebrew actions leave the supported launcher available',{timeout:10000},async t=>{
-  const session=fixture(t,{expectHomebrew:true});
-  await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  session.send({action:'launch-unknown-launcher'});await session.wait('action-rejected');
-  session.send({action:'launch-unavailable'});await session.wait('action-rejected',2);
-  for(const action of ['launch-hblauncher','launch-gpubrewlauncher','launch-stremio'])session.send({action});
-  await session.wait('action-rejected',5);
-  assert.equal(fs.existsSync(path.join(session.root,'homebrew-invocations.txt')),false);
-  session.send({action:'launch-mintbrew'});await session.wait('homebrew-running');
-  session.send({action:'finish'});assert.equal((await session.done).code,0);
-  assert.equal(fs.readFileSync(path.join(session.root,'homebrew-invocations.txt'),'utf8').trim().split('\n').length,1);
-});
-
-test('MintBrew launch keeps add-on configuration on helper stdin and retains the one-app session gate',{timeout:10000},async t=>{
-  const session=fixture(t,{expectHomebrew:true});
-  const helper=fs.readFileSync(path.join(session.root,'scripts/gui-homebrew.cjs'),'utf8');
-  fs.writeFileSync(path.join(session.root,'scripts/gui-mintbrew.cjs'),
-    "require('fs').writeFileSync('stremio-args.json',JSON.stringify(process.argv.slice(3)));let config='';process.stdin.on('data',b=>config+=b);process.stdin.on('end',()=>{require('fs').writeFileSync('stremio-config.json',config);console.log('MAC2JB_HOMEBREW '+JSON.stringify({type:'account-progress',watchProgress:{sequence:1,itemId:'PRIVATEWATCH',position:3,duration:30}}));});process.stdin.resume();\n"+helper);
-  await session.wait('post-run-ready');session.send({action:'post-run',keepRPC:true,dumpFirmware:false});await session.wait('rpc-held');
-  const addonUrls=['https://example.invalid/private-provider/manifest.json'];
-  const libraryItems=Array.from({length:200},(_,index)=>({_id:'fixture:'+index,name:'Private library '+ 'x'.repeat(512),state:{timeOffset:52000}}));
-  session.send({action:'launch-mintbrew',addonUrls,libraryItems,quality:'720p'});
-  await session.wait('homebrew-running');assert.deepEqual(JSON.parse(fs.readFileSync(path.join(session.root,'stremio-config.json'),'utf8')),{addonUrls,libraryItems,quality:'720p'});
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(session.root,'stremio-args.json'),'utf8')),[]);
-  assert.equal((await session.wait('account-progress')).watchProgress.itemId,'PRIVATEWATCH');
-  assert.equal(session.events().filter(event=>event.type==='log').some(event=>/PRIVATEWATCH|Private library/.test(event.message)),false);
-  assert.equal(fs.readFileSync(path.join(session.root,'homebrew-invocations.txt'),'utf8').includes('private-provider'),false);
-  session.send({action:'launch-mintbrew'});await session.wait('action-rejected');
-  session.send({action:'finish'});assert.equal((await session.done).code,0);
   assert.equal(fs.readFileSync(path.join(session.host,'hbl-was-stopped.txt'),'utf8'),'true');
 });
 

@@ -13,7 +13,6 @@ const {main, parseOptions, verifySource, preflightCustomNativeApp,
 const root = path.resolve(__dirname, '../..');
 const source = path.join(__dirname, 'upstream');
 const kurumuz = path.join(root, 'vendor/ns2jb-hosts/kurumuz');
-const cellenseres = path.join(root, 'vendor/ns2jb-hosts/cellenseres');
 
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mac2jb-native-host-'));
@@ -60,7 +59,7 @@ function fixture(t) {
   return {directory, events, calls, signals, options};
 }
 
-for (const [hostId, hostSource] of [['kurumuz', kurumuz], ['cellenseres', cellenseres]])
+for (const [hostId, hostSource] of [['kurumuz', kurumuz]])
 test('native source and built Hello CPU match the patched ' + hostId + ' ABI', () => {
   const verified = verifySource(source, hostSource);
   assert.equal(verified.launcher.abi, 3);
@@ -152,7 +151,7 @@ test('native launcher claims one held session, starts, stops and closes its clie
     fs.readFileSync(path.join(directory, '.mac2jb-hblauncher-attempt.json'))).digest('hex'));
 });
 
-for (const [hostId, hostSource] of [['kurumuz', kurumuz], ['cellenseres', cellenseres]])
+for (const [hostId, hostSource] of [['kurumuz', kurumuz]])
 test('native launcher uses the already validated patched ' + hostId + ' source', async t => {
   const {directory, options} = fixture(t);
   const digest = 'a'.repeat(64);

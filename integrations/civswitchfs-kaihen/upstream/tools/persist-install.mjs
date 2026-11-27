@@ -7,6 +7,7 @@ import net from "node:net";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {buildPersistentImage} from "./persist-build.mjs";
+import {confirmBrickRisk} from "./confirm-brick-risk.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BOOTSTRAP = path.join(ROOT, "dist/persist/persist-bootstrap.js");
@@ -20,8 +21,13 @@ function sha256(bytes) {
     return createHash("sha256").update(bytes).digest("hex");
 }
 
-function send(host, port, code, timeoutMs = 60_000) {
-    const payload = Buffer.isBuffer(code) ? code : Buffer.from(code, "ascii");
+function sendAndWait(host, port, code, timeoutMs = 60_000) {
+    let payload;
+    if (Buffer.isBuffer(code)) {
+        payload = code;
+    } else {
+        payload = Buffer.from(code, "ascii");
+    }
     if (!payload.length || payload.length >= MAX_LOADER_BYTES)
         return Promise.reject(new Error("Payload empty or over 500,000 bytes"));
     return new Promise((resolve, reject) => {
@@ -37,36 +43,49 @@ function send(host, port, code, timeoutMs = 60_000) {
             settled = true;
             clearTimeout(timeout);
             if (error) reject(error);
-            else resolve(Buffer.concat(chunks).toString("utf8"));
+            else resolve(value);
         }
         socket.once("connect", () => socket.end(payload));
+        // Show logs when available, without requiring a loader relay.
         socket.on("data", chunk => chunks.push(chunk));
-        socket.once("end", () => finish(null));
+        socket.once("end", () => finish(
+            null, Buffer.concat(chunks).toString("utf8")));
         socket.once("error", error => finish(error));
         socket.once("close", hadError => {
-            if (!settled && hadError) finish(new Error("Connexion au loader interrompue"));
+            if (settled) return;
+            if (hadError) {
+                finish(new Error("Connection to the loader was interrupted"));
+                return;
+            }
+            finish(new Error("The loader closed before the command completed"));
         });
     });
 }
 
-function requireMarker(output, markers) {
-    for (const line of output.split(/\r?\n/)) {
-        if (line.startsWith("Installation failed: "))
-            throw new Error(line.slice("Installation failed: ".length));
-        if (markers.includes(line)) return line;
+async function runPayload(host, port, body, cleanup = false) {
+    let dispose = "";
+    if (cleanup) {
+        dispose = "finally{" +
+            "window.__cfsPersistInstaller.dispose();" +
+            "delete window.__cfsPersistInstaller;}";
     }
-    throw new Error("The loader did not acknowledge the operation: " + output.slice(-240));
-}
-
-async function runTask(host, port, expression, completion, markers, cleanup = false) {
-    const dispose = cleanup
-        ? "finally{window.__cfsPersistInstaller.dispose();delete window.__cfsPersistInstaller;}"
-        : "";
-    const code = "(async function(){try{await " + expression +
-        ";await log(" + JSON.stringify(completion) + ");}" +
-        "catch(error){await log('Installation failed: '+error.message);}" +
+    const code = "(async function(){try{" + body + "}" +
+        "catch(error){await log('Installation failed: '+String(" +
+        "error && error.message ? error.message : error));" +
+        "await log(String(error && error.stack ? error.stack : '')" +
+        ".slice(0, 400));}" +
         dispose + "})()";
-    return requireMarker(await send(host, port, code, 300_000), markers);
+    const output = await sendAndWait(host, port, code, 300_000);
+    if (output) {
+        process.stdout.write(output);
+        if (!output.endsWith("\n")) process.stdout.write("\n");
+    }
+    const failureLine = output.split(/\r?\n/).find(line =>
+        line.startsWith("Installation failed: ") ||
+        line.startsWith("Error in payload: ")
+    );
+    if (failureLine) throw new Error(failureLine);
+    return output;
 }
 
 async function install(host, port, bootstrapPath, templatePath) {
@@ -82,43 +101,43 @@ async function install(host, port, bootstrapPath, templatePath) {
 
     const base64 = template.toString("base64");
     const token = randomUUID().replaceAll("-", "");
-    console.log("Preparing the persistent image…");
-    requireMarker(
-        await send(host, port, bootstrap.toString("ascii") + '\nlog("Installer ready.");'),
-        ["Installer ready."]
+    console.log("Preparing persistent image...");
+
+    const bootstrapOutput = await runPayload(
+        host,
+        port,
+        'await log("Bootstrap eval started.");' +
+            bootstrap.toString("ascii") +
+            '\nawait log("Installer ready.");'
     );
+    if (!bootstrapOutput) console.log("Installer bootstrap sent.");
 
     const count = Math.ceil(base64.length / CHUNK_BYTES);
     for (let offset = 0, index = 1; offset < base64.length; offset += CHUNK_BYTES, index++) {
         const part = base64.slice(offset, offset + CHUNK_BYTES);
         const marker = `Template ${index}/${count} received.`;
-        const code = "window.__cfsPersistInstaller.stageChunk(" +
+        const body = "await window.__cfsPersistInstaller.stageChunk(" +
             JSON.stringify(token) + "," + index + "," + offset + "," +
-            JSON.stringify(part) + ");log(" + JSON.stringify(marker) + ");";
-        let acknowledged = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-                requireMarker(await send(host, port, code), [marker]);
-                acknowledged = true;
-                break;
-            } catch (error) {
-                if (attempt === 2) throw error;
-            }
-        }
-        if (!acknowledged) throw new Error("Template chunk not acknowledged; installation cancelled");
-        console.log(`Template ${index}/${count} received.`);
+            JSON.stringify(part) + ");await log(" +
+            JSON.stringify(marker) + ");";
+        const output = await runPayload(host, port, body);
+        if (!output) console.log(`Template ${index}/${count} sent.`);
     }
 
     const installed = "Installed. Restart the game, then open Load Game menu.";
-    const result = await runTask(
+    const finalOutput = await runPayload(
         host,
         port,
-        "window.__cfsPersistInstaller.installFromTemplate()",
-        installed,
-        [installed],
+        "await window.__cfsPersistInstaller.installFromTemplate();" +
+            "await log(" + JSON.stringify(installed) + ");",
         true
     );
-    console.log(result);
+    if (!finalOutput.split(/\r?\n/).includes(installed)) {
+        console.log(
+            "No completion log reached the PC. Wait for " +
+            `"${installed}" on the Switch before restarting.`
+        );
+    }
 }
 
 function parseArgs(args) {
@@ -133,6 +152,7 @@ function parseArgs(args) {
         // root cause open).
         minifyPayload: false,
         chain: false,
+        split: false,
         payloadModeSpecified: false
     };
     for (let index = 0; index < args.length; index++) {
@@ -164,6 +184,16 @@ function parseArgs(args) {
             options.chain = true;
             continue;
         }
+        if (arg === "--split") {
+            // Split chain: the save carries only the promotion; the
+            // kaiHEN bundle loads from /kaihen/payload.js on SD.
+            options.split = true;
+            continue;
+        }
+        if (arg === "--yes" || arg === "-y") {
+            options.assumedYes = true;
+            continue;
+        }
         if (arg === "--port" || arg === "--bootstrap" || arg === "--template") {
             const value = args[++index];
             if (!value) throw new Error(`Missing value for ${arg}`);
@@ -175,9 +205,11 @@ function parseArgs(args) {
     }
     if (positional.length !== 1) {
         throw new Error("Usage: npm run persist:install -- <IP_SWITCH> " +
-            "[--port 9026] [--no-build] [--debug-payload] [--chain] " +
-            "[--minify-payload] [--bootstrap path] [--template path]");
+            "[--port 9026] [--no-build] [--debug-payload] [--chain|--split] " +
+            "[--minify-payload] [--bootstrap path] [--template path] [--yes]");
     }
+    if (options.chain && options.split)
+        throw new Error("Choose either --chain (embedded) or --split (SD-loaded)");
     if (!Number.isInteger(options.port) || options.port < 1 || options.port > 65535)
         throw new Error("Port invalide");
     if (options.debugPayload && options.minifyPayload)
@@ -190,15 +222,20 @@ function parseArgs(args) {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
     try {
         const options = parseArgs(process.argv.slice(2));
-        if (options.rebuild) {
-            console.log("Rebuilding the persistent image…");
-            await buildPersistentImage({
-                debugPayload: options.debugPayload,
-                minifyPayload: options.minifyPayload,
-                chain: options.chain
-            });
+        if (!(await confirmBrickRisk(options.assumedYes, "persist install"))) {
+            process.exitCode = 1;
+        } else {
+            if (options.rebuild) {
+                console.log("Rebuilding the persistent image…");
+                await buildPersistentImage({
+                    debugPayload: options.debugPayload,
+                    minifyPayload: options.minifyPayload,
+                    chain: options.chain,
+                    split: options.split
+                });
+            }
+            await install(options.host, options.port, options.bootstrap, options.template);
         }
-        await install(options.host, options.port, options.bootstrap, options.template);
     } catch (error) {
         console.error("Installation failed: " + error.message);
         process.exitCode = 1;

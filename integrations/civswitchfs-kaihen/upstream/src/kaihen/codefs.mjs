@@ -8,7 +8,6 @@ import {check, khLog, hex, u64Bytes, readU64LE, readU32LE, readNative,
 import {cmifSend, requireOk, oneMovedHandle} from "./wire.mjs";
 import {sendContext, contextLog} from "./wire-context.mjs";
 import {readFs, fsPointer} from "./endpoint.mjs";
-import {sha256} from "./sha256.mjs";
 
 const {closeHandle, writeStr} = runtime;
 
@@ -188,8 +187,7 @@ export async function captureCodeFile(context, codeObject, name, limit) {
     }
     let all = [];
     for (const part of parts) all = all.concat(part);
-    return {name, bytes: all, size: Number(size), captured: length,
-        sha256: sha256(all)};
+    return {name, bytes: all, size: Number(size), captured: length};
 }
 
 // Convert the CodeFS session to a domain; returns {root, entry, object, ...}

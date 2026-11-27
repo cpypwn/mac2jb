@@ -10,6 +10,8 @@ import Combine
     }
 
     @Published private(set) var adapters: [Adapter] = []
+    @Published private(set) var isRefreshingAdapters = false
+    @Published private(set) var adapterCheckError = ""
     @Published var selectedInterface = ""
     @Published private(set) var phase = "idle"
     @Published private(set) var message = "Choose the Mac Ethernet connection"
@@ -23,10 +25,34 @@ import Combine
     private let stateDirectory = "/Library/Application Support/mac2jb/offline-ethernet"
     private var runtimeRoot: URL?
     private var pollTask: Task<Void, Never>?
+    private var adapterRefreshGeneration = 0
+    private var startInFlight = false
+    private var stopAfterStart = false
+    private var stopInFlight = false
+    private var restoreInFlight = false
 
-    var canStart: Bool { !active && phase != "starting" && !selectedInterface.isEmpty }
-    var canStop: Bool { active || phase == "starting" }
-    var canRestore: Bool { needsRestore || active }
+    var adapterIssue: String? {
+        if isRefreshingAdapters { return nil }
+        if !adapterCheckError.isEmpty { return adapterCheckError }
+        if adapters.isEmpty { return "No Ethernet adapter detected. Connect one to this Mac and refresh." }
+        guard let selected = adapters.first(where: { $0.interface == selectedInterface }) else {
+            return "Choose a Mac Ethernet connection."
+        }
+        if !selected.active {
+            return "No active Ethernet link on \(selected.interface). Check the adapter, cable, and Switch dock, then refresh."
+        }
+        return nil
+    }
+
+    var canStart: Bool {
+        !active && !startInFlight && !stopInFlight && !restoreInFlight &&
+        phase != "starting" && !isRefreshingAdapters && adapterIssue == nil
+    }
+    var canStop: Bool {
+        !stopAfterStart && !stopInFlight && !restoreInFlight &&
+        (active || startInFlight || phase == "starting")
+    }
+    var canRestore: Bool { !startInFlight && !stopInFlight && !restoreInFlight && (needsRestore || active) }
 
     func open(runtimeRoot: URL?) {
         self.runtimeRoot = runtimeRoot
@@ -37,20 +63,29 @@ import Combine
     func close() {
         pollTask?.cancel()
         pollTask = nil
+        adapterRefreshGeneration += 1
+        isRefreshingAdapters = false
     }
 
     func refreshAdapters() {
+        adapterRefreshGeneration += 1
+        let generation = adapterRefreshGeneration
         guard let tool = toolURL() else {
-            message = "Wait for the bundled tools to finish preparing"
+            isRefreshingAdapters = false
+            adapterCheckError = "Wait for the bundled tools to finish preparing"
             return
         }
+        isRefreshingAdapters = true
+        adapterCheckError = ""
         Task {
             let result = await Self.runProcess(executable: tool.node.path, arguments: [tool.helper.path, "list"])
+            guard generation == adapterRefreshGeneration else { return }
+            isRefreshingAdapters = false
             guard result.code == 0,
                   let data = result.output.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let entries = json["adapters"] as? [[String: Any]] else {
-                message = "Could not list Ethernet adapters: \(Self.short(result.output))"
+                adapterCheckError = "Could not list Ethernet adapters: \(Self.short(result.output))"
                 return
             }
             let values = entries.compactMap { entry -> Adapter? in
@@ -64,15 +99,22 @@ import Combine
             if !values.contains(where: { $0.interface == selectedInterface }) {
                 selectedInterface = values.first(where: { $0.active })?.interface ?? values.first?.interface ?? ""
             }
-            if values.isEmpty && !active { message = "No Ethernet adapter found. Connect one to this Mac and refresh" }
         }
     }
 
     func start() { perform("start") }
-    func stop() { perform("stop") }
+    func stop() {
+        if startInFlight {
+            stopAfterStart = true
+            actionError = ""
+            message = "Stop requested; waiting for startup to finish"
+            return
+        }
+        perform("stop")
+    }
     func restore() { perform("restore") }
 
-    private func perform(_ action: String) {
+    private func perform(_ action: String, force: Bool = false) {
         guard let tool = toolURL() else {
             message = "The Offline Ethernet tools are missing from this app"
             return
@@ -84,13 +126,17 @@ import Combine
         }
         if action == "start" {
             guard canStart else { return }
+            startInFlight = true
+            stopAfterStart = false
             phase = "starting"
             message = "Starting DNS and HTTP on \(selectedInterface)"
         } else if action == "stop" {
-            guard canStop else { return }
+            guard force || canStop else { return }
+            stopInFlight = true
             message = "Stopping the connection-check service"
         } else {
             guard canRestore else { return }
+            restoreInFlight = true
             message = "Restoring the Mac Ethernet address"
         }
         let interface = selectedInterface
@@ -98,11 +144,26 @@ import Combine
         let arguments = [script.path, action, tool.node.path, tool.helper.path, stateDirectory, interface]
         Task {
             let result = await Self.runProcess(executable: "/usr/bin/osascript", arguments: arguments)
+            if action == "start" && stopAfterStart {
+                startInFlight = false
+                stopAfterStart = false
+                perform("stop", force: true)
+                return
+            }
             if result.code != 0 {
-                actionError = "\(action.capitalized) failed (exit \(result.code)): \(Self.short(result.output))"
+                actionError = action == "start" ? Self.short(result.output) :
+                    "\(action.capitalized) failed (exit \(result.code)): \(Self.short(result.output))"
             }
             await refreshStatus()
-            if result.code != 0 && phase == "starting" { phase = "failed" }
+            if action == "start" {
+                startInFlight = false
+                if result.code != 0 && phase == "starting" { phase = "failed" }
+            } else if action == "stop" {
+                stopInFlight = false
+                if phase == "starting" { phase = "stopped" }
+            } else {
+                restoreInFlight = false
+            }
         }
     }
 
@@ -124,7 +185,9 @@ import Combine
         guard result.code == 0,
               let data = result.output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            if phase != "starting" { message = "Could not read Offline Ethernet status: \(Self.short(result.output))" }
+            if phase != "starting" && !stopAfterStart {
+                message = "Could not read Offline Ethernet status: \(Self.short(result.output))"
+            }
             return
         }
         let reported = json["phase"] as? String ?? "idle"
@@ -135,7 +198,7 @@ import Combine
         switchSeen = json["switchSeen"] as? Bool ?? false
         lastSwitchRequest = json["lastSwitchRequest"] as? String ?? ""
         logPath = json["logPath"] as? String ?? ""
-        message = json["message"] as? String ?? reported.capitalized
+        if !stopAfterStart { message = json["message"] as? String ?? reported.capitalized }
         if let interface = json["interface"] as? String, !interface.isEmpty { selectedInterface = interface }
     }
 

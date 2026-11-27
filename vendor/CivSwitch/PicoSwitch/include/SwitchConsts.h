@@ -159,7 +159,7 @@ static const uint8_t switch_usb_configuration_descriptor[] = {
     0x00,        // bCountryCode
     0x01,        // bNumDescriptors
     0x22,        // bDescriptorType[0] (HID Report)
-    0x3F, 0x00,  // wDescriptorLength[0] 63
+    0x40, 0x00,  // wDescriptorLength[0] 64
 
     0x07,        // bLength
     0x05,        // bDescriptorType (Endpoint)
@@ -227,7 +227,7 @@ static const uint8_t switch_usb_report_descriptor[] = {
 };
 
 // Boot-protocol keyboard: 8-byte input (modifiers, reserved, 6 keycodes)
-// plus a 1-byte LED output report. Must stay 63 bytes to match the HID
+// plus a 1-byte LED output report. Must stay 64 bytes to match the HID
 // descriptor wDescriptorLength in switch_usb_configuration_descriptor.
 static const uint8_t keyboard_usb_report_descriptor[] = {
     0x05, 0x01,  // Usage Page (Generic Desktop Ctrls)
@@ -256,10 +256,10 @@ static const uint8_t keyboard_usb_report_descriptor[] = {
     0x95, 0x06,  //   Report Count (6)
     0x75, 0x08,  //   Report Size (8)
     0x15, 0x00,  //   Logical Minimum (0)
-    0x25, 0x65,  //   Logical Maximum (101)
+    0x26, 0x91, 0x00,  // Logical Maximum (145): JIS International + LANG2
     0x05, 0x07,  //   Usage Page (Kbrd/Keypad)
     0x19, 0x00,  //   Usage Minimum (0x00)
-    0x29, 0x65,  //   Usage Maximum (0x65)
+    0x29, 0x91,  //   Usage Maximum (LANG2 / Japanese Eisu)
     0x81, 0x00,  //   Input (Data,Array,Abs) ; 6 keycode bytes
     0xC0,        // End Collection
 };

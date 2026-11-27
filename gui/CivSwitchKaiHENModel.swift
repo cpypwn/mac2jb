@@ -2,8 +2,8 @@ import Foundation
 import Combine
 
 @MainActor final class CivSwitchKaiHENModel: ObservableObject {
-    enum Operation: Equatable { case prepareSD, stageSD, install, runOnce }
-    enum Phase: Equatable { case idle, preparing, sd, backup, transfer, running, stopping, complete, failed }
+    enum Operation: Equatable { case install, runOnce }
+    enum Phase: Equatable { case idle, preparing, backup, transfer, running, stopping, complete, failed }
 
     @Published private(set) var operation: Operation = .install
     @Published private(set) var phase: Phase = .idle
@@ -12,8 +12,6 @@ import Combine
     @Published private(set) var errorMessage: String?
     @Published private(set) var progressStep = 0.0
     @Published private(set) var diagnosticLogURL: URL?
-    @Published private(set) var preparedSDURL: URL?
-    @Published private(set) var sdBackupURL: URL?
 
     var isRunning: Bool { process != nil }
     var lastError: String? { errorMessage }
@@ -32,30 +30,12 @@ import Combine
         launch(.runOnce, consoleAddress: consoleAddress, runtimeRoot: runtimeRoot)
     }
 
-    func prepareSD(runtimeRoot: URL?) {
-        launch(.prepareSD, consoleAddress: nil, runtimeRoot: runtimeRoot)
-    }
-
-    func startStageSD(volumeURL: URL, runtimeRoot: URL?) {
-        launch(.stageSD, consoleAddress: nil, volumeURL: volumeURL, runtimeRoot: runtimeRoot)
-    }
-
-    private func launch(_ selectedOperation: Operation, consoleAddress: String?,
-                        volumeURL: URL? = nil, runtimeRoot: URL?) {
+    private func launch(_ selectedOperation: Operation, consoleAddress: String?, runtimeRoot: URL?) {
         guard !isRunning else { return }
         diagnosticLogURL = nil
-        guard selectedOperation == .prepareSD || selectedOperation == .stageSD ||
-              consoleAddress.map(CivSwitchFSModel.validIPv4) == true else {
+        guard consoleAddress.map(CivSwitchFSModel.validIPv4) == true else {
             fail("Enter a valid Switch IPv4 address")
             return
-        }
-        if selectedOperation == .stageSD {
-            guard let volumeURL, volumeURL.isFileURL,
-                  volumeURL.standardizedFileURL.pathComponents.count == 3,
-                  volumeURL.standardizedFileURL.pathComponents[1] == "Volumes" else {
-                fail("Choose the root of the mounted Switch SD card")
-                return
-            }
         }
         guard let runtimeRoot else {
             fail("The mac2jb runtime is unavailable")
@@ -77,9 +57,6 @@ import Combine
         let output = Pipe()
         task.executableURL = node
         switch selectedOperation {
-        case .prepareSD: task.arguments = [script.path, "prepare-sd", runtimeRoot.path]
-        case .stageSD: task.arguments = [script.path, "stage-sd", volumeURL?.standardizedFileURL.path ?? "",
-                                         runtimeRoot.path]
         case .install: task.arguments = [script.path, "install", consoleAddress ?? "", runtimeRoot.path]
         case .runOnce: task.arguments = [script.path, "run-once", consoleAddress ?? "", runtimeRoot.path]
         }
@@ -91,11 +68,6 @@ import Combine
         operation = selectedOperation
         phase = .preparing
         switch selectedOperation {
-        case .prepareSD: status = "Preparing kaiHEN SD files"; preparedSDURL = nil
-        case .stageSD:
-            status = "Writing kaiHEN to the Switch SD card"
-            preparedSDURL = nil
-            sdBackupURL = nil
         case .install: status = "Preparing CivSwitchFS kaiHEN install"
         case .runOnce: status = "Preparing CivSwitchFS kaiHEN"
         }
@@ -166,7 +138,6 @@ import Combine
         if let stage = event["phase"] as? String, !stopRequested {
             switch stage {
             case "preflight": phase = .preparing; progressStep = max(progressStep, 0.1)
-            case "sd": phase = .sd; progressStep = max(progressStep, 0.5)
             case "backup": phase = .backup; progressStep = max(progressStep, 0.3)
             case "transfer": phase = .transfer; progressStep = max(progressStep, 0.6)
             case "installed": phase = .running; progressStep = max(progressStep, 0.9)
@@ -182,14 +153,6 @@ import Combine
         case "complete":
             completed = true
             progressStep = 1
-            if (operation == .prepareSD || operation == .stageSD), let path = event["path"] as? String,
-               path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) {
-                preparedSDURL = URL(fileURLWithPath: path, isDirectory: true)
-            }
-            if operation == .stageSD, let path = event["backup"] as? String,
-               path.hasPrefix("/"), FileManager.default.fileExists(atPath: path) {
-                sdBackupURL = URL(fileURLWithPath: path, isDirectory: true)
-            }
         case "failed":
             errorMessage = message ?? "CivSwitchFS kaiHEN did not complete"
         default: break
@@ -206,8 +169,6 @@ import Combine
             phase = .complete
             if status.isEmpty {
                 switch operation {
-                case .prepareSD: status = "kaiHEN SD files are ready"
-                case .stageSD: status = "kaiHEN files verified on the Switch SD card"
                 case .install: status = "CivSwitchFS kaiHEN trigger installed"
                 case .runOnce: status = "CivSwitchFS kaiHEN run sent"
                 }
